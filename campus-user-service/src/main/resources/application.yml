@@ -4,10 +4,19 @@ server:
 spring:
   application:
     name: campus-user-service
+  datasource:
+    url: ${USER_DB_URL:jdbc:mysql://localhost:3306/campusmind?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai}
+    username: ${USER_DB_USERNAME:campusmind}
+    password: ${USER_DB_PASSWORD:campusmind}
+
+campus:
+  auth:
+    jwt:
+      issuer: ${AUTH_JWT_ISSUER:campusmind-auth}
+      secret: ${AUTH_JWT_SECRET:please-change-this-secret-to-at-least-32-bytes}
 
 management:
   endpoints:
     web:
       exposure:
         include: health,info
-
