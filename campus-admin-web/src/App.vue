@@ -1,10 +1,10 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 
-type ReviewStatus = 'AI_PUBLISHED' | 'CORRECTED' | 'REVIEWED' | 'REJECTED';
-type EventType = 'LECTURE' | 'EXAM' | 'HOMEWORK' | 'ACTIVITY' | 'NOTICE';
+type ReviewStatus = 'AI_PUBLISHED' | 'CORRECTED' | 'REVIEWED' | 'REJECTED' | 'OFFLINE';
+type EventType = 'NOTICE' | 'COURSE' | 'EXAM' | 'HOMEWORK' | 'ACTIVITY' | 'LECTURE' | 'COMPETITION' | 'SERVICE' | 'OTHER';
 type SourceStatus = 'RUNNING' | 'HEALTHY' | 'NEEDS_AUTH' | 'PAUSED';
-type TaskStatus = 'SUCCESS' | 'RUNNING' | 'FAILED' | 'PENDING';
+type TaskStatus = 'SUCCESS' | 'RUNNING' | 'FAILED' | 'PENDING' | 'SKIPPED';
 
 interface ReviewEvent {
   id: number;
@@ -38,6 +38,29 @@ interface CrawlTask {
   owner: string;
   time: string;
   note: string;
+}
+
+interface DashboardMetrics {
+  reviewCount: number;
+  urgentCount: number;
+  avgConfidence: number;
+  sourceSuccessRate: number;
+  sourcesNeedAuth: number;
+  vectorPending: number;
+}
+
+interface ApiResponse<T> {
+  success: boolean;
+  code: string;
+  message: string;
+  data: T;
+}
+
+interface DashboardResponse {
+  metrics: DashboardMetrics;
+  events: ReviewEvent[];
+  dataSources: DataSource[];
+  tasks: CrawlTask[];
 }
 
 const navItems = [
@@ -125,6 +148,17 @@ const selectedId = ref(reviewEvents.value[0].id);
 const typeFilter = ref<'ALL' | EventType>('ALL');
 const searchText = ref('');
 const aiInput = ref('7月8日 19:00，软件学院将在图书馆报告厅举办人工智能主题讲座，面向软件学院本科生。');
+const loading = ref(false);
+const apiMode = ref<'live' | 'fallback'>('fallback');
+const apiMessage = ref('使用内置演示数据');
+const dashboardMetrics = ref<DashboardMetrics>({
+  reviewCount: 0,
+  urgentCount: 0,
+  avgConfidence: 0,
+  sourceSuccessRate: 0,
+  sourcesNeedAuth: 0,
+  vectorPending: 0
+});
 
 const filteredEvents = computed(() => {
   const keyword = searchText.value.trim();
@@ -145,6 +179,19 @@ const avgConfidence = computed(() => {
   const sum = reviewEvents.value.reduce((total, item) => total + item.confidence, 0);
   return Math.round((sum / reviewEvents.value.length) * 100);
 });
+const metrics = computed(() => {
+  if (apiMode.value === 'live') {
+    return dashboardMetrics.value;
+  }
+  return {
+    reviewCount: reviewCount.value,
+    urgentCount: urgentCount.value,
+    avgConfidence: avgConfidence.value,
+    sourceSuccessRate: 91,
+    sourcesNeedAuth: 1,
+    vectorPending: 12
+  };
+});
 const aiPreview = computed(() => {
   const text = aiInput.value;
   const lecture = text.includes('讲座') || text.toLowerCase().includes('ai');
@@ -162,21 +209,64 @@ function selectEvent(id: number) {
 }
 
 function approveSelected() {
-  const event = selectedEvent.value;
-  if (!event) {
-    return;
-  }
-  event.status = 'REVIEWED';
-  event.risk = '已人工确认';
+  reviewSelected('REVIEWED', '字段完整，确认发布');
 }
 
 function rejectSelected() {
+  reviewSelected('REJECTED', '后台人工驳回');
+}
+
+async function loadDashboard() {
+  loading.value = true;
+  try {
+    const response = await fetch('/api/admin/dashboard');
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+    const payload = await response.json() as ApiResponse<DashboardResponse>;
+    if (!payload.success) {
+      throw new Error(payload.message);
+    }
+    dashboardMetrics.value = payload.data.metrics;
+    reviewEvents.value = payload.data.events;
+    dataSources.value = payload.data.dataSources;
+    crawlTasks.value = payload.data.tasks;
+    selectedId.value = payload.data.events[0]?.id ?? selectedId.value;
+    apiMode.value = 'live';
+    apiMessage.value = '已连接后端数据库';
+  } catch (error) {
+    apiMode.value = 'fallback';
+    apiMessage.value = `后端未连接，使用演示数据`;
+  } finally {
+    loading.value = false;
+  }
+}
+
+async function reviewSelected(status: 'REVIEWED' | 'REJECTED', comment: string) {
   const event = selectedEvent.value;
   if (!event) {
     return;
   }
-  event.status = 'REJECTED';
-  event.risk = '已标记为无效事件';
+  if (apiMode.value === 'live') {
+    const response = await fetch(`/api/admin/events/${event.id}/review`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-User-Id': '9901'
+      },
+      body: JSON.stringify({ status, comment })
+    });
+    if (response.ok) {
+      const payload = await response.json() as ApiResponse<ReviewEvent>;
+      Object.assign(event, payload.data);
+      dashboardMetrics.value.reviewCount = reviewEvents.value.filter((item) => item.status === 'AI_PUBLISHED' || item.status === 'CORRECTED').length;
+      dashboardMetrics.value.urgentCount = reviewEvents.value.filter((item) => item.confidence < 0.75 || item.status === 'CORRECTED').length;
+      return;
+    }
+    apiMessage.value = '审核写入失败，已保留当前页面状态';
+  }
+  event.status = status;
+  event.risk = status === 'REVIEWED' ? '已人工确认' : '已标记为无效事件';
 }
 
 function statusLabel(status: ReviewStatus | SourceStatus | TaskStatus) {
@@ -185,16 +275,22 @@ function statusLabel(status: ReviewStatus | SourceStatus | TaskStatus) {
     CORRECTED: '待复核',
     REVIEWED: '已确认',
     REJECTED: '已驳回',
+    OFFLINE: '已下线',
     RUNNING: '运行中',
     HEALTHY: '健康',
     NEEDS_AUTH: '待授权',
     PAUSED: '暂停',
     SUCCESS: '成功',
     FAILED: '失败',
-    PENDING: '等待'
+    PENDING: '等待',
+    SKIPPED: '跳过'
   };
   return labels[status] ?? status;
 }
+
+onMounted(() => {
+  loadDashboard();
+});
 </script>
 
 <template>
@@ -236,6 +332,7 @@ function statusLabel(status: ReviewStatus | SourceStatus | TaskStatus) {
         <div>
           <p class="eyebrow">2026-07-07 · 18:30</p>
           <h2>校园事件运营工作台</h2>
+          <p class="connection-line" :data-mode="apiMode">{{ apiMessage }}<span v-if="loading"> · 同步中</span></p>
         </div>
         <div class="top-actions">
           <button type="button" class="ghost-button">导出审计</button>
@@ -246,22 +343,22 @@ function statusLabel(status: ReviewStatus | SourceStatus | TaskStatus) {
       <section class="metrics-band" aria-label="今日指标">
         <article>
           <span>待处理</span>
-          <strong>{{ reviewCount }}</strong>
-          <small>{{ urgentCount }} 条高优先级</small>
+          <strong>{{ metrics.reviewCount }}</strong>
+          <small>{{ metrics.urgentCount }} 条高优先级</small>
         </article>
         <article>
           <span>平均置信度</span>
-          <strong>{{ avgConfidence }}%</strong>
+          <strong>{{ metrics.avgConfidence }}%</strong>
           <small>较昨日 +6%</small>
         </article>
         <article>
           <span>数据源成功率</span>
-          <strong>91%</strong>
-          <small>1 个源需授权</small>
+          <strong>{{ metrics.sourceSuccessRate }}%</strong>
+          <small>{{ metrics.sourcesNeedAuth }} 个源需授权</small>
         </article>
         <article>
           <span>向量待同步</span>
-          <strong>12</strong>
+          <strong>{{ metrics.vectorPending }}</strong>
           <small>审核后写入</small>
         </article>
       </section>
@@ -277,12 +374,17 @@ function statusLabel(status: ReviewStatus | SourceStatus | TaskStatus) {
               <select v-model="typeFilter" aria-label="事件类型过滤">
                 <option value="ALL">全部类型</option>
                 <option value="LECTURE">讲座</option>
+                <option value="COURSE">课程</option>
                 <option value="EXAM">考试</option>
                 <option value="HOMEWORK">作业</option>
                 <option value="ACTIVITY">活动</option>
+                <option value="COMPETITION">竞赛</option>
+                <option value="SERVICE">服务</option>
                 <option value="NOTICE">通知</option>
+                <option value="OTHER">其他</option>
               </select>
               <input v-model="searchText" type="search" placeholder="搜索标题、来源、标签" />
+              <button type="button" class="ghost-button tiny" @click="loadDashboard">刷新</button>
             </div>
           </div>
 
@@ -609,6 +711,26 @@ h3 {
   gap: 10px;
 }
 
+.connection-line {
+  margin-top: 10px;
+  color: #68777b;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.connection-line::before {
+  content: '';
+  width: 8px;
+  height: 8px;
+  display: inline-block;
+  margin-right: 8px;
+  background: #b28b38;
+}
+
+.connection-line[data-mode='live']::before {
+  background: #34754b;
+}
+
 .ghost-button,
 .solid-button {
   min-height: 42px;
@@ -617,6 +739,11 @@ h3 {
   background: transparent;
   color: #172023;
   font-weight: 800;
+}
+
+.ghost-button.tiny {
+  min-height: 40px;
+  padding: 0 12px;
 }
 
 .solid-button {
