@@ -1,0 +1,13 @@
+server:
+  port: 8083
+
+spring:
+  application:
+    name: campus-event-service
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+

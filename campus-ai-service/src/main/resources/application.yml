@@ -1,0 +1,13 @@
+server:
+  port: 8089
+
+spring:
+  application:
+    name: campus-ai-service
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+

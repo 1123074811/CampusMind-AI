@@ -1,0 +1,13 @@
+server:
+  port: 8081
+
+spring:
+  application:
+    name: campus-auth-service
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+

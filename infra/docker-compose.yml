@@ -1,0 +1,52 @@
+services:
+  mysql:
+    image: mysql:8.4
+    container_name: campusmind-mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: campusmind
+      MYSQL_DATABASE: campusmind
+      MYSQL_USER: campusmind
+      MYSQL_PASSWORD: campusmind
+      TZ: Asia/Shanghai
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql-data:/var/lib/mysql
+      - ./mysql/init:/docker-entrypoint-initdb.d:ro
+
+  redis:
+    image: redis:7.4
+    container_name: campusmind-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+
+  mongo:
+    image: mongo:8.0
+    container_name: campusmind-mongo
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo-data:/data/db
+
+  postgres:
+    image: pgvector/pgvector:pg17
+    container_name: campusmind-pgvector
+    environment:
+      POSTGRES_DB: campusmind_vector
+      POSTGRES_USER: campusmind
+      POSTGRES_PASSWORD: campusmind
+      TZ: Asia/Shanghai
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgvector-data:/var/lib/postgresql/data
+      - ./postgres/init:/docker-entrypoint-initdb.d:ro
+
+volumes:
+  mysql-data:
+  redis-data:
+  mongo-data:
+  pgvector-data:
+

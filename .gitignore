@@ -1,0 +1,28 @@
+# Java / Maven
+target/
+*.class
+.mvn/wrapper/maven-wrapper.jar
+
+# Node / Vue
+node_modules/
+dist/
+.vite/
+*.tsbuildinfo
+
+# Flutter
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+build/
+
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# Runtime / local config
+logs/
+*.log
+.env
+.env.*
+!.env.example

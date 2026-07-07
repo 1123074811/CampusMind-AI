@@ -1,0 +1,13 @@
+server:
+  port: 8085
+
+spring:
+  application:
+    name: campus-import-service
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+

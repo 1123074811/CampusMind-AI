@@ -1,0 +1,25 @@
+server:
+  port: 8086
+
+spring:
+  application:
+    name: campus-crawler-service
+
+campus:
+  crawler:
+    default-interval-seconds: 5
+    min-interval-seconds: 3
+    robots-cache-ttl-hours: 12
+    max-retry: 3
+    user-agent: "CampusEventBot/1.0 (+contact: admin@example.edu)"
+    backoff:
+      initial-seconds: 30
+      multiplier: 2.0
+      max-seconds: 3600
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+
