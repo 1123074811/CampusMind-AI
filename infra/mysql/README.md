@@ -3,6 +3,7 @@
 ## Files
 
 - `init/001_schema.sql`: Docker Compose initialization script. It is mounted into `/docker-entrypoint-initdb.d` and runs automatically when the MySQL volume is created for the first time.
+- `init/003_public_sources.sql`: Official public web source seed data for Xinjiang University and Xinjiang University Software College.
 - `campusmind_schema.sql`: Standalone deployable schema export. Use this file when importing into an existing MySQL instance.
 
 ## Default Database
@@ -15,6 +16,7 @@
 
 ```powershell
 cmd /c "mysql --default-character-set=utf8mb4 -uroot -p < infra\mysql\campusmind_schema.sql"
+cmd /c "mysql --default-character-set=utf8mb4 -uroot -p campusmind < infra\mysql\init\003_public_sources.sql"
 ```
 
 Docker Compose:
