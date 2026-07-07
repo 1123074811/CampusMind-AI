@@ -29,6 +29,10 @@ spring:
               uri: http://localhost:8085
               predicates:
                 - Path=/api/v1/import/**
+            - id: campus-crawler-service
+              uri: http://localhost:8086
+              predicates:
+                - Path=/api/admin/crawler/**
             - id: campus-audit-service
               uri: http://localhost:8087
               predicates:
@@ -47,4 +51,3 @@ management:
     web:
       exposure:
         include: health,info
-
