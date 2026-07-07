@@ -4,10 +4,13 @@ server:
 spring:
   application:
     name: campus-feed-service
+  datasource:
+    url: ${FEED_DB_URL:jdbc:mysql://localhost:3306/campusmind?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai}
+    username: ${FEED_DB_USERNAME:campusmind}
+    password: ${FEED_DB_PASSWORD:campusmind}
 
 management:
   endpoints:
     web:
       exposure:
         include: health,info
-
