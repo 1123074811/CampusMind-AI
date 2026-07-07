@@ -16,6 +16,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.HexFormat;
 import java.util.List;
@@ -52,6 +53,11 @@ public class CrawlerService {
 
     @Transactional
     public CrawlSourceResult crawlSource(Long sourceId) {
+        return crawlSource(sourceId, new CrawlOptions(30, 50));
+    }
+
+    @Transactional
+    public CrawlSourceResult crawlSource(Long sourceId, CrawlOptions options) {
         DataSource source = dataSourceMapper.selectById(sourceId);
         if (source == null) {
             throw new BusinessException("SOURCE_NOT_FOUND", "数据源不存在", HttpStatus.NOT_FOUND);
@@ -59,33 +65,43 @@ public class CrawlerService {
         CrawlTask task = newTask(source);
         crawlTaskMapper.insert(task);
         if (!isSupported(source)) {
-            return finish(task, source, "SKIPPED", null, null, List.of(), null,
+            return finish(task, source, "SKIPPED", null, null, 0, 0, List.of(), null,
                     "仅支持启用的 PUBLIC_WEB/WEBMAGIC 数据源");
         }
         if (intervalTooSmall(source)) {
-            return finish(task, source, "SKIPPED", null, null, List.of(), null,
+            return finish(task, source, "SKIPPED", null, null, 0, 0, List.of(), null,
                     "采集间隔必须大于 " + crawlerProperties.getMinIntervalSeconds() + " 秒");
         }
         try {
             SelectorConfig selectorConfig = selectorConfigParser.parse(source.getSelectorConfig());
             PublicWebFetcher.FetchResult fetchResult = publicWebFetcher.fetch(source.getBaseUrl());
             ParsedListPage parsed = listPageParser.parse(fetchResult.body(), source.getBaseUrl(), selectorConfig);
-            persistItems(task, source, parsed);
+            List<CrawledLink> filteredLinks = filterRecentLinks(parsed.links(), options);
+            int persistedCount = persistItems(task, source, parsed.parserVersion(), filteredLinks);
             task.setHttpStatus(fetchResult.httpStatus());
             task.setEtag(fetchResult.etag());
             task.setLastModified(fetchResult.lastModified());
             source.setLastCrawledAt(LocalDateTime.now());
             dataSourceMapper.updateById(source);
             return finish(task, source, "SUCCESS", fetchResult.httpStatus(), parsed.parserVersion(),
-                    parsed.links(), null, null);
+                    parsed.links().size(), persistedCount, filteredLinks, null, null);
         } catch (Exception e) {
-            return finish(task, source, "FAILED", task.getHttpStatus(), null, List.of(), e.getMessage(), e.getMessage());
+            return finish(task, source, "FAILED", task.getHttpStatus(), null, 0, 0, List.of(), e.getMessage(), e.getMessage());
         }
     }
 
-    private void persistItems(CrawlTask task, DataSource source, ParsedListPage parsed) {
+    private List<CrawledLink> filterRecentLinks(List<CrawledLink> links, CrawlOptions options) {
+        LocalDate cutoff = LocalDate.now().minusDays(options.normalizedDays() - 1L);
+        return links.stream()
+                .filter(link -> link.publishedDate() != null && !link.publishedDate().isBefore(cutoff))
+                .limit(options.normalizedMaxItems())
+                .toList();
+    }
+
+    private int persistItems(CrawlTask task, DataSource source, String parserVersion, List<CrawledLink> links) {
         LocalDateTime fetchedAt = LocalDateTime.now();
-        for (CrawledLink link : parsed.links()) {
+        int persistedCount = 0;
+        for (CrawledLink link : links) {
             String hash = sha256(source.getId() + "|" + link.title() + "|" + link.url() + "|"
                     + link.dateText() + "|" + link.summary());
             Long existing = webCrawlItemMapper.selectCount(new LambdaQueryWrapper<WebCrawlItem>()
@@ -103,10 +119,12 @@ public class CrawlerService {
             item.setDateText(link.dateText());
             item.setSummary(link.summary());
             item.setContentHash(hash);
-            item.setParserVersion(parsed.parserVersion());
+            item.setParserVersion(parserVersion);
             item.setFetchedAt(fetchedAt);
             webCrawlItemMapper.insert(item);
+            persistedCount++;
         }
+        return persistedCount;
     }
 
     private String sha256(String text) {
@@ -141,7 +159,8 @@ public class CrawlerService {
     }
 
     private CrawlSourceResult finish(CrawlTask task, DataSource source, String status, Integer httpStatus,
-                                     String parserVersion, List<CrawledLink> links, String failReason,
+                                     String parserVersion, int discoveredCount, int persistedCount,
+                                     List<CrawledLink> links, String failReason,
                                      String storedFailReason) {
         task.setTaskStatus(status);
         task.setHttpStatus(httpStatus);
@@ -149,7 +168,7 @@ public class CrawlerService {
         task.setFinishedAt(LocalDateTime.now());
         crawlTaskMapper.updateById(task);
         return new CrawlSourceResult(task.getId(), source.getId(), source.getName(), status, httpStatus,
-                source.getBaseUrl(), links.size(), links, parserVersion, failReason,
+                source.getBaseUrl(), discoveredCount, persistedCount, links, parserVersion, failReason,
                 task.getStartedAt(), task.getFinishedAt());
     }
 }

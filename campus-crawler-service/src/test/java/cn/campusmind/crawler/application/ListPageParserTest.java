@@ -41,6 +41,7 @@ class ListPageParserTest {
         assertThat(result.links().get(0).title()).isEqualTo("新疆大学2026年度拟新增本科专业公示");
         assertThat(result.links().get(0).url()).isEqualTo("https://www.xju.edu.cn/info/1030/28464.htm");
         assertThat(result.links().get(0).dateText()).contains("2026/07");
+        assertThat(result.links().get(0).publishedDate()).isEqualTo(java.time.LocalDate.of(2026, 7, 7));
     }
 
     @Test
@@ -71,5 +72,6 @@ class ListPageParserTest {
         assertThat(result.links().get(0).title()).isEqualTo("软件学院教研室研讨：探索人工智能冲击下本科课程内容的适应性改革");
         assertThat(result.links().get(0).url()).isEqualTo("https://ss.xju.edu.cn/info/1018/3453.htm");
         assertThat(result.links().get(0).dateText()).isEqualTo("2026/04/08");
+        assertThat(result.links().get(0).publishedDate()).isEqualTo(java.time.LocalDate.of(2026, 4, 8));
     }
 }

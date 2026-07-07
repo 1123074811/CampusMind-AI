@@ -11,6 +11,7 @@ public record CrawlSourceResult(
         Integer httpStatus,
         String crawlUrl,
         int discoveredCount,
+        int persistedCount,
         List<CrawledLink> links,
         String parserVersion,
         String failReason,

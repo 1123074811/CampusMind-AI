@@ -6,6 +6,9 @@ import org.jsoup.nodes.Element;
 import org.jsoup.select.Elements;
 import org.springframework.stereotype.Component;
 
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -43,7 +46,7 @@ public class ListPageParser {
                 dateText = normalizeDateText(firstInAncestors(scope, listSelector.getDate()));
             }
             String summary = clean(firstText(scope, listSelector.getSummary()));
-            links.putIfAbsent(absoluteUrl, new CrawledLink(title, absoluteUrl, dateText, summary));
+            links.putIfAbsent(absoluteUrl, new CrawledLink(title, absoluteUrl, dateText, parseDate(dateText), summary));
         }
         return new ParsedListPage(selectorConfig.getParserVersion(), new ArrayList<>(links.values()));
     }
@@ -113,6 +116,17 @@ public class ListPageParser {
             }
         }
         return clean(element.text());
+    }
+
+    private LocalDate parseDate(String dateText) {
+        if (dateText == null || dateText.isBlank()) {
+            return null;
+        }
+        try {
+            return LocalDate.parse(dateText.replace('-', '/').trim(), DateTimeFormatter.ofPattern("yyyy/MM/dd"));
+        } catch (DateTimeParseException e) {
+            return null;
+        }
     }
 
     private String clean(String value) {

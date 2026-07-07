@@ -110,13 +110,15 @@ class CrawlerControllerTest {
                 .andExpect(jsonPath("$.data.status").value("SUCCESS"))
                 .andExpect(jsonPath("$.data.httpStatus").value(200))
                 .andExpect(jsonPath("$.data.discoveredCount").value(1))
+                .andExpect(jsonPath("$.data.persistedCount").value(1))
                 .andExpect(jsonPath("$.data.links[0].title").value("新疆大学2026年度拟新增本科专业公示"))
                 .andExpect(jsonPath("$.data.links[0].url").value("https://www.xju.edu.cn/info/1030/28464.htm"));
 
         mockMvc.perform(post("/api/admin/crawler/sources/9411/crawl"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.status").value("SUCCESS"))
-                .andExpect(jsonPath("$.data.discoveredCount").value(1));
+                .andExpect(jsonPath("$.data.discoveredCount").value(1))
+                .andExpect(jsonPath("$.data.persistedCount").value(0));
     }
 
     private void insertSource() throws Exception {
