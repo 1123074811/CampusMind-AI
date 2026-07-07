@@ -1,12 +1,12 @@
 services:
   mysql:
-    image: mysql:8.4
+    image: ${MYSQL_IMAGE:-mysql:8.4}
     container_name: campusmind-mysql
     environment:
-      MYSQL_ROOT_PASSWORD: campusmind
-      MYSQL_DATABASE: campusmind
-      MYSQL_USER: campusmind
-      MYSQL_PASSWORD: campusmind
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-ojc132598.}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-campusmind}
+      MYSQL_USER: ${MYSQL_USERNAME:-campusmind}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-ojc132598.}
       TZ: Asia/Shanghai
     ports:
       - "3306:3306"
@@ -36,7 +36,7 @@ services:
     environment:
       POSTGRES_DB: campusmind_vector
       POSTGRES_USER: campusmind
-      POSTGRES_PASSWORD: campusmind
+      POSTGRES_PASSWORD: ${PGVECTOR_PASSWORD:-campusmind}
       TZ: Asia/Shanghai
     ports:
       - "5432:5432"
@@ -49,4 +49,3 @@ volumes:
   redis-data:
   mongo-data:
   pgvector-data:
-

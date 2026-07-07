@@ -39,6 +39,7 @@
 | 管理后台 | Vue 3 + TypeScript | 适合构建审核、配置、列表、图表类后台系统 |
 | 网关 | Spring Cloud Gateway | 统一鉴权、限流、路由、灰度、日志追踪 |
 | 后端 | Spring Boot 3 + JDK 17 | 生态成熟，适合微服务、AI 集成、数据处理任务 |
+| ORM | MyBatis-Plus | 统一关系型数据库访问，基于 Mapper/Wrapper 提供简洁 CRUD 与可控 SQL 扩展 |
 | AI | Spring AI | 提供 ChatClient、EmbeddingModel、VectorStore 等统一抽象，降低模型厂商绑定 |
 | 关系库 | MySQL | 存用户、事件、订阅、审核、任务等强事务数据 |
 | 缓存 | Redis | 信息流缓存、热点事件、限流、分布式锁、任务状态 |
@@ -110,6 +111,26 @@ flowchart TB
 | 业务层 | 用户、事件、信息流、导入、搜索、审核、任务调度 | 保持 AI 结果可回滚，业务状态以 MySQL 为准 |
 | AI 层 | 感知、认知、决策三类 Agent | Agent 输出必须结构化，必须保存 prompt 版本和模型版本 |
 | 数据层 | 事务、原文、缓存、向量、附件存储 | MySQL 存主数据，MongoDB 存原文和中间结果，向量库存语义索引 |
+
+### 2.4 后端持久层规范
+
+所有 Spring Boot 3 业务服务统一使用 MyBatis-Plus 操作 MySQL，不使用 Spring Data JPA。Mapper 接口放在各服务 `infrastructure.mapper` 包下并继承 `BaseMapper<T>`；实体类通过 `@TableName`、`@TableId`、`@TableField` 与数据库表结构保持显式映射。简单条件查询优先使用 `LambdaQueryWrapper`，复杂查询再补充 XML 或注解 SQL，避免把业务 SQL 拼接散落在 controller/service 中。
+
+示例：
+
+```java
+@TableName("user")
+public class UserAccount {
+    @TableId(type = IdType.AUTO)
+    private Long id;
+    private String username;
+    @TableField("password_hash")
+    private String passwordHash;
+}
+
+public interface UserAccountMapper extends BaseMapper<UserAccount> {
+}
+```
 
 ### 2.3 核心业务流程时序图
 
@@ -984,6 +1005,11 @@ campus-ai-agent-system
     <dependency>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-starter-web</artifactId>
+    </dependency>
+    <dependency>
+        <groupId>com.baomidou</groupId>
+        <artifactId>mybatis-plus-spring-boot3-starter</artifactId>
+        <version>3.5.14</version>
     </dependency>
     <dependency>
         <groupId>org.springframework.cloud</groupId>

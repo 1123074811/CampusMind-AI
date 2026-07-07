@@ -36,10 +36,17 @@ cn.campusmind.<service>
 
 ## 数据层
 
-- MySQL：`infra/mysql/init/001_schema.sql`
+- MySQL：`infra/mysql/init/001_schema.sql`，所有业务服务统一使用 MyBatis-Plus 访问关系型数据库。
 - MongoDB：由服务连接后创建集合和索引
 - Redis：缓存、限流、锁、临时 Cookie
 - PGVector：`infra/postgres/init/001_pgvector.sql`
+
+## 持久层约定
+
+- Spring Boot 3 服务统一引入 `mybatis-plus-spring-boot3-starter`，禁止再新增 JPA Repository。
+- Mapper 接口放在 `cn.campusmind.<service>.infrastructure.mapper`，继承 MyBatis-Plus `BaseMapper<T>`。
+- 实体对象按数据库表结构使用 MyBatis-Plus 注解声明表名、主键和下划线字段映射。
+- 简单 CRUD 优先使用 `BaseMapper` 和 `LambdaQueryWrapper`，跨表或复杂查询再编写 XML/注解 SQL。
 
 ## 端口规划
 
@@ -55,4 +62,3 @@ cn.campusmind.<service>
 | Audit | 8087 |
 | Search | 8088 |
 | AI | 8089 |
-
