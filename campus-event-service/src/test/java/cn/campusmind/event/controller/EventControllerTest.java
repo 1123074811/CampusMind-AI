@@ -1,0 +1,109 @@
+package cn.campusmind.event.controller;
+
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.web.servlet.MockMvc;
+
+import javax.sql.DataSource;
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.Statement;
+
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
+@SpringBootTest
+@AutoConfigureMockMvc
+@ActiveProfiles("test")
+class EventControllerTest {
+
+    @Autowired
+    private MockMvc mockMvc;
+
+    @Autowired
+    private DataSource dataSource;
+
+    @BeforeEach
+    void setUp() throws Exception {
+        try (Connection connection = dataSource.getConnection();
+             Statement statement = connection.createStatement()) {
+            statement.execute("""
+                    CREATE TABLE IF NOT EXISTS campus_event (
+                      id BIGINT PRIMARY KEY,
+                      title VARCHAR(255) NOT NULL,
+                      summary CLOB,
+                      event_type VARCHAR(64) NOT NULL,
+                      source_type VARCHAR(64) NOT NULL,
+                      status VARCHAR(32) NOT NULL,
+                      confidence DECIMAL(5,4) NOT NULL,
+                      start_time TIMESTAMP,
+                      end_time TIMESTAMP,
+                      location VARCHAR(255),
+                      organizer VARCHAR(255),
+                      target_scope VARCHAR(1024),
+                      tags VARCHAR(1024),
+                      dedup_key CHAR(64),
+                      vector_doc_id VARCHAR(128),
+                      published_at TIMESTAMP,
+                      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    )
+                    """);
+            statement.execute("DELETE FROM campus_event");
+        }
+        insertEvent(1L, "人工智能主题讲座通知", "软件学院将举办AI讲座", "LECTURE", "AI_PUBLISHED");
+        insertEvent(2L, "考试安排通知", "期末考试安排发布", "EXAM", "REVIEWED");
+    }
+
+    @Test
+    void detailReturnsEvent() throws Exception {
+        mockMvc.perform(get("/api/v1/events/1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.title").value("人工智能主题讲座通知"))
+                .andExpect(jsonPath("$.data.aiPredicted").value(true))
+                .andExpect(jsonPath("$.data.tags[0]").value("AI"));
+    }
+
+    @Test
+    void detailReturnsNotFound() throws Exception {
+        mockMvc.perform(get("/api/v1/events/99"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("EVENT_NOT_FOUND"));
+    }
+
+    @Test
+    void searchFiltersByTypeAndKeyword() throws Exception {
+        mockMvc.perform(get("/api/v1/events/search")
+                        .param("eventType", "LECTURE")
+                        .param("keyword", "AI")
+                        .param("size", "10"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.total").value(1))
+                .andExpect(jsonPath("$.data.items[0].eventType").value("LECTURE"));
+    }
+
+    private void insertEvent(Long id, String title, String summary, String eventType, String status) throws Exception {
+        try (Connection connection = dataSource.getConnection();
+             PreparedStatement statement = connection.prepareStatement("""
+                     INSERT INTO campus_event (
+                       id, title, summary, event_type, source_type, status, confidence,
+                       start_time, end_time, location, organizer, target_scope, tags, published_at
+                     ) VALUES (?, ?, ?, ?, 'PUBLIC_WEB', ?, 0.9100,
+                       TIMESTAMP '2026-07-08 19:00:00', TIMESTAMP '2026-07-08 21:00:00',
+                       '图书馆报告厅', '软件学院', '[\"软件学院\"]', '[\"AI\",\"讲座\"]',
+                       TIMESTAMP '2026-07-07 10:00:00')
+                     """)) {
+            statement.setLong(1, id);
+            statement.setString(2, title);
+            statement.setString(3, summary);
+            statement.setString(4, eventType);
+            statement.setString(5, status);
+            statement.executeUpdate();
+        }
+    }
+}
