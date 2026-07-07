@@ -4,13 +4,20 @@ import cn.campusmind.common.exception.BusinessException;
 import cn.campusmind.crawler.config.CrawlerProperties;
 import cn.campusmind.crawler.domain.CrawlTask;
 import cn.campusmind.crawler.domain.DataSource;
+import cn.campusmind.crawler.domain.WebCrawlItem;
 import cn.campusmind.crawler.infrastructure.mapper.CrawlTaskMapper;
 import cn.campusmind.crawler.infrastructure.mapper.DataSourceMapper;
+import cn.campusmind.crawler.infrastructure.mapper.WebCrawlItemMapper;
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.time.LocalDateTime;
+import java.util.HexFormat;
 import java.util.List;
 
 @Service
@@ -21,6 +28,7 @@ public class CrawlerService {
 
     private final DataSourceMapper dataSourceMapper;
     private final CrawlTaskMapper crawlTaskMapper;
+    private final WebCrawlItemMapper webCrawlItemMapper;
     private final SelectorConfigParser selectorConfigParser;
     private final ListPageParser listPageParser;
     private final PublicWebFetcher publicWebFetcher;
@@ -28,12 +36,14 @@ public class CrawlerService {
 
     public CrawlerService(DataSourceMapper dataSourceMapper,
                           CrawlTaskMapper crawlTaskMapper,
+                          WebCrawlItemMapper webCrawlItemMapper,
                           SelectorConfigParser selectorConfigParser,
                           ListPageParser listPageParser,
                           PublicWebFetcher publicWebFetcher,
                           CrawlerProperties crawlerProperties) {
         this.dataSourceMapper = dataSourceMapper;
         this.crawlTaskMapper = crawlTaskMapper;
+        this.webCrawlItemMapper = webCrawlItemMapper;
         this.selectorConfigParser = selectorConfigParser;
         this.listPageParser = listPageParser;
         this.publicWebFetcher = publicWebFetcher;
@@ -60,6 +70,7 @@ public class CrawlerService {
             SelectorConfig selectorConfig = selectorConfigParser.parse(source.getSelectorConfig());
             PublicWebFetcher.FetchResult fetchResult = publicWebFetcher.fetch(source.getBaseUrl());
             ParsedListPage parsed = listPageParser.parse(fetchResult.body(), source.getBaseUrl(), selectorConfig);
+            persistItems(task, source, parsed);
             task.setHttpStatus(fetchResult.httpStatus());
             task.setEtag(fetchResult.etag());
             task.setLastModified(fetchResult.lastModified());
@@ -69,6 +80,42 @@ public class CrawlerService {
                     parsed.links(), null, null);
         } catch (Exception e) {
             return finish(task, source, "FAILED", task.getHttpStatus(), null, List.of(), e.getMessage(), e.getMessage());
+        }
+    }
+
+    private void persistItems(CrawlTask task, DataSource source, ParsedListPage parsed) {
+        LocalDateTime fetchedAt = LocalDateTime.now();
+        for (CrawledLink link : parsed.links()) {
+            String hash = sha256(source.getId() + "|" + link.title() + "|" + link.url() + "|"
+                    + link.dateText() + "|" + link.summary());
+            Long existing = webCrawlItemMapper.selectCount(new LambdaQueryWrapper<WebCrawlItem>()
+                    .eq(WebCrawlItem::getContentHash, hash));
+            if (existing != null && existing > 0) {
+                continue;
+            }
+            WebCrawlItem item = new WebCrawlItem();
+            item.setTaskId(task.getId());
+            item.setSourceId(source.getId());
+            item.setSourceName(source.getName());
+            item.setSourceUrl(source.getBaseUrl());
+            item.setItemUrl(link.url());
+            item.setTitle(link.title());
+            item.setDateText(link.dateText());
+            item.setSummary(link.summary());
+            item.setContentHash(hash);
+            item.setParserVersion(parsed.parserVersion());
+            item.setFetchedAt(fetchedAt);
+            webCrawlItemMapper.insert(item);
+        }
+    }
+
+    private String sha256(String text) {
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            byte[] bytes = digest.digest(text.getBytes(StandardCharsets.UTF_8));
+            return HexFormat.of().formatHex(bytes);
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 digest unavailable", e);
         }
     }
 

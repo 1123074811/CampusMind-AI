@@ -67,6 +67,24 @@ class CrawlerControllerTest {
                       finished_at TIMESTAMP
                     )
                     """);
+            statement.execute("""
+                    CREATE TABLE IF NOT EXISTS web_crawl_item (
+                      id BIGINT AUTO_INCREMENT PRIMARY KEY,
+                      task_id BIGINT NOT NULL,
+                      source_id BIGINT NOT NULL,
+                      source_name VARCHAR(128) NOT NULL,
+                      source_url VARCHAR(1024) NOT NULL,
+                      item_url VARCHAR(1024) NOT NULL,
+                      title VARCHAR(512) NOT NULL,
+                      date_text VARCHAR(64),
+                      summary CLOB,
+                      content_hash CHAR(64) NOT NULL,
+                      parser_version VARCHAR(64),
+                      fetched_at TIMESTAMP,
+                      UNIQUE KEY uk_web_crawl_item_hash (content_hash)
+                    )
+                    """);
+            statement.execute("DELETE FROM web_crawl_item");
             statement.execute("DELETE FROM crawl_task");
             statement.execute("DELETE FROM data_source");
         }
@@ -94,6 +112,11 @@ class CrawlerControllerTest {
                 .andExpect(jsonPath("$.data.discoveredCount").value(1))
                 .andExpect(jsonPath("$.data.links[0].title").value("新疆大学2026年度拟新增本科专业公示"))
                 .andExpect(jsonPath("$.data.links[0].url").value("https://www.xju.edu.cn/info/1030/28464.htm"));
+
+        mockMvc.perform(post("/api/admin/crawler/sources/9411/crawl"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("SUCCESS"))
+                .andExpect(jsonPath("$.data.discoveredCount").value(1));
     }
 
     private void insertSource() throws Exception {

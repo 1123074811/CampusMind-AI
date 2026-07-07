@@ -38,9 +38,9 @@ public class ListPageParser {
             if (title.isBlank()) {
                 continue;
             }
-            String dateText = clean(firstText(scope, listSelector.getDate()));
+            String dateText = normalizeDateText(first(scope, listSelector.getDate()));
             if (dateText.isBlank()) {
-                dateText = clean(firstTextInAncestors(scope, listSelector.getDate()));
+                dateText = normalizeDateText(firstInAncestors(scope, listSelector.getDate()));
             }
             String summary = clean(firstText(scope, listSelector.getSummary()));
             links.putIfAbsent(absoluteUrl, new CrawledLink(title, absoluteUrl, dateText, summary));
@@ -50,7 +50,10 @@ public class ListPageParser {
 
     private Elements selectScopes(Document document, SelectorConfig.ListSelector listSelector) {
         if (listSelector.getItem() != null && !listSelector.getItem().isBlank()) {
-            return document.select(listSelector.getItem());
+            Elements elements = document.select(listSelector.getItem());
+            if (!elements.isEmpty()) {
+                return elements;
+            }
         }
         return document.select(listSelector.getLink());
     }
@@ -69,18 +72,23 @@ public class ListPageParser {
     }
 
     private String firstTextInAncestors(Element scope, String selector) {
+        Element element = firstInAncestors(scope, selector);
+        return element == null ? "" : element.text();
+    }
+
+    private Element firstInAncestors(Element scope, String selector) {
         if (selector == null || selector.isBlank()) {
-            return "";
+            return null;
         }
         Element current = scope.parent();
         for (int depth = 0; current != null && depth < 4; depth++) {
             Element element = first(current, selector);
             if (element != null) {
-                return element.text();
+                return element;
             }
             current = current.parent();
         }
-        return "";
+        return null;
     }
 
     private String firstTitle(Element scope, String selector) {
@@ -90,6 +98,21 @@ public class ListPageParser {
         }
         String title = clean(element.attr("title"));
         return title.isBlank() ? element.text() : title;
+    }
+
+    private String normalizeDateText(Element element) {
+        if (element == null) {
+            return "";
+        }
+        Element dayElement = element.selectFirst("span");
+        if (dayElement != null) {
+            String day = clean(dayElement.text());
+            String yearMonth = clean(element.ownText());
+            if (yearMonth.matches("\\d{4}/\\d{2}") && day.matches("\\d{1,2}")) {
+                return yearMonth + "/" + String.format("%02d", Integer.parseInt(day));
+            }
+        }
+        return clean(element.text());
     }
 
     private String clean(String value) {
