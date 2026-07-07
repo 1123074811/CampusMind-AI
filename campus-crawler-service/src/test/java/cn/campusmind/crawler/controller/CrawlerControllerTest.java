@@ -76,10 +76,17 @@ class CrawlerControllerTest {
                       source_url VARCHAR(1024) NOT NULL,
                       item_url VARCHAR(1024) NOT NULL,
                       title VARCHAR(512) NOT NULL,
+                      detail_title VARCHAR(512),
                       date_text VARCHAR(64),
                       summary CLOB,
+                      detail_content CLOB,
                       content_hash CHAR(64) NOT NULL,
                       parser_version VARCHAR(64),
+                      detail_http_status INT,
+                      detail_fetched_at TIMESTAMP,
+                      detail_content_hash CHAR(64),
+                      parse_status VARCHAR(32) NOT NULL DEFAULT 'LIST_ONLY',
+                      parse_error VARCHAR(1024),
                       fetched_at TIMESTAMP,
                       UNIQUE KEY uk_web_crawl_item_hash (content_hash)
                     )
@@ -101,6 +108,13 @@ class CrawlerControllerTest {
                           </li>
                         </ul>
                         """));
+        Mockito.when(publicWebFetcher.fetch("https://www.xju.edu.cn/info/1030/28464.htm"))
+                .thenReturn(new PublicWebFetcher.FetchResult(200, null, null, """
+                        <div class="arc-tit"><h1>新疆大学2026年度拟新增本科专业公示</h1></div>
+                        <div id="vsb_content"><div class="v_news_content">
+                          <p>根据自治区教育厅通知，学校组织专家组对申报专业进行评审。</p>
+                        </div></div>
+                        """));
     }
 
     @Test
@@ -113,6 +127,21 @@ class CrawlerControllerTest {
                 .andExpect(jsonPath("$.data.persistedCount").value(1))
                 .andExpect(jsonPath("$.data.links[0].title").value("新疆大学2026年度拟新增本科专业公示"))
                 .andExpect(jsonPath("$.data.links[0].url").value("https://www.xju.edu.cn/info/1030/28464.htm"));
+
+        try (Connection connection = dataSource.getConnection();
+             PreparedStatement statement = connection.prepareStatement("""
+                     SELECT detail_title, detail_content, detail_http_status, parse_status
+                     FROM web_crawl_item WHERE source_id = 9411
+                     """);
+             java.sql.ResultSet resultSet = statement.executeQuery()) {
+            org.assertj.core.api.Assertions.assertThat(resultSet.next()).isTrue();
+            org.assertj.core.api.Assertions.assertThat(resultSet.getString("detail_title"))
+                    .isEqualTo("新疆大学2026年度拟新增本科专业公示");
+            org.assertj.core.api.Assertions.assertThat(resultSet.getString("detail_content"))
+                    .contains("学校组织专家组");
+            org.assertj.core.api.Assertions.assertThat(resultSet.getInt("detail_http_status")).isEqualTo(200);
+            org.assertj.core.api.Assertions.assertThat(resultSet.getString("parse_status")).isEqualTo("DETAIL_SUCCESS");
+        }
 
         mockMvc.perform(post("/api/admin/crawler/sources/9411/crawl"))
                 .andExpect(status().isOk())
@@ -142,6 +171,10 @@ class CrawlerControllerTest {
                         "title": "a[title], h4",
                         "summary": ".txt p",
                         "date": ".time"
+                      },
+                      "detail": {
+                        "title": ".arc-tit h1",
+                        "content": "#vsb_content .v_news_content"
                       }
                     }
                     """);

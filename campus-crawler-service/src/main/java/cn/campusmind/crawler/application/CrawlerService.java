@@ -32,6 +32,7 @@ public class CrawlerService {
     private final WebCrawlItemMapper webCrawlItemMapper;
     private final SelectorConfigParser selectorConfigParser;
     private final ListPageParser listPageParser;
+    private final DetailPageParser detailPageParser;
     private final PublicWebFetcher publicWebFetcher;
     private final CrawlerProperties crawlerProperties;
 
@@ -40,6 +41,7 @@ public class CrawlerService {
                           WebCrawlItemMapper webCrawlItemMapper,
                           SelectorConfigParser selectorConfigParser,
                           ListPageParser listPageParser,
+                          DetailPageParser detailPageParser,
                           PublicWebFetcher publicWebFetcher,
                           CrawlerProperties crawlerProperties) {
         this.dataSourceMapper = dataSourceMapper;
@@ -47,6 +49,7 @@ public class CrawlerService {
         this.webCrawlItemMapper = webCrawlItemMapper;
         this.selectorConfigParser = selectorConfigParser;
         this.listPageParser = listPageParser;
+        this.detailPageParser = detailPageParser;
         this.publicWebFetcher = publicWebFetcher;
         this.crawlerProperties = crawlerProperties;
     }
@@ -77,7 +80,7 @@ public class CrawlerService {
             PublicWebFetcher.FetchResult fetchResult = publicWebFetcher.fetch(source.getBaseUrl());
             ParsedListPage parsed = listPageParser.parse(fetchResult.body(), source.getBaseUrl(), selectorConfig);
             List<CrawledLink> filteredLinks = filterRecentLinks(parsed.links(), options);
-            int persistedCount = persistItems(task, source, parsed.parserVersion(), filteredLinks);
+            int persistedCount = persistItems(task, source, selectorConfig, parsed.parserVersion(), filteredLinks);
             task.setHttpStatus(fetchResult.httpStatus());
             task.setEtag(fetchResult.etag());
             task.setLastModified(fetchResult.lastModified());
@@ -98,7 +101,8 @@ public class CrawlerService {
                 .toList();
     }
 
-    private int persistItems(CrawlTask task, DataSource source, String parserVersion, List<CrawledLink> links) {
+    private int persistItems(CrawlTask task, DataSource source, SelectorConfig selectorConfig,
+                             String parserVersion, List<CrawledLink> links) {
         LocalDateTime fetchedAt = LocalDateTime.now();
         int persistedCount = 0;
         for (CrawledLink link : links) {
@@ -120,11 +124,32 @@ public class CrawlerService {
             item.setSummary(link.summary());
             item.setContentHash(hash);
             item.setParserVersion(parserVersion);
+            enrichDetail(item, link, selectorConfig);
             item.setFetchedAt(fetchedAt);
             webCrawlItemMapper.insert(item);
             persistedCount++;
         }
         return persistedCount;
+    }
+
+    private void enrichDetail(WebCrawlItem item, CrawledLink link, SelectorConfig selectorConfig) {
+        item.setParseStatus("LIST_ONLY");
+        try {
+            PublicWebFetcher.FetchResult detailFetch = publicWebFetcher.fetch(link.url());
+            item.setDetailHttpStatus(detailFetch.httpStatus());
+            item.setDetailFetchedAt(LocalDateTime.now());
+            ParsedDetailPage detail = detailPageParser.parse(detailFetch.body(), link.url(), selectorConfig);
+            item.setDetailTitle(detail.title());
+            item.setDetailContent(detail.content());
+            item.setParseStatus(detail.status());
+            item.setParseError(detail.error());
+            if (detail.content() != null && !detail.content().isBlank()) {
+                item.setDetailContentHash(sha256(detail.content()));
+            }
+        } catch (Exception e) {
+            item.setParseStatus("DETAIL_FAILED");
+            item.setParseError(e.getMessage());
+        }
     }
 
     private String sha256(String text) {
