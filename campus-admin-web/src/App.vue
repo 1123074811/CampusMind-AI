@@ -1,153 +1,24 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
+import { fetchDashboard, reviewEvent } from './api/dashboard';
+import { clearSession, loadSession } from './api/auth';
+import AdminSidebar from './components/AdminSidebar.vue';
+import AdminTopbar from './components/AdminTopbar.vue';
+import MetricsBand from './components/MetricsBand.vue';
+import { initialCrawlTasks, initialDataSources, initialReviewEvents, navItems } from './adminDemoData';
+import type { AdminSession, CrawlTask, DashboardMetrics, DataSource, NavKey, ReviewEvent } from './adminTypes';
+import AgentsView from './views/AgentsView.vue';
+import LoginView from './views/LoginView.vue';
+import ReviewView from './views/ReviewView.vue';
+import SourcesView from './views/SourcesView.vue';
+import TasksView from './views/TasksView.vue';
 
-type ReviewStatus = 'AI_PUBLISHED' | 'CORRECTED' | 'REVIEWED' | 'REJECTED' | 'OFFLINE';
-type EventType = 'NOTICE' | 'COURSE' | 'EXAM' | 'HOMEWORK' | 'ACTIVITY' | 'LECTURE' | 'COMPETITION' | 'SERVICE' | 'OTHER';
-type SourceStatus = 'RUNNING' | 'HEALTHY' | 'NEEDS_AUTH' | 'PAUSED';
-type TaskStatus = 'SUCCESS' | 'RUNNING' | 'FAILED' | 'PENDING' | 'SKIPPED';
-
-interface ReviewEvent {
-  id: number;
-  title: string;
-  source: string;
-  type: EventType;
-  status: ReviewStatus;
-  confidence: number;
-  location: string;
-  startTime: string;
-  scope: string;
-  summary: string;
-  risk: string;
-  tags: string[];
-}
-
-interface DataSource {
-  id: number;
-  name: string;
-  channel: string;
-  status: SourceStatus;
-  lastSync: string;
-  successRate: number;
-  pending: number;
-}
-
-interface CrawlTask {
-  id: number;
-  name: string;
-  status: TaskStatus;
-  owner: string;
-  time: string;
-  note: string;
-}
-
-interface DashboardMetrics {
-  reviewCount: number;
-  urgentCount: number;
-  avgConfidence: number;
-  sourceSuccessRate: number;
-  sourcesNeedAuth: number;
-  vectorPending: number;
-}
-
-interface ApiResponse<T> {
-  success: boolean;
-  code: string;
-  message: string;
-  data: T;
-}
-
-interface DashboardResponse {
-  metrics: DashboardMetrics;
-  events: ReviewEvent[];
-  dataSources: DataSource[];
-  tasks: CrawlTask[];
-}
-
-const navItems = [
-  { key: 'review', label: '事件审核', count: 18 },
-  { key: 'sources', label: '数据源', count: 7 },
-  { key: 'tasks', label: '采集任务', count: 11 },
-  { key: 'agents', label: '智能体', count: 4 }
-];
-
-const reviewEvents = ref<ReviewEvent[]>([
-  {
-    id: 1001,
-    title: '人工智能主题讲座通知',
-    source: '软件学院官网',
-    type: 'LECTURE',
-    status: 'AI_PUBLISHED',
-    confidence: 0.91,
-    location: '图书馆报告厅',
-    startTime: '07-08 19:00',
-    scope: '软件学院本科生',
-    summary: '软件学院将于 7 月 8 日举办 AI 主题讲座，面向软件学院本科生开放。',
-    risk: '字段完整，建议快速确认',
-    tags: ['AI', '讲座', '软件学院']
-  },
-  {
-    id: 1002,
-    title: '期末考试考场调整说明',
-    source: '教务通知',
-    type: 'EXAM',
-    status: 'CORRECTED',
-    confidence: 0.74,
-    location: '一号教学楼',
-    startTime: '07-11 09:30',
-    scope: '2023 级',
-    summary: '部分课程考试地点变更，学生需以最终考场清单为准。',
-    risk: '地点存在冲突，需人工复核',
-    tags: ['考试', '教务']
-  },
-  {
-    id: 1003,
-    title: '雨课堂作业提交提醒',
-    source: '用户导入',
-    type: 'HOMEWORK',
-    status: 'AI_PUBLISHED',
-    confidence: 0.68,
-    location: '线上',
-    startTime: '07-09 23:59',
-    scope: 'SE101',
-    summary: 'SE101 课程作业截止到 7 月 9 日 23:59，来源为用户粘贴 JSON。',
-    risk: '来源为用户导入，建议抽查原文',
-    tags: ['雨课堂', '作业']
-  },
-  {
-    id: 1004,
-    title: '创新创业竞赛报名开放',
-    source: '学工系统',
-    type: 'ACTIVITY',
-    status: 'REVIEWED',
-    confidence: 0.88,
-    location: '学生事务中心',
-    startTime: '07-15 18:00',
-    scope: '全校学生',
-    summary: '创新创业竞赛进入报名阶段，材料提交窗口开放至 7 月 15 日。',
-    risk: '已审核，可观察报名链接有效性',
-    tags: ['竞赛', '报名']
-  }
-]);
-
-const dataSources = ref<DataSource[]>([
-  { id: 1, name: '软件学院通知', channel: 'PUBLIC_WEB', status: 'RUNNING', lastSync: '2 分钟前', successRate: 98, pending: 3 },
-  { id: 2, name: '教务处公告', channel: 'PUBLIC_WEB', status: 'HEALTHY', lastSync: '11 分钟前', successRate: 94, pending: 5 },
-  { id: 3, name: '雨课堂导入', channel: 'USER_JSON', status: 'NEEDS_AUTH', lastSync: '24 分钟前', successRate: 81, pending: 8 },
-  { id: 4, name: '用户截图 OCR', channel: 'USER_IMAGE', status: 'PAUSED', lastSync: '1 小时前', successRate: 76, pending: 2 }
-]);
-
-const crawlTasks = ref<CrawlTask[]>([
-  { id: 501, name: '软件学院增量抓取', status: 'SUCCESS', owner: '感知 Agent', time: '18:20', note: '新增 3 条，重复 1 条' },
-  { id: 502, name: '雨课堂 JSON 解析', status: 'RUNNING', owner: '认知 Agent', time: '18:18', note: '正在抽取课程作业字段' },
-  { id: 503, name: '向量文本同步', status: 'PENDING', owner: '向量服务', time: '18:16', note: '等待事件审核结果' },
-  { id: 504, name: '教务通知抓取', status: 'FAILED', owner: '感知 Agent', time: '18:11', note: '源站 403，需要检查白名单' }
-]);
-
-const activeNav = ref('review');
-const selectedId = ref(reviewEvents.value[0].id);
-const typeFilter = ref<'ALL' | EventType>('ALL');
-const searchText = ref('');
-const aiInput = ref('7月8日 19:00，软件学院将在图书馆报告厅举办人工智能主题讲座，面向软件学院本科生。');
+const session = ref<AdminSession | null>(loadSession());
+const activeNav = ref<NavKey>('review');
+const selectedId = ref(initialReviewEvents[0].id);
+const reviewEvents = ref<ReviewEvent[]>(initialReviewEvents);
+const dataSources = ref<DataSource[]>(initialDataSources);
+const crawlTasks = ref<CrawlTask[]>(initialCrawlTasks);
 const loading = ref(false);
 const apiMode = ref<'live' | 'fallback'>('fallback');
 const apiMessage = ref('使用内置演示数据');
@@ -160,29 +31,18 @@ const dashboardMetrics = ref<DashboardMetrics>({
   vectorPending: 0
 });
 
-const filteredEvents = computed(() => {
-  const keyword = searchText.value.trim();
-  return reviewEvents.value.filter((item) => {
-    const matchType = typeFilter.value === 'ALL' || item.type === typeFilter.value;
-    const matchKeyword = !keyword || `${item.title}${item.source}${item.summary}${item.tags.join('')}`.includes(keyword);
-    return matchType && matchKeyword;
-  });
-});
-
-const selectedEvent = computed(() => {
-  return reviewEvents.value.find((item) => item.id === selectedId.value) ?? filteredEvents.value[0] ?? reviewEvents.value[0];
-});
-
 const urgentCount = computed(() => reviewEvents.value.filter((item) => item.confidence < 0.75 || item.status === 'CORRECTED').length);
 const reviewCount = computed(() => reviewEvents.value.filter((item) => item.status === 'AI_PUBLISHED' || item.status === 'CORRECTED').length);
 const avgConfidence = computed(() => {
   const sum = reviewEvents.value.reduce((total, item) => total + item.confidence, 0);
   return Math.round((sum / reviewEvents.value.length) * 100);
 });
-const metrics = computed(() => {
+
+const metrics = computed<DashboardMetrics>(() => {
   if (apiMode.value === 'live') {
     return dashboardMetrics.value;
   }
+
   return {
     reviewCount: reviewCount.value,
     urgentCount: urgentCount.value,
@@ -192,20 +52,54 @@ const metrics = computed(() => {
     vectorPending: 12
   };
 });
-const aiPreview = computed(() => {
-  const text = aiInput.value;
-  const lecture = text.includes('讲座') || text.toLowerCase().includes('ai');
-  const homework = text.includes('作业') || text.includes('截止');
-  return {
-    title: text.split(/[，。\n]/)[0] || '待抽取事件',
-    type: homework ? 'HOMEWORK' : lecture ? 'LECTURE' : 'NOTICE',
-    confidence: text.includes('地点') || text.includes('图书馆') ? 91 : 66,
-    review: text.length < 20 ? '需要补充原文' : '可进入审核队列'
-  };
-});
 
 function selectEvent(id: number) {
   selectedId.value = id;
+}
+
+async function loadDashboard() {
+  if (!session.value) {
+    return;
+  }
+
+  loading.value = true;
+  try {
+    const dashboard = await fetchDashboard(session.value);
+    dashboardMetrics.value = dashboard.metrics;
+    reviewEvents.value = dashboard.events;
+    dataSources.value = dashboard.dataSources;
+    crawlTasks.value = dashboard.tasks;
+    selectedId.value = dashboard.events[0]?.id ?? selectedId.value;
+    apiMode.value = 'live';
+    apiMessage.value = '已连接后端数据库';
+  } catch (error) {
+    apiMode.value = 'fallback';
+    apiMessage.value = '后端未连接，使用演示数据';
+  } finally {
+    loading.value = false;
+  }
+}
+
+async function reviewSelected(status: 'REVIEWED' | 'REJECTED', comment: string) {
+  const event = reviewEvents.value.find((item) => item.id === selectedId.value);
+  if (!event) {
+    return;
+  }
+
+  if (apiMode.value === 'live') {
+    try {
+      const updated = await reviewEvent(session.value, event.id, status, comment);
+      Object.assign(event, updated);
+      dashboardMetrics.value.reviewCount = reviewEvents.value.filter((item) => item.status === 'AI_PUBLISHED' || item.status === 'CORRECTED').length;
+      dashboardMetrics.value.urgentCount = reviewEvents.value.filter((item) => item.confidence < 0.75 || item.status === 'CORRECTED').length;
+      return;
+    } catch (error) {
+      apiMessage.value = '审核写入失败，已保留当前页面状态';
+    }
+  }
+
+  event.status = status;
+  event.risk = status === 'REVIEWED' ? '已人工确认' : '已标记为无效事件';
 }
 
 function approveSelected() {
@@ -216,325 +110,88 @@ function rejectSelected() {
   reviewSelected('REJECTED', '后台人工驳回');
 }
 
-async function loadDashboard() {
-  loading.value = true;
-  try {
-    const response = await fetch('/api/admin/dashboard');
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}`);
-    }
-    const payload = await response.json() as ApiResponse<DashboardResponse>;
-    if (!payload.success) {
-      throw new Error(payload.message);
-    }
-    dashboardMetrics.value = payload.data.metrics;
-    reviewEvents.value = payload.data.events;
-    dataSources.value = payload.data.dataSources;
-    crawlTasks.value = payload.data.tasks;
-    selectedId.value = payload.data.events[0]?.id ?? selectedId.value;
-    apiMode.value = 'live';
-    apiMessage.value = '已连接后端数据库';
-  } catch (error) {
-    apiMode.value = 'fallback';
-    apiMessage.value = `后端未连接，使用演示数据`;
-  } finally {
-    loading.value = false;
-  }
+function handleAuthenticated(nextSession: AdminSession) {
+  session.value = nextSession;
+  apiMessage.value = nextSession.demo ? '演示会话，使用内置数据' : '已登录，正在同步后端数据';
+  loadDashboard();
 }
 
-async function reviewSelected(status: 'REVIEWED' | 'REJECTED', comment: string) {
-  const event = selectedEvent.value;
-  if (!event) {
-    return;
-  }
-  if (apiMode.value === 'live') {
-    const response = await fetch(`/api/admin/events/${event.id}/review`, {
-      method: 'PUT',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-User-Id': '9901'
-      },
-      body: JSON.stringify({ status, comment })
-    });
-    if (response.ok) {
-      const payload = await response.json() as ApiResponse<ReviewEvent>;
-      Object.assign(event, payload.data);
-      dashboardMetrics.value.reviewCount = reviewEvents.value.filter((item) => item.status === 'AI_PUBLISHED' || item.status === 'CORRECTED').length;
-      dashboardMetrics.value.urgentCount = reviewEvents.value.filter((item) => item.confidence < 0.75 || item.status === 'CORRECTED').length;
-      return;
-    }
-    apiMessage.value = '审核写入失败，已保留当前页面状态';
-  }
-  event.status = status;
-  event.risk = status === 'REVIEWED' ? '已人工确认' : '已标记为无效事件';
-}
-
-function statusLabel(status: ReviewStatus | SourceStatus | TaskStatus) {
-  const labels: Record<string, string> = {
-    AI_PUBLISHED: 'AI 预测',
-    CORRECTED: '待复核',
-    REVIEWED: '已确认',
-    REJECTED: '已驳回',
-    OFFLINE: '已下线',
-    RUNNING: '运行中',
-    HEALTHY: '健康',
-    NEEDS_AUTH: '待授权',
-    PAUSED: '暂停',
-    SUCCESS: '成功',
-    FAILED: '失败',
-    PENDING: '等待',
-    SKIPPED: '跳过'
-  };
-  return labels[status] ?? status;
+function logout() {
+  clearSession();
+  session.value = null;
+  apiMode.value = 'fallback';
+  apiMessage.value = '使用内置演示数据';
 }
 
 onMounted(() => {
-  loadDashboard();
+  if (session.value) {
+    loadDashboard();
+  }
 });
 </script>
 
 <template>
-  <main class="admin-shell">
-    <aside class="sidebar" aria-label="后台导航">
-      <div class="brand-block">
-        <div class="brand-mark">CM</div>
-        <div>
-          <p class="eyebrow">CampusMind</p>
-          <h1>审核后台</h1>
-        </div>
-      </div>
+  <LoginView v-if="!session" @authenticated="handleAuthenticated" />
 
-      <nav class="nav-list">
-        <button
-          v-for="item in navItems"
-          :key="item.key"
-          class="nav-item"
-          :class="{ active: activeNav === item.key }"
-          type="button"
-          @click="activeNav = item.key"
-        >
-          <span>{{ item.label }}</span>
-          <strong>{{ item.count }}</strong>
-        </button>
-      </nav>
-
-      <section class="agent-strip" aria-label="智能体状态">
-        <p class="eyebrow">Agent Pulse</p>
-        <div class="pulse-row">
-          <span class="pulse-dot"></span>
-          <span>感知 / 认知 / 决策链路在线</span>
-        </div>
-      </section>
-    </aside>
+  <main v-else class="admin-shell">
+    <AdminSidebar :items="navItems" :active-key="activeNav" @select="activeNav = $event" />
 
     <section class="workspace">
-      <header class="topbar">
-        <div>
-          <p class="eyebrow">2026-07-07 · 18:30</p>
-          <h2>校园事件运营工作台</h2>
-          <p class="connection-line" :data-mode="apiMode">{{ apiMessage }}<span v-if="loading"> · 同步中</span></p>
-        </div>
-        <div class="top-actions">
-          <button type="button" class="ghost-button">导出审计</button>
-          <button type="button" class="solid-button">新增数据源</button>
-        </div>
-      </header>
+      <AdminTopbar
+        v-if="session"
+        :active-key="activeNav"
+        :api-mode="apiMode"
+        :api-message="apiMessage"
+        :loading="loading"
+        :user="session.user"
+        @logout="logout"
+      />
+      <MetricsBand :metrics="metrics" />
 
-      <section class="metrics-band" aria-label="今日指标">
-        <article>
-          <span>待处理</span>
-          <strong>{{ metrics.reviewCount }}</strong>
-          <small>{{ metrics.urgentCount }} 条高优先级</small>
-        </article>
-        <article>
-          <span>平均置信度</span>
-          <strong>{{ metrics.avgConfidence }}%</strong>
-          <small>较昨日 +6%</small>
-        </article>
-        <article>
-          <span>数据源成功率</span>
-          <strong>{{ metrics.sourceSuccessRate }}%</strong>
-          <small>{{ metrics.sourcesNeedAuth }} 个源需授权</small>
-        </article>
-        <article>
-          <span>向量待同步</span>
-          <strong>{{ metrics.vectorPending }}</strong>
-          <small>审核后写入</small>
-        </article>
-      </section>
-
-      <section class="main-grid">
-        <section class="review-panel" aria-label="事件审核列表">
-          <div class="panel-head">
-            <div>
-              <p class="eyebrow">Review Queue</p>
-              <h3>AI 预测事件</h3>
-            </div>
-            <div class="filters">
-              <select v-model="typeFilter" aria-label="事件类型过滤">
-                <option value="ALL">全部类型</option>
-                <option value="LECTURE">讲座</option>
-                <option value="COURSE">课程</option>
-                <option value="EXAM">考试</option>
-                <option value="HOMEWORK">作业</option>
-                <option value="ACTIVITY">活动</option>
-                <option value="COMPETITION">竞赛</option>
-                <option value="SERVICE">服务</option>
-                <option value="NOTICE">通知</option>
-                <option value="OTHER">其他</option>
-              </select>
-              <input v-model="searchText" type="search" placeholder="搜索标题、来源、标签" />
-              <button type="button" class="ghost-button tiny" @click="loadDashboard">刷新</button>
-            </div>
-          </div>
-
-          <div class="event-list">
-            <button
-              v-for="item in filteredEvents"
-              :key="item.id"
-              class="event-row"
-              :class="{ selected: selectedEvent?.id === item.id }"
-              type="button"
-              @click="selectEvent(item.id)"
-            >
-              <span class="event-type">{{ item.type }}</span>
-              <span class="event-main">
-                <strong>{{ item.title }}</strong>
-                <small>{{ item.source }} · {{ item.startTime }} · {{ item.location }}</small>
-              </span>
-              <span class="status-pill" :data-status="item.status">{{ statusLabel(item.status) }}</span>
-              <span class="confidence">{{ Math.round(item.confidence * 100) }}%</span>
-            </button>
-          </div>
-        </section>
-
-        <aside class="detail-panel" aria-label="事件详情">
-          <div class="detail-hero">
-            <p class="eyebrow">Selected Event</p>
-            <h3>{{ selectedEvent.title }}</h3>
-            <span class="status-pill large" :data-status="selectedEvent.status">{{ statusLabel(selectedEvent.status) }}</span>
-          </div>
-
-          <dl class="detail-list">
-            <div>
-              <dt>时间</dt>
-              <dd>{{ selectedEvent.startTime }}</dd>
-            </div>
-            <div>
-              <dt>地点</dt>
-              <dd>{{ selectedEvent.location }}</dd>
-            </div>
-            <div>
-              <dt>对象</dt>
-              <dd>{{ selectedEvent.scope }}</dd>
-            </div>
-            <div>
-              <dt>风险</dt>
-              <dd>{{ selectedEvent.risk }}</dd>
-            </div>
-          </dl>
-
-          <p class="summary-text">{{ selectedEvent.summary }}</p>
-
-          <div class="tag-row">
-            <span v-for="tag in selectedEvent.tags" :key="tag">{{ tag }}</span>
-          </div>
-
-          <div class="decision-actions">
-            <button type="button" class="ghost-button danger" @click="rejectSelected">驳回</button>
-            <button type="button" class="solid-button" @click="approveSelected">确认发布</button>
-          </div>
-        </aside>
-      </section>
-
-      <section class="lower-grid">
-        <section class="agent-panel" aria-label="AI 抽取预览">
-          <div class="panel-head compact">
-            <div>
-              <p class="eyebrow">Cognition Agent</p>
-              <h3>文本抽取预览</h3>
-            </div>
-            <span class="status-pill" data-status="RUNNING">规则兜底</span>
-          </div>
-          <textarea v-model="aiInput" aria-label="待解析文本"></textarea>
-          <div class="extract-grid">
-            <div>
-              <span>标题</span>
-              <strong>{{ aiPreview.title }}</strong>
-            </div>
-            <div>
-              <span>类型</span>
-              <strong>{{ aiPreview.type }}</strong>
-            </div>
-            <div>
-              <span>置信度</span>
-              <strong>{{ aiPreview.confidence }}%</strong>
-            </div>
-            <div>
-              <span>审核建议</span>
-              <strong>{{ aiPreview.review }}</strong>
-            </div>
-          </div>
-        </section>
-
-        <section class="source-panel" aria-label="数据源监控">
-          <div class="panel-head compact">
-            <div>
-              <p class="eyebrow">Sources</p>
-              <h3>数据源监控</h3>
-            </div>
-          </div>
-          <div class="source-list">
-            <article v-for="source in dataSources" :key="source.id" class="source-row">
-              <div>
-                <strong>{{ source.name }}</strong>
-                <small>{{ source.channel }} · {{ source.lastSync }}</small>
-              </div>
-              <span class="status-pill" :data-status="source.status">{{ statusLabel(source.status) }}</span>
-              <meter min="0" max="100" :value="source.successRate"></meter>
-              <b>{{ source.pending }}</b>
-            </article>
-          </div>
-        </section>
-
-        <section class="task-panel" aria-label="采集任务">
-          <div class="panel-head compact">
-            <div>
-              <p class="eyebrow">Tasks</p>
-              <h3>任务时间线</h3>
-            </div>
-          </div>
-          <ol class="task-list">
-            <li v-for="task in crawlTasks" :key="task.id" :data-status="task.status">
-              <time>{{ task.time }}</time>
-              <div>
-                <strong>{{ task.name }}</strong>
-                <small>{{ task.owner }} · {{ task.note }}</small>
-              </div>
-              <span>{{ statusLabel(task.status) }}</span>
-            </li>
-          </ol>
-        </section>
-      </section>
+      <ReviewView
+        v-if="activeNav === 'review'"
+        :events="reviewEvents"
+        :selected-id="selectedId"
+        @select="selectEvent"
+        @approve="approveSelected"
+        @reject="rejectSelected"
+        @refresh="loadDashboard"
+      />
+      <SourcesView v-else-if="activeNav === 'sources'" :data-sources="dataSources" />
+      <TasksView v-else-if="activeNav === 'tasks'" :tasks="crawlTasks" />
+      <AgentsView v-else />
     </section>
   </main>
 </template>
 
-<style scoped>
-:global(*) {
+<style>
+:root {
+  --ink: #172023;
+  --ink-muted: #68777b;
+  --paper: #f4f0e7;
+  --paper-soft: #fffaf0;
+  --line: #c9c0af;
+  --line-soft: #d8d0c0;
+  --accent: #e0593e;
+  --green: #34754b;
+  --warning: #b28b38;
+  --danger: #9f3928;
+}
+
+* {
   box-sizing: border-box;
 }
 
-:global(body) {
+body {
   margin: 0;
   min-width: 320px;
   background:
     linear-gradient(90deg, rgba(31, 49, 54, 0.035) 1px, transparent 1px),
     linear-gradient(180deg, rgba(31, 49, 54, 0.035) 1px, transparent 1px),
-    #f4f0e7;
+    var(--paper);
   background-size: 28px 28px;
-  color: #172023;
-  font-family: 'Aptos', 'Segoe UI', 'Microsoft YaHei UI', sans-serif;
+  color: var(--ink);
+  font-family: Aptos, 'Segoe UI', 'Microsoft YaHei UI', sans-serif;
 }
 
 button,
@@ -546,54 +203,6 @@ textarea {
 
 button {
   cursor: pointer;
-}
-
-.admin-shell {
-  min-height: 100vh;
-  display: grid;
-  grid-template-columns: 264px minmax(0, 1fr);
-}
-
-.sidebar {
-  min-height: 100vh;
-  padding: 24px 18px;
-  background: #172023;
-  color: #f7f0e2;
-  display: grid;
-  grid-template-rows: auto 1fr auto;
-  gap: 32px;
-}
-
-.brand-block {
-  display: grid;
-  grid-template-columns: 48px 1fr;
-  gap: 14px;
-  align-items: center;
-}
-
-.brand-mark {
-  width: 48px;
-  height: 48px;
-  display: grid;
-  place-items: center;
-  background: #e0593e;
-  color: #fff9ed;
-  border: 1px solid rgba(255, 255, 255, 0.18);
-  font-weight: 900;
-  letter-spacing: 0;
-}
-
-.eyebrow {
-  margin: 0 0 6px;
-  color: #73838a;
-  font-size: 11px;
-  font-weight: 800;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-.sidebar .eyebrow {
-  color: #b8c0b6;
 }
 
 h1,
@@ -621,6 +230,54 @@ h3 {
   font-size: 20px;
   line-height: 1.25;
   text-wrap: balance;
+}
+
+.admin-shell {
+  min-height: 100vh;
+  display: grid;
+  grid-template-columns: 264px minmax(0, 1fr);
+}
+
+.sidebar {
+  min-height: 100vh;
+  padding: 24px 18px;
+  background: var(--ink);
+  color: #f7f0e2;
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  gap: 32px;
+}
+
+.brand-block {
+  display: grid;
+  grid-template-columns: 48px 1fr;
+  gap: 14px;
+  align-items: center;
+}
+
+.brand-mark {
+  width: 48px;
+  height: 48px;
+  display: grid;
+  place-items: center;
+  background: var(--accent);
+  color: #fff9ed;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  font-weight: 900;
+  letter-spacing: 0;
+}
+
+.eyebrow {
+  margin: 0 0 6px;
+  color: #73838a;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.sidebar .eyebrow {
+  color: #b8c0b6;
 }
 
 .nav-list {
@@ -651,14 +308,14 @@ h3 {
 }
 
 .nav-item.active {
-  background: #f4f0e7;
-  color: #172023;
-  border-color: #f4f0e7;
+  background: var(--paper);
+  color: var(--ink);
+  border-color: var(--paper);
 }
 
 .nav-item.active strong {
-  background: #172023;
-  color: #f4f0e7;
+  background: var(--ink);
+  color: var(--paper);
 }
 
 .agent-strip {
@@ -685,14 +342,16 @@ h3 {
   min-width: 0;
   padding: 24px;
   display: grid;
+  align-content: start;
   gap: 20px;
 }
 
 .topbar,
-.panel-head,
 .metrics-band,
 .main-grid,
-.lower-grid {
+.split-workspace,
+.task-workspace,
+.agent-workspace {
   width: min(100%, 1520px);
 }
 
@@ -711,9 +370,21 @@ h3 {
   gap: 10px;
 }
 
+.user-chip {
+  min-height: 42px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--line);
+  background: rgba(255, 251, 241, 0.62);
+  padding: 0 12px;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 900;
+}
+
 .connection-line {
   margin-top: 10px;
-  color: #68777b;
+  color: var(--ink-muted);
   font-size: 13px;
   font-weight: 700;
 }
@@ -724,20 +395,20 @@ h3 {
   height: 8px;
   display: inline-block;
   margin-right: 8px;
-  background: #b28b38;
+  background: var(--warning);
 }
 
 .connection-line[data-mode='live']::before {
-  background: #34754b;
+  background: var(--green);
 }
 
 .ghost-button,
 .solid-button {
   min-height: 42px;
-  border: 1px solid #172023;
+  border: 1px solid var(--ink);
   padding: 0 16px;
   background: transparent;
-  color: #172023;
+  color: var(--ink);
   font-weight: 800;
 }
 
@@ -747,19 +418,19 @@ h3 {
 }
 
 .solid-button {
-  background: #172023;
+  background: var(--ink);
   color: #fff9ed;
 }
 
 .ghost-button.danger {
-  border-color: #9f3928;
-  color: #9f3928;
+  border-color: var(--danger);
+  color: var(--danger);
 }
 
 .metrics-band {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  border: 1px solid #c9c0af;
+  border: 1px solid var(--line);
   background: rgba(255, 251, 241, 0.7);
 }
 
@@ -768,7 +439,7 @@ h3 {
   padding: 18px;
   display: grid;
   align-content: space-between;
-  border-right: 1px solid #c9c0af;
+  border-right: 1px solid var(--line);
 }
 
 .metrics-band article:last-child {
@@ -779,10 +450,15 @@ h3 {
 .metrics-band small,
 .event-main small,
 .source-row small,
-.task-list small,
+.timeline-list small,
 .extract-grid span,
-.detail-list dt {
-  color: #68777b;
+.detail-list dt,
+.stacked-list dt,
+.source-meta,
+.source-foot small,
+.dispatch-grid small,
+.agent-chain small {
+  color: var(--ink-muted);
 }
 
 .metrics-band strong {
@@ -791,7 +467,8 @@ h3 {
   line-height: 1;
 }
 
-.main-grid {
+.main-grid,
+.split-workspace {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 380px;
   gap: 20px;
@@ -800,10 +477,11 @@ h3 {
 
 .review-panel,
 .detail-panel,
-.agent-panel,
-.source-panel,
-.task-panel {
-  border: 1px solid #c9c0af;
+.source-board,
+.inspector-panel,
+.task-console,
+.agent-lab {
+  border: 1px solid var(--line);
   background: rgba(255, 251, 241, 0.86);
 }
 
@@ -812,20 +490,16 @@ h3 {
   display: flex;
   justify-content: space-between;
   gap: 18px;
-  border-bottom: 1px solid #c9c0af;
-}
-
-.panel-head.compact {
-  padding: 16px;
+  border-bottom: 1px solid var(--line);
 }
 
 .filters select,
 .filters input {
   min-height: 40px;
-  border: 1px solid #c9c0af;
-  background: #fffaf0;
+  border: 1px solid var(--line);
+  background: var(--paper-soft);
   padding: 0 12px;
-  color: #172023;
+  color: var(--ink);
 }
 
 .filters input {
@@ -839,9 +513,9 @@ h3 {
 .event-row {
   min-height: 82px;
   border: 0;
-  border-bottom: 1px solid #d8d0c0;
+  border-bottom: 1px solid var(--line-soft);
   background: transparent;
-  color: #172023;
+  color: var(--ink);
   display: grid;
   grid-template-columns: 88px minmax(0, 1fr) 86px 52px;
   align-items: center;
@@ -851,14 +525,16 @@ h3 {
 }
 
 .event-row:hover,
-.event-row.selected {
+.event-row.selected,
+.source-card:hover,
+.source-card.selected {
   background: #efe5d2;
 }
 
 .event-type {
   font-size: 11px;
   font-weight: 900;
-  color: #e0593e;
+  color: var(--accent);
 }
 
 .event-main {
@@ -867,7 +543,9 @@ h3 {
   gap: 6px;
 }
 
-.event-main strong {
+.event-main strong,
+.source-card strong,
+.timeline-list strong {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -891,7 +569,9 @@ h3 {
 }
 
 .status-pill[data-status='AI_PUBLISHED'],
-.status-pill[data-status='RUNNING'] {
+.status-pill[data-status='RUNNING'],
+.status-pill[data-status='RULE'],
+.status-pill[data-status='LLM'] {
   background: #e7f1ea;
   border-color: #9cb7a1;
 }
@@ -914,7 +594,8 @@ h3 {
   text-align: right;
 }
 
-.detail-panel {
+.detail-panel,
+.inspector-panel {
   min-height: 100%;
   padding: 18px;
   display: grid;
@@ -925,7 +606,7 @@ h3 {
   display: grid;
   gap: 12px;
   padding-bottom: 16px;
-  border-bottom: 1px solid #c9c0af;
+  border-bottom: 1px solid var(--line);
 }
 
 .detail-list {
@@ -935,20 +616,23 @@ h3 {
   gap: 12px;
 }
 
-.detail-list div {
+.detail-list div,
+.stacked-list div {
   min-height: 66px;
-  border: 1px solid #d8d0c0;
+  border: 1px solid var(--line-soft);
   padding: 10px;
   display: grid;
   align-content: space-between;
 }
 
-.detail-list dt {
+.detail-list dt,
+.stacked-list dt {
   font-size: 12px;
   font-weight: 800;
 }
 
-.detail-list dd {
+.detail-list dd,
+.stacked-list dd {
   margin: 0;
   font-weight: 800;
 }
@@ -959,14 +643,16 @@ h3 {
   text-wrap: pretty;
 }
 
-.tag-row {
+.tag-row,
+.rule-stack {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
 }
 
-.tag-row span {
-  border: 1px solid #c9c0af;
+.tag-row span,
+.rule-stack span {
+  border: 1px solid var(--line);
   padding: 5px 9px;
   font-size: 12px;
   color: #4d5d61;
@@ -981,27 +667,154 @@ h3 {
   flex: 1;
 }
 
-.lower-grid {
-  display: grid;
-  grid-template-columns: minmax(320px, 1.15fr) minmax(280px, 0.85fr) minmax(280px, 0.85fr);
-  gap: 20px;
-  align-items: stretch;
+.segmented-control {
+  min-height: 40px;
+  display: inline-grid;
+  grid-auto-flow: column;
+  border: 1px solid var(--line);
+  background: var(--paper-soft);
 }
 
-.agent-panel,
-.source-panel,
-.task-panel {
-  min-height: 328px;
+.segmented-control button {
+  min-width: 58px;
+  border: 0;
+  border-right: 1px solid var(--line);
+  background: transparent;
+  color: var(--ink);
+  font-weight: 800;
+}
+
+.segmented-control button:last-child {
+  border-right: 0;
+}
+
+.segmented-control button.active {
+  background: var(--ink);
+  color: #fff9ed;
+}
+
+.source-cards {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1px;
+  background: var(--line);
+}
+
+.source-card {
+  min-height: 176px;
+  border: 0;
+  background: rgba(255, 251, 241, 0.96);
+  color: var(--ink);
+  padding: 16px;
+  display: grid;
+  align-content: space-between;
+  gap: 12px;
+  text-align: left;
+}
+
+.source-card-head,
+.source-foot {
+  min-width: 0;
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+}
+
+.source-meta {
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.bar-track {
+  height: 10px;
+  border: 1px solid var(--line);
+  background: var(--paper);
+}
+
+.bar-track i {
+  height: 100%;
+  display: block;
+  background: var(--accent);
+}
+
+.stacked-list {
+  margin: 0;
+  display: grid;
+  gap: 10px;
+}
+
+.task-workspace,
+.agent-workspace {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 20px;
+}
+
+.timeline-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+}
+
+.timeline-list li {
+  min-height: 74px;
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr) 86px;
+  align-items: center;
+  gap: 14px;
+  border-bottom: 1px solid var(--line-soft);
+  padding: 0 18px;
+}
+
+.timeline-list time {
+  color: var(--accent);
+  font-weight: 900;
+}
+
+.timeline-list div {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.dispatch-grid,
+.agent-chain {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1px;
+  border: 1px solid var(--line);
+  background: var(--line);
+}
+
+.dispatch-grid article,
+.agent-chain article {
+  min-height: 128px;
+  padding: 16px;
+  background: rgba(255, 251, 241, 0.9);
+  display: grid;
+  align-content: space-between;
+}
+
+.dispatch-grid strong {
+  font-family: Georgia, 'Times New Roman', 'Songti SC', serif;
+  font-size: 36px;
+}
+
+.agent-workspace {
+  grid-template-columns: minmax(0, 1fr) 420px;
+  align-items: start;
 }
 
 textarea {
   width: calc(100% - 32px);
-  min-height: 112px;
+  min-height: 168px;
   margin: 16px;
   resize: vertical;
-  border: 1px solid #c9c0af;
-  background: #fffaf0;
-  color: #172023;
+  border: 1px solid var(--line);
+  background: var(--paper-soft);
+  color: var(--ink);
   padding: 12px;
   line-height: 1.7;
 }
@@ -1011,13 +824,13 @@ textarea {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 1px;
   margin: 0 16px 16px;
-  background: #c9c0af;
-  border: 1px solid #c9c0af;
+  background: var(--line);
+  border: 1px solid var(--line);
 }
 
 .extract-grid div {
-  min-height: 72px;
-  background: #fffaf0;
+  min-height: 82px;
+  background: var(--paper-soft);
   padding: 12px;
   display: grid;
   align-content: space-between;
@@ -1028,85 +841,146 @@ textarea {
   overflow-wrap: anywhere;
 }
 
-.source-list {
-  display: grid;
+.agent-chain {
+  grid-template-columns: 1fr;
 }
 
-.source-row {
-  min-height: 62px;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 76px 72px 24px;
-  align-items: center;
-  gap: 10px;
-  padding: 0 16px;
-  border-bottom: 1px solid #d8d0c0;
-}
-
-.source-row div {
-  min-width: 0;
-  display: grid;
-  gap: 4px;
-}
-
-.source-row strong,
-.source-row small {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-meter {
-  width: 72px;
-  height: 8px;
-}
-
-.source-row b {
-  text-align: right;
-}
-
-.task-list {
-  margin: 0;
-  padding: 8px 16px 16px;
-  list-style: none;
-  display: grid;
-  gap: 0;
-}
-
-.task-list li {
-  min-height: 62px;
-  display: grid;
-  grid-template-columns: 48px minmax(0, 1fr) 48px;
-  align-items: center;
-  gap: 12px;
-  border-bottom: 1px solid #d8d0c0;
-}
-
-.task-list time {
-  color: #e0593e;
+.agent-chain span {
+  color: var(--accent);
   font-weight: 900;
 }
 
-.task-list div {
-  min-width: 0;
+.login-shell {
+  min-height: 100vh;
   display: grid;
-  gap: 4px;
+  grid-template-columns: minmax(0, 1fr) 430px;
+  color: var(--ink);
 }
 
-.task-list strong,
-.task-list small {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+.login-hero {
+  min-height: 100vh;
+  padding: 28px;
+  background:
+    linear-gradient(90deg, rgba(255, 250, 240, 0.05) 1px, transparent 1px),
+    linear-gradient(180deg, rgba(255, 250, 240, 0.05) 1px, transparent 1px),
+    var(--ink);
+  background-size: 28px 28px;
+  color: #f7f0e2;
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  gap: 28px;
 }
 
-.task-list span {
+.login-brand {
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr);
+  gap: 14px;
+  align-items: center;
+}
+
+.login-statement {
+  width: min(760px, 100%);
+  align-self: center;
+}
+
+.login-statement h2 {
+  font-size: clamp(42px, 7vw, 82px);
+  max-width: 820px;
+}
+
+.login-matrix {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: rgba(255, 255, 255, 0.16);
+}
+
+.login-matrix article {
+  min-height: 132px;
+  padding: 16px;
+  display: grid;
+  align-content: space-between;
+  background: rgba(255, 250, 240, 0.06);
+}
+
+.login-matrix span {
+  color: var(--accent);
+  font-weight: 900;
+}
+
+.login-matrix small {
+  color: #b8c0b6;
+  line-height: 1.6;
+}
+
+.login-panel {
+  min-height: 100vh;
+  padding: 28px;
+  display: grid;
+  align-content: center;
+  gap: 18px;
+  border-left: 1px solid var(--line);
+  background: rgba(255, 251, 241, 0.88);
+}
+
+.login-form {
+  display: grid;
+  gap: 18px;
+}
+
+.login-form label {
+  display: grid;
+  gap: 8px;
+  font-weight: 900;
+}
+
+.login-form label span {
+  color: var(--ink-muted);
   font-size: 12px;
-  font-weight: 900;
-  text-align: right;
 }
 
-.task-list li[data-status='FAILED'] span {
-  color: #9f3928;
+.login-form input {
+  width: 100%;
+  min-height: 48px;
+  border: 1px solid var(--line);
+  background: var(--paper-soft);
+  color: var(--ink);
+  padding: 0 12px;
+  font-weight: 800;
+}
+
+.login-submit,
+.login-demo {
+  width: 100%;
+}
+
+.login-submit:disabled {
+  cursor: not-allowed;
+  opacity: 0.48;
+}
+
+.login-error {
+  border: 1px solid #d59586;
+  background: #f6d8d0;
+  color: var(--danger);
+  padding: 10px 12px;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.login-footnote {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.login-footnote span {
+  border: 1px solid var(--line);
+  padding: 5px 9px;
+  font-size: 12px;
+  color: var(--ink-muted);
+  font-weight: 800;
 }
 
 @media (max-width: 1180px) {
@@ -1129,8 +1003,15 @@ meter {
   }
 
   .main-grid,
-  .lower-grid {
+  .split-workspace,
+  .agent-workspace,
+  .login-shell {
     grid-template-columns: 1fr;
+  }
+
+  .login-panel,
+  .login-hero {
+    min-height: auto;
   }
 }
 
@@ -1151,16 +1032,23 @@ meter {
   }
 
   .metrics-band,
-  .nav-list {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+  .nav-list,
+  .source-cards,
+  .dispatch-grid,
+  .detail-list,
+  .extract-grid,
+  .login-matrix {
+    grid-template-columns: 1fr;
   }
 
-  .metrics-band article:nth-child(2) {
-    border-right: 0;
+  .login-hero,
+  .login-panel {
+    padding: 18px;
   }
 
   .metrics-band article {
-    border-bottom: 1px solid #c9c0af;
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
   }
 
   .event-row {
@@ -1177,19 +1065,9 @@ meter {
     width: 100%;
   }
 
-  .detail-list,
-  .extract-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .source-row {
-    grid-template-columns: minmax(0, 1fr) 76px;
-    min-height: 84px;
-  }
-
-  meter,
-  .source-row b {
-    display: none;
+  .timeline-list li {
+    grid-template-columns: 54px minmax(0, 1fr);
+    min-height: 102px;
   }
 }
 </style>

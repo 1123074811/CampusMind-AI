@@ -1,0 +1,96 @@
+<script setup lang="ts">
+import { computed, ref } from 'vue';
+import StatusPill from '../components/StatusPill.vue';
+import type { DataSource, SourceStatus } from '../adminTypes';
+
+const props = defineProps<{
+  dataSources: DataSource[];
+}>();
+
+const statusFilter = ref<'ALL' | SourceStatus>('ALL');
+const selectedSourceId = ref(props.dataSources[0]?.id ?? 0);
+
+const filteredSources = computed(() => {
+  if (statusFilter.value === 'ALL') {
+    return props.dataSources;
+  }
+  return props.dataSources.filter((source) => source.status === statusFilter.value);
+});
+
+const selectedSource = computed(() => {
+  return props.dataSources.find((source) => source.id === selectedSourceId.value) ?? props.dataSources[0];
+});
+</script>
+
+<template>
+  <section class="split-workspace">
+    <section class="source-board" aria-label="数据源列表">
+      <div class="panel-head">
+        <div>
+          <p class="eyebrow">Source Registry</p>
+          <h3>接入源健康度</h3>
+        </div>
+        <div class="segmented-control" aria-label="数据源状态过滤">
+          <button type="button" :class="{ active: statusFilter === 'ALL' }" @click="statusFilter = 'ALL'">全部</button>
+          <button type="button" :class="{ active: statusFilter === 'RUNNING' }" @click="statusFilter = 'RUNNING'">运行</button>
+          <button type="button" :class="{ active: statusFilter === 'NEEDS_AUTH' }" @click="statusFilter = 'NEEDS_AUTH'">授权</button>
+          <button type="button" :class="{ active: statusFilter === 'PAUSED' }" @click="statusFilter = 'PAUSED'">暂停</button>
+        </div>
+      </div>
+
+      <div class="source-cards">
+        <button
+          v-for="source in filteredSources"
+          :key="source.id"
+          class="source-card"
+          :class="{ selected: selectedSource?.id === source.id }"
+          type="button"
+          @click="selectedSourceId = source.id"
+        >
+          <span class="source-card-head">
+            <strong>{{ source.name }}</strong>
+            <StatusPill :status="source.status" />
+          </span>
+          <span class="source-meta">{{ source.channel }} · {{ source.lastSync }}</span>
+          <span class="bar-track"><i :style="{ width: `${source.successRate}%` }"></i></span>
+          <span class="source-foot">
+            <b>{{ source.successRate }}%</b>
+            <small>{{ source.pending }} 条待处理</small>
+          </span>
+        </button>
+      </div>
+    </section>
+
+    <aside v-if="selectedSource" class="inspector-panel" aria-label="数据源详情">
+      <p class="eyebrow">Inspector</p>
+      <h3>{{ selectedSource.name }}</h3>
+      <dl class="stacked-list">
+        <div>
+          <dt>通道类型</dt>
+          <dd>{{ selectedSource.channel }}</dd>
+        </div>
+        <div>
+          <dt>最近同步</dt>
+          <dd>{{ selectedSource.lastSync }}</dd>
+        </div>
+        <div>
+          <dt>成功率</dt>
+          <dd>{{ selectedSource.successRate }}%</dd>
+        </div>
+        <div>
+          <dt>待处理</dt>
+          <dd>{{ selectedSource.pending }} 条</dd>
+        </div>
+      </dl>
+      <div class="rule-stack">
+        <span>robots 检查</span>
+        <span>限速策略 5s</span>
+        <span>字段解析模板已绑定</span>
+      </div>
+      <div class="decision-actions">
+        <button type="button" class="ghost-button">暂停源</button>
+        <button type="button" class="solid-button">立即采集</button>
+      </div>
+    </aside>
+  </section>
+</template>
