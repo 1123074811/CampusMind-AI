@@ -14,6 +14,8 @@ spring:
     redis:
       host: ${IMPORT_REDIS_HOST:localhost}
       port: ${IMPORT_REDIS_PORT:6379}
+      password: ${IMPORT_REDIS_PASSWORD:campusmind}
+      database: ${IMPORT_REDIS_DATABASE:8}
 
 campus:
   auth:
