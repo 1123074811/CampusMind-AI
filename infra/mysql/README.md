@@ -10,7 +10,7 @@
 
 - Database: `campusmind`
 - User: `campusmind`
-- Password: `ojc132598.`
+- Password: `campusmind`
 
 ## Import
 

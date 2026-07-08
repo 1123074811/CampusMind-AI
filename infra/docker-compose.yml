@@ -3,10 +3,10 @@ services:
     image: ${MYSQL_IMAGE:-mysql:8.4}
     container_name: campusmind-mysql
     environment:
-      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-ojc132598.}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-campusmind}
       MYSQL_DATABASE: ${MYSQL_DATABASE:-campusmind}
       MYSQL_USER: ${MYSQL_USERNAME:-campusmind}
-      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-ojc132598.}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-campusmind}
       TZ: Asia/Shanghai
     ports:
       - "3306:3306"

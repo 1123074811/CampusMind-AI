@@ -15,6 +15,17 @@ $JavaHome = "C:\Program Files\Java\jdk-21"
 $Java    = "$JavaHome\bin\java.exe"
 $LogDir  = "$ProjectRoot\logs"
 
+$LocalDbUsername = $env:MYSQL_USERNAME
+if (-not $LocalDbUsername) { $LocalDbUsername = "campusmind" }
+$LocalDbPassword = $env:MYSQL_PASSWORD
+if (-not $LocalDbPassword) { $LocalDbPassword = "campusmind" }
+
+foreach ($prefix in @("AUTH", "USER", "EVENT", "FEED", "IMPORT", "CRAWLER", "AUDIT", "SEARCH")) {
+    Set-Item -Path "Env:${prefix}_DB_USERNAME" -Value $LocalDbUsername
+    Set-Item -Path "Env:${prefix}_DB_PASSWORD" -Value $LocalDbPassword
+}
+if (-not $env:IMPORT_REDIS_PASSWORD) { $env:IMPORT_REDIS_PASSWORD = "" }
+
 $BackendServices = @(
     @{Name="campus-gateway";         Port=8080; Profiles=""}
     @{Name="campus-auth-service";    Port=8081; Profiles=""}

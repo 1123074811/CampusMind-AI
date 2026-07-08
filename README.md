@@ -43,8 +43,8 @@ CampusMind-AI
 ├── campus-flutter-app        # Flutter 用户端
 ├── infra                     # Docker Compose 与数据库初始化脚本
 ├── docs                      # 架构、路由、公共数据源文档
-├── dev-start.ps1             # Windows 一键启动脚本
-└── dev-stop.ps1              # Windows 一键停止脚本
+├── dev-start.ps1             # PowerShell 启动脚本
+└── dev-stop.ps1              # PowerShell 停止脚本
 ```
 
 ## 技术栈
@@ -119,15 +119,13 @@ Copy-Item campus-ai-service\src\main\resources\application-local.yml.example cam
 
 ## 快速启动
 
-1. 启动基础设施：
+1. 确认本地基础服务可用：
 
-```powershell
-docker compose -f infra/docker-compose.yml up -d
-```
-
-首次启动 MySQL 时会自动执行 `infra/mysql/init` 下的初始化脚本，创建业务表并写入演示数据。
+开发阶段默认连接本机 MySQL、Redis、MongoDB、PostgreSQL/PGVector。请先确认这些服务已在本地启动，并已执行 `infra/mysql/init` 下的初始化脚本创建业务表和演示数据。
 
 2. 一键启动后端服务和管理后台：
+
+在 PowerShell 执行：
 
 ```powershell
 .\dev-start.ps1
@@ -149,6 +147,8 @@ docker compose -f infra/docker-compose.yml up -d
 - 健康检查：http://localhost:8080/actuator/health
 
 4. 停止服务：
+
+在 PowerShell 执行：
 
 ```powershell
 .\dev-stop.ps1
@@ -349,4 +349,5 @@ Get-Content logs\campus-ai-service-err.log -Tail 80
 - `docs/architecture.md`：架构与模块职责。
 - `docs/api-routing.md`：网关路由说明。
 - `docs/public-web-sources.md`：公开网页数据源。
+- `docs/roadmap.md`：后续功能预留与产品路线图。
 - `校园事件AI感知聚合系统_Design_Document.md`：项目设计文档。
