@@ -1,13 +1,22 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
 import StatusPill from '../components/StatusPill.vue';
-import type { CrawlTask, TaskStatus } from '../adminTypes';
+import type { CrawlItem, CrawlTask, TaskStatus } from '../adminTypes';
 
 const props = defineProps<{
   tasks: CrawlTask[];
+  crawlItems: CrawlItem[];
+  crawlerRunning: boolean;
+}>();
+
+defineEmits<{
+  runNow: [];
 }>();
 
 const statusFilter = ref<'ALL' | TaskStatus>('ALL');
+const selectedTaskId = ref<number | null>(props.tasks[0]?.id ?? null);
+const selectedItemId = ref<number | null>(props.crawlItems[0]?.id ?? null);
+const detailMode = ref<'task' | 'item'>(props.crawlItems.length > 0 ? 'item' : 'task');
 
 const filteredTasks = computed(() => {
   if (statusFilter.value === 'ALL') {
@@ -15,52 +24,191 @@ const filteredTasks = computed(() => {
   }
   return props.tasks.filter((task) => task.status === statusFilter.value);
 });
+
+function formatItemTime(value: string | null) {
+  if (!value) {
+    return '时间待补充';
+  }
+  return new Date(value)
+    .toLocaleString('zh-CN', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false
+    })
+    .replace(/\//g, '-');
+}
+
+function previewText(item: CrawlItem) {
+  return item.detailContent || item.summary || item.parseError || '正文暂未解析';
+}
+
+const selectedTask = computed(() => {
+  return props.tasks.find((task) => task.id === selectedTaskId.value) ?? props.tasks[0] ?? null;
+});
+
+const selectedItem = computed(() => {
+  return props.crawlItems.find((item) => item.id === selectedItemId.value) ?? props.crawlItems[0] ?? null;
+});
+
+function selectTask(id: number) {
+  selectedTaskId.value = id;
+  detailMode.value = 'task';
+}
+
+function selectItem(id: number) {
+  selectedItemId.value = id;
+  detailMode.value = 'item';
+}
 </script>
 
 <template>
-  <section class="task-workspace">
-    <section class="task-console">
-      <div class="panel-head">
-        <div>
-          <p class="eyebrow">Task Dispatch</p>
-          <h3>采集任务编排</h3>
-        </div>
-        <div class="segmented-control" aria-label="任务状态过滤">
-          <button type="button" :class="{ active: statusFilter === 'ALL' }" @click="statusFilter = 'ALL'">全部</button>
-          <button type="button" :class="{ active: statusFilter === 'RUNNING' }" @click="statusFilter = 'RUNNING'">运行</button>
-          <button type="button" :class="{ active: statusFilter === 'FAILED' }" @click="statusFilter = 'FAILED'">失败</button>
-          <button type="button" :class="{ active: statusFilter === 'PENDING' }" @click="statusFilter = 'PENDING'">等待</button>
-        </div>
-      </div>
-
-      <ol class="timeline-list">
-        <li v-for="task in filteredTasks" :key="task.id" :data-status="task.status">
-          <time>{{ task.time }}</time>
+  <section class="task-split-workspace">
+    <div class="task-workspace">
+      <section class="task-console">
+        <div class="panel-head">
           <div>
-            <strong>{{ task.name }}</strong>
-            <small>{{ task.owner }} · {{ task.note }}</small>
+            <p class="eyebrow">Task Dispatch</p>
+            <h3>采集任务编排</h3>
           </div>
-          <StatusPill :status="task.status" />
-        </li>
-      </ol>
-    </section>
+          <div class="task-actions">
+            <span class="schedule-badge">每日 06:30 自动采集</span>
+            <button type="button" class="solid-button" :disabled="crawlerRunning" @click="$emit('runNow')">
+              {{ crawlerRunning ? '采集中' : '立即采集' }}
+            </button>
+            <div class="segmented-control" aria-label="任务状态过滤">
+              <button type="button" :class="{ active: statusFilter === 'ALL' }" @click="statusFilter = 'ALL'">全部</button>
+              <button type="button" :class="{ active: statusFilter === 'RUNNING' }" @click="statusFilter = 'RUNNING'">运行</button>
+              <button type="button" :class="{ active: statusFilter === 'FAILED' }" @click="statusFilter = 'FAILED'">失败</button>
+              <button type="button" :class="{ active: statusFilter === 'PENDING' }" @click="statusFilter = 'PENDING'">等待</button>
+            </div>
+          </div>
+        </div>
 
-    <section class="dispatch-grid" aria-label="调度指标">
-      <article>
-        <span>队列吞吐</span>
-        <strong>42/h</strong>
-        <small>公开网页与用户导入合计</small>
-      </article>
-      <article>
-        <span>失败重试</span>
-        <strong>3</strong>
-        <small>403 与 OCR 低置信度优先</small>
-      </article>
-      <article>
-        <span>平均延迟</span>
-        <strong>18s</strong>
-        <small>从采集完成到事件入库</small>
-      </article>
-    </section>
+        <ol class="timeline-list">
+          <li
+            v-for="task in filteredTasks"
+            :key="task.id"
+            :data-status="task.status"
+            :class="{ selected: detailMode === 'task' && selectedTaskId === task.id }"
+            role="button"
+            tabindex="0"
+            @click="selectTask(task.id)"
+            @keydown.enter="selectTask(task.id)"
+          >
+            <time>{{ task.time }}</time>
+            <div>
+              <strong>{{ task.name }}</strong>
+              <small>{{ task.owner }} · {{ task.note }}</small>
+            </div>
+            <StatusPill :status="task.status" />
+          </li>
+        </ol>
+      </section>
+
+      <section class="dispatch-grid compact" aria-label="调度入口">
+        <article>
+          <span>定时策略</span>
+          <strong>06:30</strong>
+          <small>每天自动爬取一次公开数据源</small>
+        </article>
+        <article>
+          <span>手动触发</span>
+          <strong>即时</strong>
+          <small>管理员可随时补跑爬虫任务</small>
+        </article>
+      </section>
+
+      <section class="task-console">
+        <div class="panel-head">
+          <div>
+            <p class="eyebrow">Raw Capture</p>
+            <h3>最近原文入库</h3>
+          </div>
+          <span class="schedule-badge">{{ props.crawlItems.length }} 条</span>
+        </div>
+
+        <ol class="crawl-item-list">
+          <li
+            v-for="item in props.crawlItems"
+            :key="item.id"
+            :data-status="item.parseStatus"
+            :class="{ selected: detailMode === 'item' && selectedItemId === item.id }"
+            role="button"
+            tabindex="0"
+            @click="selectItem(item.id)"
+            @keydown.enter="selectItem(item.id)"
+          >
+            <time>{{ formatItemTime(item.fetchedAt) }}</time>
+            <div class="crawl-item-main">
+              <span>
+                <strong>{{ item.detailTitle || item.title }}</strong>
+                <small>{{ item.sourceName }} · {{ item.dateText || '日期待解析' }}</small>
+              </span>
+              <p>{{ previewText(item) }}</p>
+              <a :href="item.itemUrl" target="_blank" rel="noreferrer" @click.stop>{{ item.itemUrl }}</a>
+            </div>
+            <StatusPill :status="item.parseStatus === 'DETAIL_SUCCESS' ? 'SUCCESS' : item.parseStatus === 'DETAIL_FAILED' ? 'FAILED' : 'PENDING'" />
+          </li>
+        </ol>
+      </section>
+    </div>
+
+    <aside class="inspector-panel" aria-label="任务详情">
+      <template v-if="detailMode === 'item' && selectedItem">
+        <p class="eyebrow">Capture Detail</p>
+        <h3>{{ selectedItem.detailTitle || selectedItem.title }}</h3>
+        <dl class="stacked-list">
+          <div>
+            <dt>来源</dt>
+            <dd>{{ selectedItem.sourceName }}</dd>
+          </div>
+          <div>
+            <dt>抓取时间</dt>
+            <dd>{{ formatItemTime(selectedItem.fetchedAt) }}</dd>
+          </div>
+          <div>
+            <dt>解析状态</dt>
+            <dd>{{ selectedItem.parseStatus }}</dd>
+          </div>
+          <div>
+            <dt>HTTP</dt>
+            <dd>{{ selectedItem.detailHttpStatus || '-' }}</dd>
+          </div>
+        </dl>
+        <p class="summary-text">{{ previewText(selectedItem) }}</p>
+        <div class="decision-actions">
+          <a class="solid-button link-button" :href="selectedItem.itemUrl" target="_blank" rel="noreferrer">打开原文</a>
+        </div>
+      </template>
+
+      <template v-else-if="selectedTask">
+        <p class="eyebrow">Task Detail</p>
+        <h3>{{ selectedTask.name }}</h3>
+        <dl class="stacked-list">
+          <div>
+            <dt>执行时间</dt>
+            <dd>{{ selectedTask.time }}</dd>
+          </div>
+          <div>
+            <dt>负责人</dt>
+            <dd>{{ selectedTask.owner }}</dd>
+          </div>
+          <div>
+            <dt>状态</dt>
+            <dd>{{ selectedTask.status }}</dd>
+          </div>
+        </dl>
+        <p class="summary-text">{{ selectedTask.note }}</p>
+      </template>
+
+      <template v-else>
+        <p class="eyebrow">Inspector</p>
+        <h3>暂无详情</h3>
+        <p class="summary-text">点击任务或原文入库记录查看详情。</p>
+      </template>
+    </aside>
   </section>
 </template>

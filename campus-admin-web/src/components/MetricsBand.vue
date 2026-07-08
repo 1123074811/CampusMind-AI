@@ -11,12 +11,12 @@ defineProps<{
     <article>
       <span>待处理</span>
       <strong>{{ metrics.reviewCount }}</strong>
-      <small>{{ metrics.urgentCount }} 条高优先级</small>
+      <small>{{ metrics.urgentCount }} 条需关注</small>
     </article>
     <article>
       <span>平均置信度</span>
       <strong>{{ metrics.avgConfidence }}%</strong>
-      <small>较昨日 +6%</small>
+      <small>来自当前事件集</small>
     </article>
     <article>
       <span>数据源成功率</span>
@@ -26,7 +26,7 @@ defineProps<{
     <article>
       <span>向量待同步</span>
       <strong>{{ metrics.vectorPending }}</strong>
-      <small>审核后写入</small>
+      <small>未写入向量库</small>
     </article>
   </section>
 </template>

@@ -14,8 +14,8 @@ DELETE FROM user WHERE id = 9901;
 INSERT INTO user (
   id, username, phone, password_hash, role, status
 ) VALUES (
-  9901, 'admin_seed', '13800139901',
-  '$2a$10$3tQe3jILlu/hhEOG2q4wlOkQ1N2lv.X.GyWSpW9uY50nhUnN7xwTy',
+  9901, 'admin', '13800139901',
+  '$2a$10$zm4CQ9Xw4wrSUxQSHEXpqOoMkRTxUkOvDIax1HK3J6Sj3zTNxbEMS',
   'ADMIN', 1
 );
 

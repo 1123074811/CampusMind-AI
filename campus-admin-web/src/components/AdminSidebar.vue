@@ -17,7 +17,7 @@ defineEmits<{
       <div class="brand-mark">CM</div>
       <div>
         <p class="eyebrow">CampusMind</p>
-        <h1>审核后台</h1>
+          <h1>管理后台</h1>
       </div>
     </div>
 
@@ -34,12 +34,11 @@ defineEmits<{
         <strong>{{ item.count }}</strong>
       </button>
     </nav>
-
-    <section class="agent-strip" aria-label="智能体状态">
-      <p class="eyebrow">Agent Pulse</p>
+    <section class="agent-strip" aria-label="系统状态">
+      <p class="eyebrow">Console</p>
       <div class="pulse-row">
         <span class="pulse-dot"></span>
-        <span>感知 / 认知 / 决策链路在线</span>
+        <span>真实接口模式</span>
       </div>
     </section>
   </aside>

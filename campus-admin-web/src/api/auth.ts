@@ -24,22 +24,6 @@ export async function login(username: string, password: string) {
   return session;
 }
 
-export function createDemoSession() {
-  const session: AdminSession = {
-    accessToken: 'demo-token',
-    tokenType: 'Bearer',
-    expiresAt: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
-    user: {
-      id: 9901,
-      username: 'admin_seed',
-      role: 'ADMIN'
-    },
-    demo: true
-  };
-  saveSession(session);
-  return session;
-}
-
 export function loadSession() {
   const raw = localStorage.getItem(SESSION_KEY);
   if (!raw) {
@@ -48,7 +32,7 @@ export function loadSession() {
 
   try {
     const session = JSON.parse(raw) as AdminSession;
-    if (new Date(session.expiresAt).getTime() <= Date.now()) {
+    if (session.demo || new Date(session.expiresAt).getTime() <= Date.now()) {
       clearSession();
       return null;
     }
@@ -68,7 +52,7 @@ export function clearSession() {
 }
 
 export function authHeaders(session: AdminSession | null): Record<string, string> {
-  if (!session || session.demo) {
+  if (!session) {
     return {};
   }
   return {

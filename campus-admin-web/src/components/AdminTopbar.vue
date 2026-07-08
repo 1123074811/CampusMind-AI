@@ -12,13 +12,13 @@ const props = defineProps<{
 
 defineEmits<{
   logout: [];
+  refresh: [];
 }>();
 
 const titles: Record<NavKey, { eyebrow: string; title: string }> = {
-  review: { eyebrow: '2026-07-07 · 18:30', title: '校园事件运营工作台' },
+  review: { eyebrow: 'Event Review', title: '校园事件管理台' },
   sources: { eyebrow: 'Source Registry', title: '数据源治理中心' },
-  tasks: { eyebrow: 'Crawler Timeline', title: '采集任务调度台' },
-  agents: { eyebrow: 'Agent Lab', title: '智能体编排与抽取实验室' }
+  tasks: { eyebrow: 'Crawler Timeline', title: '采集任务调度台' }
 };
 </script>
 
@@ -31,8 +31,9 @@ const titles: Record<NavKey, { eyebrow: string; title: string }> = {
     </div>
     <div class="top-actions">
       <span class="user-chip">{{ props.user.username }} · {{ props.user.role }}</span>
-      <button type="button" class="ghost-button">导出审计</button>
-      <button type="button" class="solid-button">新增数据源</button>
+      <button type="button" class="solid-button" :disabled="loading" @click="$emit('refresh')">
+        {{ loading ? '刷新中' : '刷新' }}
+      </button>
       <button type="button" class="ghost-button" @click="$emit('logout')">退出</button>
     </div>
   </header>

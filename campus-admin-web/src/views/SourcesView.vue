@@ -5,6 +5,11 @@ import type { DataSource, SourceStatus } from '../adminTypes';
 
 const props = defineProps<{
   dataSources: DataSource[];
+  crawlingSourceId: number | null;
+}>();
+
+defineEmits<{
+  crawl: [id: number];
 }>();
 
 const statusFilter = ref<'ALL' | SourceStatus>('ALL');
@@ -82,14 +87,16 @@ const selectedSource = computed(() => {
           <dd>{{ selectedSource.pending }} 条</dd>
         </div>
       </dl>
-      <div class="rule-stack">
-        <span>robots 检查</span>
-        <span>限速策略 5s</span>
-        <span>字段解析模板已绑定</span>
-      </div>
       <div class="decision-actions">
-        <button type="button" class="ghost-button">暂停源</button>
-        <button type="button" class="solid-button">立即采集</button>
+        <button
+          v-if="selectedSource.channel === 'PUBLIC_WEB' && selectedSource.status !== 'PAUSED'"
+          type="button"
+          class="solid-button"
+          :disabled="props.crawlingSourceId === selectedSource.id"
+          @click="$emit('crawl', selectedSource.id)"
+        >
+          {{ props.crawlingSourceId === selectedSource.id ? '采集中' : '立即采集此源' }}
+        </button>
       </div>
     </aside>
   </section>

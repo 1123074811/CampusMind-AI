@@ -8,11 +8,11 @@ defineProps<{
 
 function statusLabel(status: ReviewStatus | SourceStatus | TaskStatus | 'RULE' | 'LLM') {
   const labels: Record<string, string> = {
-    AI_PUBLISHED: 'AI 预测',
-    CORRECTED: '待复核',
-    REVIEWED: '已确认',
-    REJECTED: '已驳回',
-    OFFLINE: '已下线',
+    AI_PUBLISHED: '已发布',
+    CORRECTED: '需关注',
+    REVIEWED: '已发布',
+    REJECTED: '已归档',
+    OFFLINE: '已归档',
     RUNNING: '运行中',
     HEALTHY: '健康',
     NEEDS_AUTH: '待授权',

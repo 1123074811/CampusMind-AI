@@ -10,8 +10,8 @@ const props = defineProps<{
 
 defineEmits<{
   select: [id: number];
-  approve: [];
-  reject: [];
+  archive: [];
+  unarchive: [];
   refresh: [];
 }>();
 
@@ -34,11 +34,11 @@ const selectedEvent = computed(() => {
 
 <template>
   <section class="main-grid">
-    <section class="review-panel" aria-label="事件审核列表">
+    <section class="review-panel" aria-label="校园事件列表">
       <div class="panel-head">
         <div>
-          <p class="eyebrow">Review Queue</p>
-          <h3>AI 预测事件</h3>
+          <p class="eyebrow">Event Stream</p>
+          <h3>校园事件列表</h3>
         </div>
         <div class="filters">
           <select v-model="typeFilter" aria-label="事件类型过滤">
@@ -99,7 +99,7 @@ const selectedEvent = computed(() => {
           <dd>{{ selectedEvent.scope }}</dd>
         </div>
         <div>
-          <dt>风险</dt>
+          <dt>状态说明</dt>
           <dd>{{ selectedEvent.risk }}</dd>
         </div>
       </dl>
@@ -111,8 +111,8 @@ const selectedEvent = computed(() => {
       </div>
 
       <div class="decision-actions">
-        <button type="button" class="ghost-button danger" @click="$emit('reject')">驳回</button>
-        <button type="button" class="solid-button" @click="$emit('approve')">确认发布</button>
+        <button v-if="selectedEvent.status !== 'OFFLINE'" type="button" class="ghost-button danger" @click="$emit('archive')">归档</button>
+        <button v-else type="button" class="solid-button" @click="$emit('unarchive')">取消归档</button>
       </div>
     </aside>
   </section>

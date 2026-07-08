@@ -1,4 +1,4 @@
-export type NavKey = 'review' | 'sources' | 'tasks' | 'agents';
+export type NavKey = 'review' | 'sources' | 'tasks';
 
 export type ReviewStatus = 'AI_PUBLISHED' | 'CORRECTED' | 'REVIEWED' | 'REJECTED' | 'OFFLINE';
 export type EventType = 'NOTICE' | 'COURSE' | 'EXAM' | 'HOMEWORK' | 'ACTIVITY' | 'LECTURE' | 'COMPETITION' | 'SERVICE' | 'OTHER';
@@ -43,6 +43,49 @@ export interface CrawlTask {
   owner: string;
   time: string;
   note: string;
+}
+
+export interface CrawlSourceResult {
+  taskId: number;
+  sourceId: number;
+  sourceName: string;
+  status: TaskStatus;
+  httpStatus: number | null;
+  crawlUrl: string;
+  discoveredCount: number;
+  persistedCount: number;
+  parserVersion: string | null;
+  failReason: string | null;
+  startedAt: string;
+  finishedAt: string;
+}
+
+export interface BatchCrawlResult {
+  sourceCount: number;
+  successCount: number;
+  failedCount: number;
+  persistedCount: number;
+  results: CrawlSourceResult[];
+  startedAt: string;
+  finishedAt: string;
+}
+
+export interface CrawlItem {
+  id: number;
+  sourceId: number;
+  sourceName: string;
+  sourceUrl: string;
+  itemUrl: string;
+  title: string;
+  detailTitle: string | null;
+  dateText: string | null;
+  summary: string | null;
+  detailContent: string | null;
+  parseStatus: 'LIST_ONLY' | 'DETAIL_SUCCESS' | 'PARSE_FAILED' | 'DETAIL_FAILED';
+  parseError: string | null;
+  detailHttpStatus: number | null;
+  fetchedAt: string;
+  detailFetchedAt: string | null;
 }
 
 export interface DashboardMetrics {

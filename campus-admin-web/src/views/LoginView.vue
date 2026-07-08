@@ -1,13 +1,13 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
-import { createDemoSession, login } from '../api/auth';
+import { login } from '../api/auth';
 import type { AdminSession } from '../adminTypes';
 
 const emit = defineEmits<{
   authenticated: [session: AdminSession];
 }>();
 
-const username = ref('admin_seed');
+const username = ref('admin');
 const password = ref('');
 const loading = ref(false);
 const errorMessage = ref('');
@@ -31,9 +31,6 @@ async function submitLogin() {
   }
 }
 
-function enterDemo() {
-  emit('authenticated', createDemoSession());
-}
 </script>
 
 <template>
@@ -43,13 +40,13 @@ function enterDemo() {
         <div class="brand-mark">CM</div>
         <div>
           <p class="eyebrow">CampusMind Console</p>
-          <h1>校园事件审核中枢</h1>
+          <h1>校园事件管理中枢</h1>
         </div>
       </div>
 
       <div class="login-statement">
         <p class="eyebrow">Admin Access</p>
-        <h2>把分散的校园通知，压缩成一条可审核的事件流。</h2>
+        <h2>把分散的校园通知，压缩成一条可追踪的事件流。</h2>
       </div>
 
       <div class="login-matrix" aria-label="登录页能力概览">
@@ -65,8 +62,8 @@ function enterDemo() {
         </article>
         <article>
           <span>03</span>
-          <strong>人工复核</strong>
-          <small>确认发布、驳回、纠错全部留痕。</small>
+          <strong>归档留痕</strong>
+          <small>事件默认呈现给用户，可归档或取消归档。</small>
         </article>
       </div>
     </section>
@@ -80,12 +77,12 @@ function enterDemo() {
 
         <label>
           <span>账号</span>
-          <input v-model="username" autocomplete="username" type="text" placeholder="admin_seed" />
+          <input v-model="username" autocomplete="username" type="text" placeholder="admin" />
         </label>
 
         <label>
           <span>密码</span>
-          <input v-model="password" autocomplete="current-password" type="password" placeholder="输入管理员密码" />
+          <input v-model="password" autocomplete="current-password" type="password" placeholder="默认密码 admin" />
         </label>
 
         <p v-if="errorMessage" class="login-error">{{ errorMessage }}</p>
@@ -93,7 +90,6 @@ function enterDemo() {
         <button class="solid-button login-submit" type="submit" :disabled="!canSubmit">
           {{ loading ? '正在校验' : '登录后台' }}
         </button>
-        <button class="ghost-button login-demo" type="button" @click="enterDemo">进入演示后台</button>
       </form>
 
       <div class="login-footnote">
