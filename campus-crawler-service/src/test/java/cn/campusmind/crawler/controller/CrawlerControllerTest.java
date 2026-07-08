@@ -91,6 +91,37 @@ class CrawlerControllerTest {
                       UNIQUE KEY uk_web_crawl_item_hash (content_hash)
                     )
                     """);
+            statement.execute("""
+                    CREATE TABLE IF NOT EXISTS campus_event (
+                      id BIGINT AUTO_INCREMENT PRIMARY KEY,
+                      title VARCHAR(255) NOT NULL,
+                      summary CLOB,
+                      event_type VARCHAR(64) NOT NULL,
+                      source_type VARCHAR(64) NOT NULL,
+                      status VARCHAR(32) NOT NULL,
+                      confidence DECIMAL(5,4),
+                      organizer VARCHAR(255),
+                      start_time TIMESTAMP,
+                      target_scope CLOB,
+                      tags CLOB,
+                      dedup_key CHAR(64),
+                      published_at TIMESTAMP,
+                      UNIQUE KEY uk_event_dedup_key (dedup_key)
+                    )
+                    """);
+            statement.execute("""
+                    CREATE TABLE IF NOT EXISTS event_source_ref (
+                      id BIGINT AUTO_INCREMENT PRIMARY KEY,
+                      event_id BIGINT NOT NULL,
+                      source_id BIGINT,
+                      raw_doc_id VARCHAR(64) NOT NULL,
+                      source_url VARCHAR(1024),
+                      source_title VARCHAR(255),
+                      content_hash CHAR(64)
+                    )
+                    """);
+            statement.execute("DELETE FROM event_source_ref");
+            statement.execute("DELETE FROM campus_event");
             statement.execute("DELETE FROM web_crawl_item");
             statement.execute("DELETE FROM crawl_task");
             statement.execute("DELETE FROM data_source");
@@ -141,6 +172,18 @@ class CrawlerControllerTest {
                     .contains("学校组织专家组");
             org.assertj.core.api.Assertions.assertThat(resultSet.getInt("detail_http_status")).isEqualTo(200);
             org.assertj.core.api.Assertions.assertThat(resultSet.getString("parse_status")).isEqualTo("DETAIL_SUCCESS");
+        }
+
+        try (Connection connection = dataSource.getConnection();
+             PreparedStatement statement = connection.prepareStatement("""
+                     SELECT title, source_type, status
+                     FROM campus_event WHERE source_type = 'PUBLIC_WEB'
+                     """);
+             java.sql.ResultSet resultSet = statement.executeQuery()) {
+            org.assertj.core.api.Assertions.assertThat(resultSet.next()).isTrue();
+            org.assertj.core.api.Assertions.assertThat(resultSet.getString("title"))
+                    .isEqualTo("新疆大学2026年度拟新增本科专业公示");
+            org.assertj.core.api.Assertions.assertThat(resultSet.getString("status")).isEqualTo("AI_PUBLISHED");
         }
 
         mockMvc.perform(post("/api/admin/crawler/sources/9411/crawl"))

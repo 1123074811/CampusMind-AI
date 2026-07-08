@@ -51,8 +51,76 @@ public class WebCrawlItem {
         return id;
     }
 
+    public Long getSourceId() {
+        return sourceId;
+    }
+
+    public String getSourceName() {
+        return sourceName;
+    }
+
+    public String getSourceUrl() {
+        return sourceUrl;
+    }
+
+    public String getItemUrl() {
+        return itemUrl;
+    }
+
+    public String getTitle() {
+        return title;
+    }
+
+    public String getDetailTitle() {
+        return detailTitle;
+    }
+
+    public String getDateText() {
+        return dateText;
+    }
+
+    public String getSummary() {
+        return summary;
+    }
+
+    public String getDetailContent() {
+        return detailContent;
+    }
+
     public String getContentHash() {
         return contentHash;
+    }
+
+    public String getParserVersion() {
+        return parserVersion;
+    }
+
+    public Integer getDetailHttpStatus() {
+        return detailHttpStatus;
+    }
+
+    public LocalDateTime getDetailFetchedAt() {
+        return detailFetchedAt;
+    }
+
+    public String getDetailContentHash() {
+        return detailContentHash;
+    }
+
+    public String getParseStatus() {
+        return parseStatus;
+    }
+
+    public String getParseError() {
+        return parseError;
+    }
+
+    public LocalDateTime getFetchedAt() {
+        return fetchedAt;
+    }
+
+    public void setId(Long id) {
+        this.id = id;
     }
 
     public void setTaskId(Long taskId) {

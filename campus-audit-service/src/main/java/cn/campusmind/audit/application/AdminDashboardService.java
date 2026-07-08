@@ -47,8 +47,8 @@ public class AdminDashboardService {
     private static final TypeReference<List<String>> STRING_LIST = new TypeReference<>() {
     };
     private static final Set<String> REVIEW_STATUSES = Set.of("AI_PUBLISHED", "CORRECTED");
-    private static final DateTimeFormatter EVENT_TIME = DateTimeFormatter.ofPattern("MM-dd HH:mm");
-    private static final DateTimeFormatter TASK_TIME = DateTimeFormatter.ofPattern("HH:mm");
+    private static final DateTimeFormatter EVENT_TIME = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
+    private static final DateTimeFormatter TASK_TIME = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
 
     private final CampusEventMapper campusEventMapper;
     private final DataSourceMapper dataSourceMapper;
@@ -321,7 +321,7 @@ public class AdminDashboardService {
     }
 
     private static String taskTime(LocalDateTime time) {
-        return time == null ? "--:--" : time.format(TASK_TIME);
+        return time == null ? "时间待补充" : time.format(TASK_TIME);
     }
 
     private static String relativeTime(LocalDateTime time) {

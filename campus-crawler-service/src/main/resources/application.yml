@@ -15,6 +15,8 @@ campus:
     min-interval-seconds: 3
     robots-cache-ttl-hours: 12
     max-retry: 3
+    max-pages-per-source: ${CRAWLER_MAX_PAGES_PER_SOURCE:5}
+    daily-cron: ${CRAWLER_DAILY_CRON:0 30 6 * * *}
     user-agent: "CampusEventBot/1.0 (+contact: admin@example.edu)"
     backoff:
       initial-seconds: 30
