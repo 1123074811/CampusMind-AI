@@ -6,6 +6,7 @@ spring:
     name: campus-ai-service
   autoconfigure:
     exclude:
+      # rule 模式默认不启用 LLM/向量库/数据源/Mongo，避免本地开发依赖
       - org.springframework.ai.model.openai.autoconfigure.OpenAiAudioSpeechAutoConfiguration
       - org.springframework.ai.model.openai.autoconfigure.OpenAiAudioTranscriptionAutoConfiguration
       - org.springframework.ai.model.openai.autoconfigure.OpenAiImageAutoConfiguration
@@ -19,6 +20,13 @@ spring:
     model:
       chat: ${SPRING_AI_CHAT_MODEL:none}
       embedding: ${SPRING_AI_EMBEDDING_MODEL:none}
+
+campus:
+  ai:
+    # rule=规则版Agent+内存向量库(默认,零外部依赖)；llm=Spring AI ChatModel+PGVector(需激活 llm profile)
+    mode: ${CAMPUS_AI_MODE:rule}
+    model-version: ${CAMPUS_AI_MODEL_VERSION:rule-v1}
+    prompt-version: ${CAMPUS_AI_PROMPT_VERSION:rule-v1}
 
 management:
   endpoints:

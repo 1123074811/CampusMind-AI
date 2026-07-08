@@ -1,0 +1,41 @@
+# llm 模式：启用 Spring AI ChatModel，通过 OpenAI 兼容协议接入 DeepSeek。
+# 开发默认 vector-store=memory（不依赖 PG/embedding，DeepSeek 不提供 embedding 端点）。
+#
+# 激活方式：--spring.profiles.active=llm,local
+#   - llm  : 本文件，配置 model/base-url/temperature
+#   - local: application-local.yml（gitignore），提供 api-key
+# 也可不激活 local，改用环境变量 OPENAI_API_KEY。
+campus:
+  ai:
+    mode: llm
+    model-version: ${OPENAI_CHAT_MODEL:deepseek-v4-flash}
+    prompt-version: llm-v1
+    # memory=内存向量库(开发默认,零外部依赖)；pg=PGVector真实向量检索(需另配 embedding + datasource)
+    vector-store: memory
+
+spring:
+  ai:
+    model:
+      chat: openai
+      # DeepSeek 不提供 embedding 端点；vector-store=memory 不需要 embedding。
+      # 若要启用 vector-store=pg，需改为 openai 并配置一个支持 embedding 的 base-url/模型。
+      embedding: none
+    openai:
+      base-url: https://api.deepseek.com
+      api-key: ${OPENAI_API_KEY}
+      chat:
+        options:
+          model: ${OPENAI_CHAT_MODEL:deepseek-v4-flash}
+          temperature: 0.2
+  # 开发阶段向量库用内存，保持排除 pg/datasource/mongo 与 openai 音频/图像
+  autoconfigure:
+    exclude:
+      - org.springframework.ai.model.openai.autoconfigure.OpenAiAudioSpeechAutoConfiguration
+      - org.springframework.ai.model.openai.autoconfigure.OpenAiAudioTranscriptionAutoConfiguration
+      - org.springframework.ai.model.openai.autoconfigure.OpenAiImageAutoConfiguration
+      - org.springframework.ai.model.openai.autoconfigure.OpenAiModerationAutoConfiguration
+      - org.springframework.ai.vectorstore.pgvector.autoconfigure.PgVectorStoreAutoConfiguration
+      - org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration
+      - org.springframework.boot.autoconfigure.mongo.MongoAutoConfiguration
+      - org.springframework.boot.autoconfigure.data.mongo.MongoDataAutoConfiguration
+      - org.springframework.boot.autoconfigure.data.mongo.MongoRepositoriesAutoConfiguration

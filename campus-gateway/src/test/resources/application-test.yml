@@ -1,0 +1,48 @@
+spring:
+  cloud:
+    gateway:
+      server:
+        webflux:
+          routes:
+            - id: campus-auth-service
+              uri: http://127.0.0.1:1
+              predicates:
+                - Path=/api/v1/auth/**
+            - id: campus-user-service
+              uri: http://127.0.0.1:1
+              predicates:
+                - Path=/api/v1/users/**
+            - id: campus-event-service
+              uri: http://127.0.0.1:1
+              predicates:
+                - Path=/api/v1/events/**
+            - id: campus-feed-service
+              uri: http://127.0.0.1:1
+              predicates:
+                - Path=/api/v1/feed/**
+            - id: campus-import-service
+              uri: http://127.0.0.1:1
+              predicates:
+                - Path=/api/v1/import/**
+            - id: campus-crawler-service
+              uri: http://127.0.0.1:1
+              predicates:
+                - Path=/api/admin/crawler/**
+            - id: campus-audit-service
+              uri: http://127.0.0.1:1
+              predicates:
+                - Path=/api/admin/**
+            - id: campus-search-service
+              uri: http://127.0.0.1:1
+              predicates:
+                - Path=/api/v1/search/**
+            - id: campus-ai-service
+              uri: http://127.0.0.1:1
+              predicates:
+                - Path=/api/v1/ai/**
+
+campus:
+  auth:
+    jwt:
+      issuer: campusmind-auth-test
+      secret: test-secret-key-with-at-least-32-bytes

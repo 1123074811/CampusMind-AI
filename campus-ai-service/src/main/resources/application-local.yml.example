@@ -1,0 +1,11 @@
+# 本地开发配置模板：复制为 application-local.yml 并填入真实 api-key。
+# application-local.yml 已被 .gitignore 忽略，不会提交。
+# 启动：mvn -pl campus-ai-service spring-boot:run -Dspring-boot.run.profiles=llm,local
+#
+# DeepSeek 开发阶段配置：
+#   base-url: https://api.deepseek.com
+#   model:    deepseek-v4-flash（在 application-llm.yml 中配置）
+spring:
+  ai:
+    openai:
+      api-key: sk-your-deepseek-api-key-here

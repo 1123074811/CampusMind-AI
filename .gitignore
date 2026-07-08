@@ -27,6 +27,10 @@ logs/
 .env
 .env.*
 !.env.example
+# 本地敏感配置（含 API key 等），不入版本库；application-local*.example 为模板可提交
+application-local.yml
+application-local*.yml
+!application-local*.example
 
 # AI workspace (WorkBuddy 项目记忆与缓存，不入版本库)
 .workbuddy/

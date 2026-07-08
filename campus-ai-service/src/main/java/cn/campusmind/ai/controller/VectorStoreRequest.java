@@ -1,0 +1,17 @@
+package cn.campusmind.ai.controller;
+
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotNull;
+
+/**
+ * 向量入库请求。{@code event} 复用 {@link EventVectorTextRequest} 的字段与校验，
+ * 服务端会先构建向量文本再入库；{@code docId} 可选，缺省时由向量库生成。
+ */
+public record VectorStoreRequest(
+        String docId,
+
+        @Valid
+        @NotNull
+        EventVectorTextRequest event
+) {
+}

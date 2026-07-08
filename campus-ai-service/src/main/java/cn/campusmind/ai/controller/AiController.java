@@ -37,6 +37,17 @@ public class AiController {
         return ApiResponse.ok(aiApplicationService.buildVectorText(request));
     }
 
+    @PostMapping("/vector/store")
+    public ApiResponse<VectorStoreResponse> vectorStore(@Valid @RequestBody VectorStoreRequest request) {
+        return ApiResponse.ok(aiApplicationService.storeVector(request));
+    }
+
+    @PostMapping("/vector/search")
+    public ApiResponse<VectorSearchResponse> vectorSearch(@Valid @RequestBody VectorSearchRequest request) {
+        int topK = request.topK() == null ? 10 : request.topK();
+        return ApiResponse.ok(aiApplicationService.searchVector(request.query(), topK));
+    }
+
     @PostMapping("/chat")
     public ApiResponse<ChatResponse> chat(@Valid @RequestBody ChatRequest request) {
         boolean usePersonalProfile = Boolean.TRUE.equals(request.usePersonalProfile());

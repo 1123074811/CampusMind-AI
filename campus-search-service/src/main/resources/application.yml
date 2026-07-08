@@ -4,10 +4,26 @@ server:
 spring:
   application:
     name: campus-search-service
+  datasource:
+    url: ${SEARCH_DB_URL:jdbc:mysql://localhost:3306/campusmind?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai}
+    username: ${SEARCH_DB_USERNAME:campusmind}
+    password: ${SEARCH_DB_PASSWORD:campusmind}
+  autoconfigure:
+    exclude:
+      - org.springframework.ai.vectorstore.pgvector.autoconfigure.PgVectorStoreAutoConfiguration
+
+campus:
+  auth:
+    jwt:
+      issuer: ${AUTH_JWT_ISSUER:campusmind-auth}
+      secret: ${AUTH_JWT_SECRET:please-change-this-secret-to-at-least-32-bytes}
+  search:
+    ai-base-url: ${SEARCH_AI_BASE_URL:http://localhost:8089}
+    default-top-k: 20
+    keyword-fallback-top-k: 10
 
 management:
   endpoints:
     web:
       exposure:
         include: health,info
-

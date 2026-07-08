@@ -8,6 +8,8 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 
 import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.hasItem;
+import static org.hamcrest.Matchers.hasSize;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -95,5 +97,73 @@ class AiControllerTest {
                 .andExpect(jsonPath("$.data.sessionId").value("chat-test"))
                 .andExpect(jsonPath("$.data.plan.intent").value("PERSONAL_SCHEDULE"))
                 .andExpect(jsonPath("$.data.plan.usePersonalProfile").value(true));
+    }
+
+    @Test
+    void vectorStoreAndSearchRoundTrip() throws Exception {
+        mockMvc.perform(post("/api/v1/ai/vector/store")
+                        .contentType("application/json")
+                        .content("""
+                                {
+                                  "docId": "evt-1",
+                                  "event": {
+                                    "title": "人工智能主题讲座通知",
+                                    "summary": "软件学院举办AI讲座",
+                                    "eventType": "LECTURE",
+                                    "startTime": "2026-07-08T19:00:00+08:00",
+                                    "location": "图书馆报告厅",
+                                    "targetScopes": ["软件学院"],
+                                    "tags": ["AI", "讲座"],
+                                    "content": "欢迎同学参加"
+                                  }
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.docId").value("evt-1"))
+                .andExpect(jsonPath("$.data.text", containsString("标题：人工智能主题讲座通知")));
+
+        mockMvc.perform(post("/api/v1/ai/vector/search")
+                        .contentType("application/json")
+                        .content("""
+                                {
+                                  "query": "AI 讲座",
+                                  "topK": 10
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.hits[?(@.docId == 'evt-1')]", hasSize(1)))
+                .andExpect(jsonPath("$.data.hits[?(@.docId == 'evt-1')].text", hasItem(containsString("人工智能主题讲座"))));
+    }
+
+    @Test
+    void chatWithRagContextRecallsStoredEvent() throws Exception {
+        mockMvc.perform(post("/api/v1/ai/vector/store")
+                        .contentType("application/json")
+                        .content("""
+                                {
+                                  "docId": "evt-rag",
+                                  "event": {
+                                    "title": "人工智能主题讲座",
+                                    "eventType": "LECTURE",
+                                    "summary": "软件学院AI讲座",
+                                    "location": "图书馆报告厅",
+                                    "tags": ["AI", "讲座"]
+                                  }
+                                }
+                                """))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(post("/api/v1/ai/chat")
+                        .contentType("application/json")
+                        .content("""
+                                {
+                                  "sessionId": "rag-test",
+                                  "message": "AI 讲座 相关 解释一下"
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.sessionId").value("rag-test"))
+                .andExpect(jsonPath("$.data.plan.intent").value("QA_EXPLAIN"))
+                .andExpect(jsonPath("$.data.answer", containsString("人工智能主题讲座")));
     }
 }

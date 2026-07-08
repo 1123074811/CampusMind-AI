@@ -1,0 +1,25 @@
+spring:
+  datasource:
+    url: jdbc:h2:mem:campus_search;MODE=MySQL;DATABASE_TO_UPPER=false;DB_CLOSE_DELAY=-1
+    username: sa
+    password:
+    driver-class-name: org.h2.Driver
+  autoconfigure:
+    exclude:
+      - org.springframework.ai.vectorstore.pgvector.autoconfigure.PgVectorStoreAutoConfiguration
+      - org.springframework.boot.autoconfigure.data.redis.RedisAutoConfiguration
+      - org.springframework.boot.autoconfigure.data.redis.RedisRepositoriesAutoConfiguration
+
+mybatis-plus:
+  configuration:
+    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+
+campus:
+  auth:
+    jwt:
+      issuer: campusmind-auth-test
+      secret: test-secret-key-with-at-least-32-bytes
+  search:
+    ai-base-url: http://localhost:8089
+    default-top-k: 20
+    keyword-fallback-top-k: 10
