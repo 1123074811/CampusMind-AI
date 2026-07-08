@@ -1,0 +1,27 @@
+spring:
+  datasource:
+    url: jdbc:h2:mem:campus_import;MODE=MySQL;DATABASE_TO_UPPER=false;DB_CLOSE_DELAY=-1
+    username: sa
+    password:
+    driver-class-name: org.h2.Driver
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.autoconfigure.mongo.MongoAutoConfiguration
+      - org.springframework.boot.autoconfigure.data.mongo.MongoDataAutoConfiguration
+      - org.springframework.boot.autoconfigure.data.redis.RedisAutoConfiguration
+      - org.springframework.boot.autoconfigure.data.redis.RedisRepositoriesAutoConfiguration
+
+mybatis-plus:
+  configuration:
+    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+
+campus:
+  auth:
+    jwt:
+      issuer: campusmind-auth-test
+      secret: test-secret-key-with-at-least-32-bytes
+  import:
+    ai-base-url: http://localhost:8089
+    rain-cookie-ttl-minutes: 10
+    max-text-length: 20000
+    max-image-bytes: 5242880

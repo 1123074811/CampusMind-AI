@@ -27,3 +27,6 @@ logs/
 .env
 .env.*
 !.env.example
+
+# AI workspace (WorkBuddy 项目记忆与缓存，不入版本库)
+.workbuddy/

@@ -4,10 +4,30 @@ server:
 spring:
   application:
     name: campus-import-service
+  datasource:
+    url: ${IMPORT_DB_URL:jdbc:mysql://localhost:3306/campusmind?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai}
+    username: ${IMPORT_DB_USERNAME:campusmind}
+    password: ${IMPORT_DB_PASSWORD:campusmind}
+  data:
+    mongodb:
+      uri: ${IMPORT_MONGO_URI:mongodb://localhost:27017/campusmind}
+    redis:
+      host: ${IMPORT_REDIS_HOST:localhost}
+      port: ${IMPORT_REDIS_PORT:6379}
+
+campus:
+  auth:
+    jwt:
+      issuer: ${AUTH_JWT_ISSUER:campusmind-auth}
+      secret: ${AUTH_JWT_SECRET:please-change-this-secret-to-at-least-32-bytes}
+  import:
+    ai-base-url: ${IMPORT_AI_BASE_URL:http://localhost:8089}
+    rain-cookie-ttl-minutes: 10
+    max-text-length: 20000
+    max-image-bytes: 5242880
 
 management:
   endpoints:
     web:
       exposure:
         include: health,info
-
