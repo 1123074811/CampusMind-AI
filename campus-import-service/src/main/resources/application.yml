@@ -6,22 +6,22 @@ spring:
     name: campus-import-service
   datasource:
     url: ${IMPORT_DB_URL:jdbc:mysql://localhost:3306/campusmind?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai}
-    username: ${IMPORT_DB_USERNAME:campusmind}
-    password: ${IMPORT_DB_PASSWORD:campusmind}
+    username: ${IMPORT_DB_USERNAME}
+    password: ${IMPORT_DB_PASSWORD}
   data:
     mongodb:
-      uri: ${IMPORT_MONGO_URI:mongodb://localhost:27017/campusmind}
+      uri: ${IMPORT_MONGO_URI}
     redis:
       host: ${IMPORT_REDIS_HOST:localhost}
       port: ${IMPORT_REDIS_PORT:6379}
-      password: ${IMPORT_REDIS_PASSWORD:campusmind}
+      password: ${IMPORT_REDIS_PASSWORD:}
       database: ${IMPORT_REDIS_DATABASE:8}
 
 campus:
   auth:
     jwt:
       issuer: ${AUTH_JWT_ISSUER:campusmind-auth}
-      secret: ${AUTH_JWT_SECRET:please-change-this-secret-to-at-least-32-bytes}
+      secret: ${AUTH_JWT_SECRET}
   import:
     ai-base-url: ${IMPORT_AI_BASE_URL:http://localhost:8089}
     rain-cookie-ttl-minutes: 10

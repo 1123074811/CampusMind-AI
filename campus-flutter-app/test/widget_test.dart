@@ -1,11 +1,76 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:campus_flutter_app/information_api.dart';
 import 'package:campus_flutter_app/main.dart';
 
 void main() {
-  testWidgets('renders CampusMind shell', (WidgetTester tester) async {
-    await tester.pumpWidget(const CampusMindApp());
+  testWidgets('renders login and information home flow', (tester) async {
+    await tester.pumpWidget(CampusMindApp(api: _FakeCampusApi()));
 
-    expect(find.text('CampusMind'), findsOneWidget);
+    expect(find.text('登录'), findsOneWidget);
+
+    await tester.tap(find.text('登录'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('今日信息集中站'), findsOneWidget);
+    await tester.scrollUntilVisible(
+      find.text('创新创业竞赛报名开放'),
+      220,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(find.text('创新创业竞赛报名开放'), findsOneWidget);
+
+    await tester.tap(find.text('创新创业竞赛报名开放'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('信息详情'), findsOneWidget);
+    expect(find.textContaining('报名时间'), findsOneWidget);
   });
+}
+
+class _FakeCampusApi implements CampusApi {
+  final _item = InformationItem(
+    id: 1,
+    title: '创新创业竞赛报名开放',
+    sourceName: '软件学院创新创业通知公告',
+    preview: '竞赛报名正文，包含报名时间、截止时间和所需材料。',
+    originalUrl: 'https://ss.xju.edu.cn/info/1.htm',
+    readStatus: 'NEW',
+    itemStatus: 'ACTIVE',
+    fetchedAt: DateTime(2026, 7, 9, 10),
+  );
+
+  @override
+  Future<LoginSession> login(String username, String password) async {
+    return LoginSession(
+      accessToken: 'test-token',
+      tokenType: 'Bearer',
+      expiresAt: DateTime(2026, 7, 9, 12),
+      user: const CampusUser(id: 1, username: 'admin', role: 'ADMIN'),
+    );
+  }
+
+  @override
+  Future<List<InformationItem>> fetchInformationFeed(
+      LoginSession? session) async {
+    return [_item];
+  }
+
+  @override
+  Future<InformationItem> fetchInformationDetail(
+      int id, LoginSession? session) async {
+    return _item.copyWith(
+      preview: '竞赛报名正文，包含报名时间、截止时间、持续时间、所需材料和报名网址。',
+    );
+  }
+
+  @override
+  Future<InformationItem> updateReadStatus(
+    int id,
+    String readStatus,
+    LoginSession session,
+  ) async {
+    return _item.copyWith(readStatus: readStatus);
+  }
 }

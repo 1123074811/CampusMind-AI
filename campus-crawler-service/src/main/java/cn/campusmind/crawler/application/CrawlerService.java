@@ -3,15 +3,13 @@ package cn.campusmind.crawler.application;
 import cn.campusmind.common.exception.BusinessException;
 import cn.campusmind.crawler.config.CrawlerProperties;
 import cn.campusmind.crawler.controller.CrawlItemResponse;
-import cn.campusmind.crawler.domain.CampusEvent;
 import cn.campusmind.crawler.domain.CrawlTask;
 import cn.campusmind.crawler.domain.DataSource;
-import cn.campusmind.crawler.domain.EventSourceRef;
+import cn.campusmind.crawler.domain.InformationItem;
 import cn.campusmind.crawler.domain.WebCrawlItem;
-import cn.campusmind.crawler.infrastructure.mapper.CampusEventMapper;
 import cn.campusmind.crawler.infrastructure.mapper.CrawlTaskMapper;
 import cn.campusmind.crawler.infrastructure.mapper.DataSourceMapper;
-import cn.campusmind.crawler.infrastructure.mapper.EventSourceRefMapper;
+import cn.campusmind.crawler.infrastructure.mapper.InformationItemMapper;
 import cn.campusmind.crawler.infrastructure.mapper.WebCrawlItemMapper;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import org.jsoup.Jsoup;
@@ -22,7 +20,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
-import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -44,6 +41,7 @@ public class CrawlerService {
 
     private static final String PUBLIC_WEB = "PUBLIC_WEB";
     private static final String WEBMAGIC = "WEBMAGIC";
+    private static final Pattern DATE_TIME = Pattern.compile("(\\d{4})[年/.-](\\d{1,2})[月/.-](\\d{1,2})日?\\s+(\\d{1,2}):(\\d{1,2})(?::(\\d{1,2}))?");
     private static final Pattern FULL_DATE = Pattern.compile("(\\d{4})[年/.-](\\d{1,2})[月/.-](\\d{1,2})");
     private static final Pattern MONTH_DAY = Pattern.compile("(?<!\\d)(\\d{1,2})[月/.-](\\d{1,2})");
     private static final DateTimeFormatter EVENT_DATE = DateTimeFormatter.ofPattern("yyyy-M-d");
@@ -52,8 +50,7 @@ public class CrawlerService {
     private final DataSourceMapper dataSourceMapper;
     private final CrawlTaskMapper crawlTaskMapper;
     private final WebCrawlItemMapper webCrawlItemMapper;
-    private final CampusEventMapper campusEventMapper;
-    private final EventSourceRefMapper eventSourceRefMapper;
+    private final InformationItemMapper informationItemMapper;
     private final SelectorConfigParser selectorConfigParser;
     private final ListPageParser listPageParser;
     private final DetailPageParser detailPageParser;
@@ -63,8 +60,7 @@ public class CrawlerService {
     public CrawlerService(DataSourceMapper dataSourceMapper,
                           CrawlTaskMapper crawlTaskMapper,
                           WebCrawlItemMapper webCrawlItemMapper,
-                          CampusEventMapper campusEventMapper,
-                          EventSourceRefMapper eventSourceRefMapper,
+                          InformationItemMapper informationItemMapper,
                           SelectorConfigParser selectorConfigParser,
                           ListPageParser listPageParser,
                           DetailPageParser detailPageParser,
@@ -73,8 +69,7 @@ public class CrawlerService {
         this.dataSourceMapper = dataSourceMapper;
         this.crawlTaskMapper = crawlTaskMapper;
         this.webCrawlItemMapper = webCrawlItemMapper;
-        this.campusEventMapper = campusEventMapper;
-        this.eventSourceRefMapper = eventSourceRefMapper;
+        this.informationItemMapper = informationItemMapper;
         this.selectorConfigParser = selectorConfigParser;
         this.listPageParser = listPageParser;
         this.detailPageParser = detailPageParser;
@@ -127,7 +122,7 @@ public class CrawlerService {
         int publishedCount = 0;
         for (WebCrawlItem item : items) {
             DataSource source = dataSourceMapper.selectById(item.getSourceId());
-            if (source != null && publishEvent(source, item)) {
+            if (source != null && upsertInformationItem(source, item)) {
                 publishedCount++;
             }
         }
@@ -261,15 +256,13 @@ public class CrawlerService {
                     .last("LIMIT 1"));
             if (existing == null) {
                 webCrawlItemMapper.insert(item);
-                publishEvent(source, item);
+                upsertInformationItem(source, item);
                 persistedCount++;
             } else if (contentChanged(existing, item)) {
                 item.setId(existing.getId());
                 webCrawlItemMapper.updateById(item);
-                publishEvent(source, item);
+                upsertInformationItem(source, item);
                 persistedCount++;
-            } else {
-                publishEvent(source, existing);
             }
         }
         return persistedCount;
@@ -284,6 +277,9 @@ public class CrawlerService {
             ParsedDetailPage detail = detailPageParser.parse(detailFetch.body(), link.url(), selectorConfig);
             item.setDetailTitle(detail.title());
             item.setDetailContent(detail.content());
+            if (StringUtils.hasText(detail.publishedAtText())) {
+                item.setDateText(detail.publishedAtText());
+            }
             item.setParseStatus(detail.status());
             item.setParseError(detail.error());
             if (detail.content() != null && !detail.content().isBlank()) {
@@ -301,85 +297,39 @@ public class CrawlerService {
                 || !Objects.equals(existing.getParseStatus(), item.getParseStatus());
     }
 
-    private boolean publishEvent(DataSource source, WebCrawlItem item) {
-        String dedupKey = sha256("PUBLIC_WEB|" + source.getId() + "|" + item.getItemUrl());
-        CampusEvent existing = campusEventMapper.selectOne(new LambdaQueryWrapper<CampusEvent>()
-                .eq(CampusEvent::getDedupKey, dedupKey)
-                .last("LIMIT 1"));
-        CampusEvent event = new CampusEvent();
-        String eventType = classifyEventType(item);
-        event.setTitle(truncate(firstNonBlank(item.getDetailTitle(), item.getTitle()), 255));
-        event.setSummary(truncate(firstNonBlank(item.getSummary(), item.getDetailContent(), item.getTitle()), 500));
-        event.setEventType(eventType);
-        event.setSourceType(PUBLIC_WEB);
-        event.setStatus("AI_PUBLISHED");
-        event.setConfidence(new BigDecimal("0.6000"));
-        event.setOrganizer(source.getName());
-        event.setStartTime(parseEventDate(item.getDateText()));
-        event.setTargetScope("[\"全校师生\"]");
-        event.setTags(tagsJson(eventTypeTag(eventType), source.getName()));
-        event.setDedupKey(dedupKey);
-        event.setPublishedAt(item.getFetchedAt() == null ? LocalDateTime.now() : item.getFetchedAt());
-        if (existing == null) {
-            campusEventMapper.insert(event);
-            insertSourceRefIfMissing(event.getId(), source, item);
-            return true;
-        } else if ("AI_PUBLISHED".equals(existing.getStatus())) {
-            campusEventMapper.update(event, new LambdaQueryWrapper<CampusEvent>()
-                    .eq(CampusEvent::getDedupKey, dedupKey));
-            insertSourceRefIfMissing(existing.getId(), source, item);
-            return true;
-        }
-        return insertSourceRefIfMissing(existing.getId(), source, item);
-    }
-
-    private boolean insertSourceRefIfMissing(Long eventId, DataSource source, WebCrawlItem item) {
-        String rawDocId = "web_crawl_item:" + item.getId();
-        Long existing = eventSourceRefMapper.selectCount(new LambdaQueryWrapper<EventSourceRef>()
-                .eq(EventSourceRef::getRawDocId, rawDocId));
-        if (existing != null && existing > 0) {
+    private boolean upsertInformationItem(DataSource source, WebCrawlItem item) {
+        if (!"DETAIL_SUCCESS".equals(item.getParseStatus()) || !StringUtils.hasText(item.getDetailContent())) {
             return false;
         }
-        EventSourceRef ref = new EventSourceRef();
-        ref.setEventId(eventId);
-        ref.setSourceId(source.getId());
-        ref.setRawDocId(rawDocId);
-        ref.setSourceUrl(item.getItemUrl());
-        ref.setSourceTitle(item.getTitle());
-        ref.setContentHash(firstNonBlank(item.getDetailContentHash(), item.getContentHash()));
-        eventSourceRefMapper.insert(ref);
+        String title = truncate(firstNonBlank(item.getDetailTitle(), item.getTitle()), 512);
+        String contentHash = firstNonBlank(item.getDetailContentHash(), sha256(item.getDetailContent()));
+        InformationItem existing = informationItemMapper.selectOne(new LambdaQueryWrapper<InformationItem>()
+                .eq(InformationItem::getItemUrl, item.getItemUrl())
+                .eq(InformationItem::getTitle, title)
+                .last("LIMIT 1"));
+
+        InformationItem informationItem = new InformationItem();
+        informationItem.setSourceId(source.getId());
+        informationItem.setSourceName(source.getName());
+        informationItem.setSourceUrl(source.getBaseUrl());
+        informationItem.setItemUrl(item.getItemUrl());
+        informationItem.setTitle(title);
+        informationItem.setPublishTime(parseEventDate(item.getDateText()));
+        informationItem.setFetchedAt(item.getFetchedAt() == null ? LocalDateTime.now() : item.getFetchedAt());
+        informationItem.setDetailContent(item.getDetailContent());
+        informationItem.setContentHash(contentHash);
+        informationItem.setParseStatus(item.getParseStatus());
+        informationItem.setParseError(item.getParseError());
+
+        if (existing == null) {
+            informationItem.setItemStatus("ACTIVE");
+            informationItemMapper.insert(informationItem);
+            return true;
+        }
+        informationItem.setId(existing.getId());
+        informationItem.setItemStatus(Objects.equals(existing.getContentHash(), contentHash) ? "ACTIVE" : "UPDATED");
+        informationItemMapper.updateById(informationItem);
         return true;
-    }
-
-    private String classifyEventType(WebCrawlItem item) {
-        String text = (item.getTitle() + " " + item.getDetailContent()).toLowerCase();
-        if (text.contains("讲座") || text.contains("报告")) {
-            return "LECTURE";
-        }
-        if (text.contains("考试") || text.contains("考场")) {
-            return "EXAM";
-        }
-        if (text.contains("竞赛") || text.contains("比赛") || text.contains("创新创业")) {
-            return "COMPETITION";
-        }
-        if (text.contains("课程") || text.contains("调课") || text.contains("教学")) {
-            return "COURSE";
-        }
-        if (text.contains("服务") || text.contains("开放") || text.contains("维护")) {
-            return "SERVICE";
-        }
-        return "NOTICE";
-    }
-
-    private String eventTypeTag(String eventType) {
-        return switch (eventType) {
-            case "LECTURE" -> "讲座";
-            case "EXAM" -> "考试";
-            case "COMPETITION" -> "竞赛";
-            case "COURSE" -> "课程";
-            case "SERVICE" -> "服务";
-            default -> "通知";
-        };
     }
 
     private LocalDateTime parseEventDate(String dateText) {
@@ -387,6 +337,10 @@ public class CrawlerService {
             return null;
         }
         String normalized = dateText.trim();
+        Matcher dateTime = DATE_TIME.matcher(normalized);
+        if (dateTime.find()) {
+            return toDateTime(dateTime);
+        }
         Matcher full = FULL_DATE.matcher(normalized);
         if (full.find()) {
             return toStartOfDay(full.group(1) + "-" + full.group(2) + "-" + full.group(3));
@@ -396,6 +350,22 @@ public class CrawlerService {
             return toStartOfDay(LocalDate.now().getYear() + "-" + monthDay.group(1) + "-" + monthDay.group(2));
         }
         return null;
+    }
+
+    private LocalDateTime toDateTime(Matcher matcher) {
+        int second = matcher.group(6) == null ? 0 : Integer.parseInt(matcher.group(6));
+        try {
+            return LocalDateTime.of(
+                    Integer.parseInt(matcher.group(1)),
+                    Integer.parseInt(matcher.group(2)),
+                    Integer.parseInt(matcher.group(3)),
+                    Integer.parseInt(matcher.group(4)),
+                    Integer.parseInt(matcher.group(5)),
+                    second
+            );
+        } catch (RuntimeException ignored) {
+            return null;
+        }
     }
 
     private LocalDateTime toStartOfDay(String value) {
@@ -472,14 +442,6 @@ public class CrawlerService {
             return value;
         }
         return value.substring(0, maxLength);
-    }
-
-    private String tagsJson(String first, String second) {
-        return "[\"" + jsonEscape(first) + "\",\"" + jsonEscape(second) + "\"]";
-    }
-
-    private String jsonEscape(String value) {
-        return value == null ? "" : value.replace("\\", "\\\\").replace("\"", "\\\"");
     }
 
     private record ListPageCrawl(

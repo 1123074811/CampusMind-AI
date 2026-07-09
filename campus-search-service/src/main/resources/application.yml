@@ -6,8 +6,8 @@ spring:
     name: campus-search-service
   datasource:
     url: ${SEARCH_DB_URL:jdbc:mysql://localhost:3306/campusmind?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai}
-    username: ${SEARCH_DB_USERNAME:campusmind}
-    password: ${SEARCH_DB_PASSWORD:campusmind}
+    username: ${SEARCH_DB_USERNAME}
+    password: ${SEARCH_DB_PASSWORD}
   autoconfigure:
     exclude:
       - org.springframework.ai.vectorstore.pgvector.autoconfigure.PgVectorStoreAutoConfiguration
@@ -16,7 +16,7 @@ campus:
   auth:
     jwt:
       issuer: ${AUTH_JWT_ISSUER:campusmind-auth}
-      secret: ${AUTH_JWT_SECRET:please-change-this-secret-to-at-least-32-bytes}
+      secret: ${AUTH_JWT_SECRET}
   search:
     ai-base-url: ${SEARCH_AI_BASE_URL:http://localhost:8089}
     default-top-k: 20

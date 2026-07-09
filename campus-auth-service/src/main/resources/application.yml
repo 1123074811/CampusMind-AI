@@ -6,14 +6,14 @@ spring:
     name: campus-auth-service
   datasource:
     url: ${AUTH_DB_URL:jdbc:mysql://localhost:3306/campusmind?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai}
-    username: ${AUTH_DB_USERNAME:campusmind}
-    password: ${AUTH_DB_PASSWORD:campusmind}
+    username: ${AUTH_DB_USERNAME}
+    password: ${AUTH_DB_PASSWORD}
 
 campus:
   auth:
     jwt:
       issuer: ${AUTH_JWT_ISSUER:campusmind-auth}
-      secret: ${AUTH_JWT_SECRET:please-change-this-secret-to-at-least-32-bytes}
+      secret: ${AUTH_JWT_SECRET}
       access-token-ttl-minutes: ${AUTH_JWT_ACCESS_TTL_MINUTES:120}
 
 management:

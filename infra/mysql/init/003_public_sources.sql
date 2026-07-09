@@ -2,6 +2,10 @@ SET NAMES utf8mb4;
 
 USE campusmind;
 
+DELETE FROM crawl_task WHERE source_id BETWEEN 9411 AND 9417;
+DELETE FROM web_crawl_item WHERE source_id BETWEEN 9411 AND 9417;
+DELETE FROM information_item WHERE source_id BETWEEN 9411 AND 9417;
+
 DELETE FROM data_source
 WHERE id BETWEEN 9411 AND 9417
    OR base_url IN (

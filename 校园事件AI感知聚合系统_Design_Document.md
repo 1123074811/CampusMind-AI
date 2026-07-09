@@ -1037,3 +1037,322 @@ campus-ai-agent-system
 ### 7.5 结论
 
 本系统应以“合规采集、可追溯原文、AI 结构化处理、人工纠错闭环”为核心设计原则。技术上以 Spring Boot 3 承载业务服务，以 Spring AI 统一模型调用、结构化输出、向量检索和 RAG 问答，以 MySQL、MongoDB、Redis、Milvus/PGVector 形成多模型数据底座。对于雨课堂等无公开 API 的来源，必须坚持用户主动粘贴 JSON 或一次性 Cookie 授权方案，避免自动登录和长期保存敏感凭证。最终系统既要做到信息聚合及时，也要通过审核、溯源和反馈机制保证校园信息的可信度。
+
+# 附录 A. 信息集中站重构方案
+
+本附录用于补充当前设计文档的阶段性重构方向。原设计中的 AI Agent、语义检索、个性化推荐、审核纠错等能力仍作为后续演进参考；当前第一版优先建设“信息集中站”，目标是让用户不用分散访问多个网站，就能在一个入口及时看到多个公开信息来源的最新完整信息。
+
+## A.1 重构原因与当前偏差
+
+当前工程已经具备爬虫、事件、信息流、AI 抽取和后台审核等模块雏形，但与第一版产品目标存在以下偏差：
+
+| 偏差点 | 当前倾向 | 重构后第一版要求 |
+|---|---|---|
+| AI 介入时机 | 采集后较早转换为 AI 预测事件 | 先完整采集、完整入库、完整展示，AI 延后接入 |
+| 主数据模型 | 以 `campus_event` 事件为中心 | 以“信息条目”为中心，事件化能力后置 |
+| 用户展示 | 信息流展示摘要和事件字段 | 用户端按时间倒序展示最新完整信息入口 |
+| 原文追溯 | 后台已有部分采集详情，用户端不足 | 每条信息必须保留正文、来源、抓取时间、原网页链接和内容哈希 |
+| 后台定位 | 审核纠错后台占比较高 | 第一版改为数据源与采集监控后台 |
+| 数据源范围 | 设计包含网页、雨课堂、用户图片、AI 等多入口 | 第一版仅接入公开网页，限定新疆大学官网与新疆大学软件学院官网 |
+
+## A.2 第一版目标
+
+第一版不追求智能总结和复杂推荐，核心目标如下：
+
+1. 统一采集新疆大学官网与新疆大学软件学院官网的公开信息。
+2. 按可配置固定频率轮询数据源，默认每 1 小时采集一次。
+3. 将采集到的信息保存为可追溯的信息条目，包含标题、发布时间或抓取时间、正文、来源、原网页链接、内容哈希。
+4. 用户打开系统后，在用户端按时间倒序看到最新信息流。
+5. 默认接收全部信息，订阅能力保留但默认全选。
+6. 管理后台用于查看数据源状态、采集任务、失败原因和最近入库条目。
+7. 第一版不接入 AI 精简、不做外部通知、不做登录后来源、不做搜索、不处理附件。
+
+第一版成功标准：系统能及时获取多个公开来源的信息，并在一个入口按时间展示，用户不需要再去多个网站分别查找。
+
+## A.3 第一版范围
+
+### A.3.1 明确纳入
+
+| 能力 | 说明 |
+|---|---|
+| 公开网页采集 | 第一批仅支持新疆大学官网与新疆大学软件学院官网公开页面 |
+| 固定频率轮询 | 默认每 1 小时执行一次，可通过配置调整 |
+| 信息条目入库 | 保存标题、正文、来源、URL、时间、内容哈希、采集元数据 |
+| 时间倒序信息流 | 用户端首页按发布时间或抓取时间倒序展示 |
+| 原文查看 | 展示系统提取正文、来源信息、抓取时间、原网页链接 |
+| 用户阅读状态 | 每个用户独立维护 NEW / READ / ARCHIVED |
+| 后台采集监控 | 查看数据源、采集任务、失败原因、最近入库信息 |
+
+### A.3.2 明确暂不纳入
+
+| 暂不纳入项 | 原因 |
+|---|---|
+| AI Agent 精简提取 | 等网页、文件、文本三类信息获取稳定后再接入 |
+| 手机系统通知、短信、邮件、微信推送 | 第一版“推送”指用户打开系统即可看到最新信息流 |
+| 登录后来源、Cookie 来源、雨课堂来源 | 第一版只处理公开可访问网页 |
+| 搜索 | 第一版先验证集中展示和原文追溯闭环 |
+| 附件解析或下载 | 第一版暂不处理附件 |
+| 用户上传文件正文解析 | 第一版仅做后续设计预留，不承诺实现 |
+| 全量审核流程 | 公开官网来源直接展示，不把审核作为主流程 |
+
+## A.4 核心业务流程
+
+### A.4.1 公开网页采集到用户信息流
+
+```mermaid
+sequenceDiagram
+    participant Scheduler as 定时调度器
+    participant Crawler as 公开网页采集服务
+    participant Source as 官网公开页面
+    participant Store as 信息条目库
+    participant Feed as 用户信息流服务
+    participant App as 用户端
+    participant Admin as 管理后台
+
+    Scheduler->>Crawler: 按配置频率触发采集(默认1小时)
+    Crawler->>Source: 请求列表页和详情页
+    Source-->>Crawler: 返回公开HTML
+    Crawler->>Crawler: 解析标题、正文、发布时间、原文URL
+    Crawler->>Store: URL+标题去重并保存信息条目
+    Crawler->>Admin: 记录任务状态和失败原因
+    App->>Feed: 打开首页获取最新信息流
+    Feed->>Store: 查询ACTIVE/UPDATED信息条目
+    Store-->>Feed: 返回按时间倒序的信息
+    Feed-->>App: 展示最新信息入口
+```
+
+### A.4.2 原文查看流程
+
+```mermaid
+sequenceDiagram
+    participant App as 用户端
+    participant Feed as 信息流服务
+    participant Store as 信息条目库
+    participant Web as 原网页
+
+    App->>Feed: 查看信息条目详情
+    Feed->>Store: 查询条目正文、来源、抓取时间、URL、哈希
+    Store-->>Feed: 返回可追溯详情
+    Feed-->>App: 展示系统提取正文和原网页入口
+    App->>Web: 用户可选择打开原网页
+```
+
+若详情页正文解析失败，第一版不将该信息展示给用户，仅在后台展示失败记录、失败原因和原网页链接，等待后续修复解析规则或重试成功后再展示。
+
+## A.5 数据模型调整建议
+
+第一版建议新增或重命名面向“信息条目”的数据模型，避免过早把公开网页通知转换为事件。
+
+### A.5.1 `information_item` 信息条目表
+
+```sql
+CREATE TABLE information_item (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  source_id BIGINT NOT NULL COMMENT '数据源ID',
+  source_name VARCHAR(128) NOT NULL COMMENT '数据源名称',
+  source_url VARCHAR(1024) NOT NULL COMMENT '列表页或栏目URL',
+  item_url VARCHAR(1024) NOT NULL COMMENT '原网页详情URL',
+  title VARCHAR(512) NOT NULL COMMENT '信息标题',
+  publish_time DATETIME NULL COMMENT '页面发布时间，无法解析时为空',
+  fetched_at DATETIME NOT NULL COMMENT '抓取时间',
+  detail_content MEDIUMTEXT NOT NULL COMMENT '系统提取正文',
+  content_hash CHAR(64) NOT NULL COMMENT '正文内容哈希',
+  item_status VARCHAR(32) NOT NULL DEFAULT 'ACTIVE' COMMENT 'ACTIVE/UPDATED/OFFLINE/FAILED',
+  parse_status VARCHAR(32) NOT NULL COMMENT 'DETAIL_SUCCESS/PARSE_FAILED/DETAIL_FAILED',
+  parse_error VARCHAR(1024) NULL COMMENT '解析失败原因',
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY uk_information_item_url_title (item_url(512), title(191)),
+  KEY idx_information_item_time (publish_time, fetched_at),
+  KEY idx_information_item_source (source_id, fetched_at),
+  KEY idx_information_item_status (item_status)
+) COMMENT='信息集中站信息条目表';
+```
+
+去重规则：第一版使用 URL + 标题去重。同一 URL 与标题相同视为同一条信息；若正文内容哈希变化，则更新条目为 `UPDATED`，记录更新时间。第一版不做标题相似合并。
+
+全局状态建议：
+
+| 状态 | 含义 |
+|---|---|
+| ACTIVE | 当前可展示的信息 |
+| UPDATED | 已发生内容更新的信息 |
+| OFFLINE | 来源页面不可访问或信息被下线 |
+| FAILED | 采集或解析失败，仅后台可见 |
+
+### A.5.2 `user_information_state` 用户阅读状态表
+
+```sql
+CREATE TABLE user_information_state (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  user_id BIGINT NOT NULL,
+  item_id BIGINT NOT NULL,
+  read_status VARCHAR(32) NOT NULL DEFAULT 'NEW' COMMENT 'NEW/READ/ARCHIVED',
+  first_seen_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  read_at DATETIME NULL,
+  archived_at DATETIME NULL,
+  UNIQUE KEY uk_user_item_state (user_id, item_id),
+  KEY idx_user_read_status (user_id, read_status, first_seen_at)
+) COMMENT='用户信息条目阅读状态表';
+```
+
+`NEW / READ / ARCHIVED` 是用户级状态，不是信息条目的全局状态。默认用户接收全部信息，后续订阅能力可在该表或用户偏好表基础上扩展。
+
+### A.5.3 用户个人导入预留
+
+用户上传文件或粘贴文本第一版定位为“个人信息收藏”，仅自己可见，并标记为“个人导入”。文件解析能力暂不承诺实现，仅在接口和模型上预留：
+
+| 字段 | 说明 |
+|---|---|
+| `owner_user_id` | 个人导入归属用户 |
+| `import_type` | PDF/WORD/EXCEL/IMAGE/TEXT/LINK |
+| `original_file_id` | 原文件对象存储或文档库ID |
+| `plain_text` | 后续解析出的正文，可为空 |
+| `visibility` | PERSONAL/PUBLIC，第一版固定 PERSONAL |
+
+## A.6 接口调整建议
+
+### A.6.1 用户端信息流
+
+```http
+GET /api/v1/information/feed?cursor=2026-07-09T10:00:00&size=20
+```
+
+响应示例：
+
+```json
+{
+  "items": [
+    {
+      "id": 1001,
+      "title": "关于开展创新创业竞赛报名的通知",
+      "sourceName": "软件学院创新创业通知公告",
+      "publishTime": "2026-07-09T09:30:00",
+      "fetchedAt": "2026-07-09T10:00:03",
+      "readStatus": "NEW",
+      "itemStatus": "ACTIVE",
+      "preview": "为进一步提升学生创新创业能力，现组织开展...",
+      "originalUrl": "https://ss.xju.edu.cn/info/..."
+    }
+  ],
+  "nextCursor": "2026-07-09T09:30:00",
+  "hasMore": true
+}
+```
+
+### A.6.2 信息条目详情
+
+```http
+GET /api/v1/information/items/{id}
+```
+
+详情页必须返回：
+
+| 字段 | 说明 |
+|---|---|
+| `title` | 标题 |
+| `detailContent` | 系统提取正文 |
+| `sourceName` | 来源名称 |
+| `sourceUrl` | 来源栏目地址 |
+| `originalUrl` | 原网页详情地址 |
+| `publishTime` | 页面发布时间 |
+| `fetchedAt` | 抓取时间 |
+| `contentHash` | 内容哈希 |
+| `itemStatus` | 信息条目全局状态 |
+| `readStatus` | 当前用户阅读状态 |
+
+### A.6.3 用户阅读状态
+
+```http
+PUT /api/v1/information/items/{id}/read-status
+```
+
+请求示例：
+
+```json
+{
+  "readStatus": "READ"
+}
+```
+
+允许值：`NEW`、`READ`、`ARCHIVED`。
+
+### A.6.4 管理后台采集监控
+
+后台不以审核为主流程，第一版重点提供：
+
+| 接口 | 说明 |
+|---|---|
+| `GET /api/admin/sources` | 数据源列表、启用状态、最近采集时间 |
+| `POST /api/admin/sources/{id}/crawl` | 手动触发单个来源采集 |
+| `GET /api/admin/crawl-tasks` | 采集任务列表、状态、失败原因 |
+| `GET /api/admin/information/items` | 最近入库信息条目 |
+| `GET /api/admin/information/items/failed` | 解析失败或抓取失败条目 |
+
+## A.7 后续 AI 接入边界
+
+AI Agent 在第一版后接入，前提是系统已经能稳定获取以下三类内容：
+
+1. 公开网页正文。
+2. 用户粘贴的文本。
+3. 用户上传文件的可解析正文。
+
+AI 接入后的职责不是替代原文，而是在完整信息基础上生成“精简卡片”。用户默认先看到精简卡片，但每张卡片必须保留“查看原文”入口。AI 失败时展示“暂未生成摘要”，不得影响原文展示。
+
+### A.7.1 精简卡片通用字段
+
+| 字段 | 说明 |
+|---|---|
+| `summary` | 精简摘要 |
+| `keyDates` | 关键时间集合 |
+| `targetScope` | 面向对象 |
+| `requiredActions` | 用户需要执行的动作 |
+| `originalItemId` | 对应原始信息条目ID |
+| `originalUrl` | 原网页地址 |
+| `aiGeneratedAt` | AI 生成时间 |
+| `aiConfidence` | 置信度 |
+| `aiNotice` | 固定标注：AI 提取，仅供快速阅读 |
+
+### A.7.2 竞赛类必提字段
+
+竞赛类信息应提取以下字段，缺失时返回空值，不允许编造：
+
+| 字段 | 说明 |
+|---|---|
+| `registrationStartTime` | 报名开始时间 |
+| `registrationDeadline` | 报名截止时间 |
+| `eventDuration` | 比赛或活动持续时间 |
+| `requiredMaterials` | 所需材料 |
+| `registrationUrl` | 报名网址 |
+| `organizer` | 主办方/承办方 |
+| `targetScope` | 面向对象 |
+| `participationMethod` | 参赛方式 |
+| `teamRequirement` | 组队要求 |
+| `attachments` | 附件清单 |
+| `contactInfo` | 联系方式 |
+
+后续其他分类也应设计分类专属字段。例如考试类关注考试时间、地点、科目、准考要求；就业类关注岗位、投递截止、投递方式、招聘对象；讲座类关注时间、地点、主讲人、报名方式。
+
+## A.8 阶段路线图
+
+| 阶段 | 目标 | 主要交付 |
+|---|---|---|
+| R0 文档重构 | 明确第一版从 AI 事件系统调整为信息集中站 | 本附录、数据模型和接口调整建议 |
+| R1 信息条目模型 | 建立 information_item 与用户阅读状态 | 数据库迁移、领域模型、基础接口 |
+| R2 公开网页采集 | 稳定采集新疆大学官网与软件学院官网 | 定时采集、去重、更新检测、失败监控 |
+| R3 用户端信息流 | 用户打开系统即可看到最新信息 | 时间倒序列表、详情页、原网页入口、阅读状态 |
+| R4 管理后台监控 | 管理员维护数据源和采集质量 | 数据源列表、任务列表、失败条目、手动补采 |
+| R5 个人导入预留 | 为文件和文本统一获取做准备 | 个人导入接口设计、私有可见性模型 |
+| R6 AI 精简卡片 | 在原文获取稳定后接入智能体 | 分类专属字段提取、精简卡片、查看原文 |
+
+## A.9 第一版验收标准
+
+1. 系统默认每 1 小时采集一次第一批公开官网来源，频率可配置。
+2. 新增或更新的信息条目能进入统一信息流。
+3. 用户端按时间倒序展示所有可用信息，默认无需配置订阅。
+4. 每条信息详情能查看系统提取正文、来源、抓取时间、内容哈希和原网页链接。
+5. 同一 URL + 标题不会重复生成多条信息。
+6. 正文解析失败的信息不展示给用户，但后台能看到失败原因。
+7. 管理员能查看数据源状态、采集任务和最近入库信息。
+8. 第一版不依赖 AI 服务即可完整运行。
+9. 后续 AI 精简失败不会影响原文信息展示。

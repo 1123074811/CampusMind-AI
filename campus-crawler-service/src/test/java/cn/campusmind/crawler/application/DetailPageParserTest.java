@@ -15,12 +15,15 @@ class DetailPageParserTest {
                 {
                   "detail": {
                     "title": ".arc-tit h1",
-                    "content": "#vsb_content .v_news_content"
+                    "meta": ".arc-info",
+                    "content": "#vsb_content .v_news_content",
+                    "publishedAtRegex": "信息日期[:：]\\\\s*([0-9]{4}-[0-9]{2}-[0-9]{2}\\\\s+[0-9]{2}:[0-9]{2}:[0-9]{2})"
                   }
                 }
                 """);
         String html = """
                 <div class="arc-tit"><h1>新疆大学2026年度拟新增本科专业公示</h1></div>
+                <div class="arc-info">信息日期：2026-07-07 15:57:55</div>
                 <div id="vsb_content"><div class="v_news_content">
                   <p>根据自治区教育厅通知，学校组织专家组对申报专业进行评审。</p>
                 </div></div>
@@ -30,6 +33,7 @@ class DetailPageParserTest {
 
         assertThat(result.status()).isEqualTo("DETAIL_SUCCESS");
         assertThat(result.title()).isEqualTo("新疆大学2026年度拟新增本科专业公示");
+        assertThat(result.publishedAtText()).isEqualTo("2026-07-07 15:57:55");
         assertThat(result.content()).contains("学校组织专家组");
     }
 

@@ -2,9 +2,12 @@ SET NAMES utf8mb4;
 
 USE campusmind;
 
-DELETE FROM event_audit_log WHERE event_id BETWEEN 9101 AND 9110;
+DELETE FROM event_audit_log WHERE event_id BETWEEN 9101 AND 9110 OR operator_id = 9901;
 DELETE FROM import_task WHERE id BETWEEN 9601 AND 9604;
 DELETE FROM crawl_task WHERE id BETWEEN 9501 AND 9508;
+DELETE FROM crawl_task WHERE source_id BETWEEN 9401 AND 9404;
+DELETE FROM web_crawl_item WHERE source_id BETWEEN 9401 AND 9404;
+DELETE FROM information_item WHERE source_id BETWEEN 9401 AND 9404;
 DELETE FROM event_source_ref WHERE event_id BETWEEN 9101 AND 9110;
 DELETE FROM campus_event WHERE id BETWEEN 9101 AND 9110;
 DELETE FROM data_source WHERE id BETWEEN 9401 AND 9404;
@@ -14,8 +17,8 @@ DELETE FROM user WHERE id = 9901;
 INSERT INTO user (
   id, username, phone, password_hash, role, status
 ) VALUES (
-  9901, 'admin', '13800139901',
-  '$2a$10$zm4CQ9Xw4wrSUxQSHEXpqOoMkRTxUkOvDIax1HK3J6Sj3zTNxbEMS',
+  9901, '123456', '13800139901',
+  '$2a$10$zzzqLXxQyJmfa.JmtbSWzuaJwKaSFei/Nv2t9cT6oYw9wukVmakH2',
   'ADMIN', 1
 );
 

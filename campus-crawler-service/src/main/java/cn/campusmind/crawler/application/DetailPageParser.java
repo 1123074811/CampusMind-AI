@@ -5,6 +5,9 @@ import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
 import org.springframework.stereotype.Component;
 
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
 @Component
 public class DetailPageParser {
 
@@ -12,6 +15,7 @@ public class DetailPageParser {
         SelectorConfig.DetailSelector detailSelector = selectorConfig.getDetail();
         Document document = Jsoup.parse(html, url);
         String title = clean(firstText(document, detailSelector.getTitle()));
+        String publishedAtText = extractPublishedAtText(document, detailSelector);
         if (title.isBlank()) {
             title = clean(document.title());
         }
@@ -29,9 +33,22 @@ public class DetailPageParser {
             content = clean(firstText(document, "meta[name=description]"));
         }
         if (content.isBlank()) {
-            return new ParsedDetailPage(title, "", "PARSE_FAILED", "详情页正文选择器未匹配到内容");
+            return new ParsedDetailPage(title, "", publishedAtText, "PARSE_FAILED", "详情页正文选择器未匹配到内容");
         }
-        return new ParsedDetailPage(title, content, "DETAIL_SUCCESS", null);
+        return new ParsedDetailPage(title, content, publishedAtText, "DETAIL_SUCCESS", null);
+    }
+
+    private String extractPublishedAtText(Document document, SelectorConfig.DetailSelector detailSelector) {
+        String metaText = clean(firstText(document, detailSelector.getMeta()));
+        String regex = detailSelector.getPublishedAtRegex();
+        if (metaText.isBlank() || regex == null || regex.isBlank()) {
+            return "";
+        }
+        Matcher matcher = Pattern.compile(regex).matcher(metaText);
+        if (!matcher.find()) {
+            return "";
+        }
+        return clean(matcher.groupCount() >= 1 ? matcher.group(1) : matcher.group());
     }
 
     private String firstText(Document document, String selector) {
