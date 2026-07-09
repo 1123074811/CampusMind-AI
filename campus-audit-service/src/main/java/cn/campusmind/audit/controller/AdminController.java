@@ -9,6 +9,7 @@ import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -24,6 +25,15 @@ public class AdminController {
     @GetMapping("/dashboard")
     public ApiResponse<AdminDashboardResponse> dashboard() {
         return ApiResponse.ok(adminDashboardService.dashboard());
+    }
+
+    @GetMapping("/logs")
+    public ApiResponse<AdminAuditLogListResponse> logs(
+            @RequestParam(required = false) String action,
+            @RequestParam(required = false) Long operatorId,
+            @RequestParam(defaultValue = "50") int size
+    ) {
+        return ApiResponse.ok(adminDashboardService.auditLogs(action, operatorId, size));
     }
 
     @PutMapping("/events/{id}/review")

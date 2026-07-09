@@ -7,8 +7,8 @@ const emit = defineEmits<{
   authenticated: [session: AdminSession];
 }>();
 
-const username = ref('admin');
-const password = ref('');
+const username = ref('123456');
+const password = ref('123456');
 const loading = ref(false);
 const errorMessage = ref('');
 

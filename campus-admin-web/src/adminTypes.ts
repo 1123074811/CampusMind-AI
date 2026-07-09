@@ -1,4 +1,4 @@
-export type NavKey = 'review' | 'sources' | 'tasks';
+export type NavKey = 'review' | 'sources' | 'tasks' | 'users' | 'logs';
 
 export type ReviewStatus = 'AI_PUBLISHED' | 'CORRECTED' | 'REVIEWED' | 'REJECTED' | 'OFFLINE';
 export type EventType = 'NOTICE' | 'COURSE' | 'EXAM' | 'HOMEWORK' | 'ACTIVITY' | 'LECTURE' | 'COMPETITION' | 'SERVICE' | 'OTHER';
@@ -130,4 +130,35 @@ export interface AdminSession {
   expiresAt: string;
   user: AdminUser;
   demo?: boolean;
+}
+
+export interface AdminManagedUser {
+  id: number;
+  username: string;
+  phone: string | null;
+  role: 'ADMIN' | 'OPERATOR' | 'STUDENT';
+  status: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AdminUserListResponse {
+  items: AdminManagedUser[];
+  total: number;
+}
+
+export interface AdminAuditLog {
+  id: number;
+  eventId: number;
+  operatorId: number;
+  action: string;
+  beforeSnapshot: string | null;
+  afterSnapshot: string | null;
+  comment: string | null;
+  createdAt: string;
+}
+
+export interface AdminAuditLogListResponse {
+  items: AdminAuditLog[];
+  total: number;
 }

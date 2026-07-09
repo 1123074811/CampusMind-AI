@@ -137,6 +137,7 @@ class AdminControllerTest {
         insertSourceRef(1001L, 1L);
         insertSourceRef(1002L, 2L);
         insertSourceRef(1003L, 3L);
+        insertAuditLog(1002L, 9901L, "CORRECT", "修正考试地点");
     }
 
     @Test
@@ -171,6 +172,15 @@ class AdminControllerTest {
         mockMvc.perform(get("/api/admin/dashboard"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.events[?(@.id==1001)].status").value("REVIEWED"));
+    }
+
+    @Test
+    void logsReturnsAuditLogList() throws Exception {
+        mockMvc.perform(get("/api/admin/logs?action=CORRECT"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.total").value(1))
+                .andExpect(jsonPath("$.data.items[0].action").value("CORRECT"))
+                .andExpect(jsonPath("$.data.items[0].operatorId").value(9901));
     }
 
     private void insertEvent(Long id, String title, String type, String sourceType, String status, String confidence,
@@ -260,6 +270,20 @@ class AdminControllerTest {
             statement.setString(3, "raw-" + eventId);
             statement.setString(4, "source-" + eventId);
             statement.setString(5, "hash-" + eventId);
+            statement.executeUpdate();
+        }
+    }
+
+    private void insertAuditLog(Long eventId, Long operatorId, String action, String comment) throws Exception {
+        try (Connection connection = dataSource.getConnection();
+             PreparedStatement statement = connection.prepareStatement("""
+                     INSERT INTO event_audit_log (event_id, operator_id, action, before_snapshot, after_snapshot, comment)
+                     VALUES (?, ?, ?, '{"status":"AI_PUBLISHED"}', '{"status":"CORRECTED"}', ?)
+                     """)) {
+            statement.setLong(1, eventId);
+            statement.setLong(2, operatorId);
+            statement.setString(3, action);
+            statement.setString(4, comment);
             statement.executeUpdate();
         }
     }

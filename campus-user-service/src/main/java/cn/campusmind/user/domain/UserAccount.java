@@ -17,6 +17,9 @@ public class UserAccount {
 
     private String phone;
 
+    @TableField("password_hash")
+    private String passwordHash;
+
     private String role;
 
     private Integer status;
@@ -39,6 +42,10 @@ public class UserAccount {
         return phone;
     }
 
+    public String getPasswordHash() {
+        return passwordHash;
+    }
+
     public String getRole() {
         return role;
     }
@@ -53,5 +60,25 @@ public class UserAccount {
 
     public LocalDateTime getUpdatedAt() {
         return updatedAt;
+    }
+
+    public void setUsername(String username) {
+        this.username = username;
+    }
+
+    public void setPhone(String phone) {
+        this.phone = phone;
+    }
+
+    public void setPasswordHash(String passwordHash) {
+        this.passwordHash = passwordHash;
+    }
+
+    public void setRole(String role) {
+        this.role = role;
+    }
+
+    public void setStatus(Integer status) {
+        this.status = status;
     }
 }

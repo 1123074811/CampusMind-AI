@@ -1,16 +1,25 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
 import { fetchDashboard, reviewEvent } from './api/dashboard';
+import {
+  createAdminUser,
+  fetchAdminLogs,
+  fetchAdminUsers,
+  resetAdminUserPassword,
+  updateAdminUserStatus
+} from './api/admin';
 import { clearSession, loadSession } from './api/auth';
 import { crawlPublicSources, crawlSource, fetchCrawlItems } from './api/crawler';
 import AdminSidebar from './components/AdminSidebar.vue';
 import AdminTopbar from './components/AdminTopbar.vue';
 import MetricsBand from './components/MetricsBand.vue';
-import type { AdminSession, CrawlItem, CrawlTask, DashboardMetrics, DataSource, NavItem, NavKey, ReviewEvent } from './adminTypes';
+import type { AdminAuditLog, AdminManagedUser, AdminSession, CrawlItem, CrawlTask, DashboardMetrics, DataSource, NavItem, NavKey, ReviewEvent } from './adminTypes';
 import LoginView from './views/LoginView.vue';
 import ReviewView from './views/ReviewView.vue';
 import SourcesView from './views/SourcesView.vue';
 import TasksView from './views/TasksView.vue';
+import UsersView from './views/UsersView.vue';
+import LogsView from './views/LogsView.vue';
 
 const session = ref<AdminSession | null>(loadSession());
 const activeNav = ref<NavKey>('review');
@@ -19,6 +28,8 @@ const reviewEvents = ref<ReviewEvent[]>([]);
 const dataSources = ref<DataSource[]>([]);
 const crawlTasks = ref<CrawlTask[]>([]);
 const crawlItems = ref<CrawlItem[]>([]);
+const adminUsers = ref<AdminManagedUser[]>([]);
+const auditLogs = ref<AdminAuditLog[]>([]);
 const loading = ref(false);
 const crawlerRunning = ref(false);
 const crawlingSourceId = ref<number | null>(null);
@@ -46,7 +57,9 @@ const avgConfidence = computed(() => {
 const navItems = computed<NavItem[]>(() => [
   { key: 'review', label: '校园事件', count: reviewEvents.value.length },
   { key: 'sources', label: '数据源', count: visibleDataSources.value.length },
-  { key: 'tasks', label: '采集任务', count: visibleCrawlTasks.value.length }
+  { key: 'tasks', label: '采集任务', count: visibleCrawlTasks.value.length },
+  { key: 'users', label: '用户管理', count: adminUsers.value.length },
+  { key: 'logs', label: '日志管理', count: auditLogs.value.length }
 ]);
 
 const validSourceIds = computed(() => new Set(visibleDataSources.value.map((source) => source.id)));
@@ -98,6 +111,16 @@ async function loadDashboard() {
     } catch (error) {
       crawlItems.value = [];
     }
+    try {
+      adminUsers.value = (await fetchAdminUsers(session.value)).items;
+    } catch (error) {
+      adminUsers.value = [];
+    }
+    try {
+      auditLogs.value = (await fetchAdminLogs(session.value)).items;
+    } catch (error) {
+      auditLogs.value = [];
+    }
     selectedId.value = dashboard.events[0]?.id ?? selectedId.value;
     apiMode.value = 'live';
     apiMessage.value = '已连接后端数据库';
@@ -108,8 +131,63 @@ async function loadDashboard() {
     dataSources.value = [];
     crawlTasks.value = [];
     crawlItems.value = [];
+    adminUsers.value = [];
+    auditLogs.value = [];
   } finally {
     loading.value = false;
+  }
+}
+
+async function loadUsers() {
+  if (!session.value) {
+    return;
+  }
+  try {
+    adminUsers.value = (await fetchAdminUsers(session.value)).items;
+    apiMessage.value = '用户列表已刷新';
+  } catch (error) {
+    apiMessage.value = error instanceof Error ? error.message : '用户列表加载失败';
+  }
+}
+
+async function loadLogs(action = 'ALL') {
+  if (!session.value) {
+    return;
+  }
+  try {
+    auditLogs.value = (await fetchAdminLogs(session.value, action)).items;
+    apiMessage.value = '审计日志已刷新';
+  } catch (error) {
+    apiMessage.value = error instanceof Error ? error.message : '审计日志加载失败';
+  }
+}
+
+async function createUser(payload: { username: string; phone: string; role: string; password: string }) {
+  try {
+    await createAdminUser(session.value, payload);
+    apiMessage.value = `${payload.username} 已创建`;
+    await loadUsers();
+  } catch (error) {
+    apiMessage.value = error instanceof Error ? error.message : '创建用户失败';
+  }
+}
+
+async function toggleUser(user: AdminManagedUser) {
+  try {
+    await updateAdminUserStatus(session.value, user.id, user.status === 1 ? 0 : 1);
+    apiMessage.value = `${user.username} 状态已更新`;
+    await loadUsers();
+  } catch (error) {
+    apiMessage.value = error instanceof Error ? error.message : '用户状态更新失败';
+  }
+}
+
+async function resetUserPassword(user: AdminManagedUser) {
+  try {
+    await resetAdminUserPassword(session.value, user.id);
+    apiMessage.value = `${user.username} 密码已重置为 123456`;
+  } catch (error) {
+    apiMessage.value = error instanceof Error ? error.message : '重置密码失败';
   }
 }
 
@@ -230,6 +308,8 @@ function logout() {
   dataSources.value = [];
   crawlTasks.value = [];
   crawlItems.value = [];
+  adminUsers.value = [];
+  auditLogs.value = [];
 }
 
 onMounted(() => {
@@ -279,6 +359,20 @@ onMounted(() => {
         :crawl-items="crawlItems"
         :crawler-running="crawlerRunning"
         @run-now="runCrawlerNow"
+      />
+      <UsersView
+        v-else-if="activeNav === 'users'"
+        :users="adminUsers"
+        :loading="loading"
+        @refresh="loadUsers"
+        @create="createUser"
+        @toggle="toggleUser"
+        @reset-password="resetUserPassword"
+      />
+      <LogsView
+        v-else-if="activeNav === 'logs'"
+        :logs="auditLogs"
+        @refresh="loadLogs"
       />
     </section>
   </main>
@@ -635,6 +729,11 @@ h3 {
   color: var(--ink);
 }
 
+.filters.vertical {
+  display: grid;
+  align-items: stretch;
+}
+
 .filters input {
   width: 220px;
 }
@@ -769,6 +868,12 @@ h3 {
 .stacked-list dd {
   margin: 0;
   font-weight: 800;
+}
+
+.mini-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .summary-text {

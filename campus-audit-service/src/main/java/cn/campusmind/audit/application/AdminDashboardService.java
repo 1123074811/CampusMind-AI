@@ -1,5 +1,7 @@
 package cn.campusmind.audit.application;
 
+import cn.campusmind.audit.controller.AdminAuditLogListResponse;
+import cn.campusmind.audit.controller.AdminAuditLogResponse;
 import cn.campusmind.audit.controller.AdminDashboardResponse;
 import cn.campusmind.audit.controller.AdminDataSourceResponse;
 import cn.campusmind.audit.controller.AdminEventResponse;
@@ -127,6 +129,21 @@ public class AdminDashboardService {
         return toEvent(event, Map.of(), null);
     }
 
+    @Transactional(readOnly = true)
+    public AdminAuditLogListResponse auditLogs(String action, Long operatorId, int size) {
+        int safeSize = Math.min(Math.max(size, 1), 100);
+        LambdaQueryWrapper<EventAuditLog> query = new LambdaQueryWrapper<EventAuditLog>()
+                .eq(StringUtils.hasText(action), EventAuditLog::getAction, action)
+                .eq(operatorId != null, EventAuditLog::getOperatorId, operatorId)
+                .orderByDesc(EventAuditLog::getCreatedAt)
+                .orderByDesc(EventAuditLog::getId);
+        Page<EventAuditLog> page = eventAuditLogMapper.selectPage(Page.of(1, safeSize), query);
+        return new AdminAuditLogListResponse(
+                page.getRecords().stream().map(this::toAuditLog).toList(),
+                page.getTotal()
+        );
+    }
+
     private MetricsResponse buildMetrics(List<CampusEvent> events, List<DataSource> sources, List<CrawlTask> tasks) {
         long reviewCount = events.stream().filter(event -> REVIEW_STATUSES.contains(event.getStatus())).count();
         long urgentCount = events.stream()
@@ -175,6 +192,19 @@ public class AdminDashboardService {
                 event.getSummary(),
                 riskText(event),
                 readStringList(event.getTags())
+        );
+    }
+
+    private AdminAuditLogResponse toAuditLog(EventAuditLog log) {
+        return new AdminAuditLogResponse(
+                log.getId(),
+                log.getEventId(),
+                log.getOperatorId(),
+                log.getAction(),
+                log.getBeforeSnapshot(),
+                log.getAfterSnapshot(),
+                log.getComment(),
+                log.getCreatedAt()
         );
     }
 
