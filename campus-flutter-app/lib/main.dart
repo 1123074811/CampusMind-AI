@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -229,6 +231,7 @@ class CampusShell extends StatefulWidget {
 
 class _CampusShellState extends State<CampusShell> {
   final List<InformationItem> _items = [];
+  Timer? _refreshTimer;
   int _tabIndex = 0;
   bool _loading = true;
   String? _errorMessage;
@@ -238,13 +241,25 @@ class _CampusShellState extends State<CampusShell> {
   void initState() {
     super.initState();
     _refresh();
+    _refreshTimer = Timer.periodic(
+      const Duration(seconds: 5),
+      (_) => _refresh(silent: true),
+    );
   }
 
-  Future<void> _refresh() async {
-    setState(() {
-      _loading = true;
-      _errorMessage = null;
-    });
+  @override
+  void dispose() {
+    _refreshTimer?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _refresh({bool silent = false}) async {
+    if (!silent) {
+      setState(() {
+        _loading = true;
+        _errorMessage = null;
+      });
+    }
     try {
       final items = await widget.api.fetchInformationFeed(widget.session);
       if (!mounted) return;
@@ -256,6 +271,7 @@ class _CampusShellState extends State<CampusShell> {
       });
     } catch (error) {
       if (!mounted) return;
+      if (silent) return;
       setState(() {
         _loading = false;
         _errorMessage = error.toString();
@@ -298,8 +314,8 @@ class _CampusShellState extends State<CampusShell> {
     return switch (_filter) {
       FeedFilter.unread =>
         _items.where((item) => item.readStatus == 'NEW').toList(),
-      FeedFilter.archived =>
-        _items.where((item) => item.readStatus == 'ARCHIVED').toList(),
+      FeedFilter.favorites =>
+        _items.where((item) => item.readStatus == 'FAVORITED').toList(),
       FeedFilter.all => List.of(_items),
     };
   }
@@ -425,12 +441,12 @@ class HomeTab extends StatelessWidget {
                 onTap: () => onFilterChanged(FeedFilter.unread),
               ),
               _ActionTile(
-                icon: Icons.inventory_2_outlined,
-                title: '归档',
+                icon: Icons.bookmark_outline,
+                title: '收藏',
                 value:
-                    '${allItems.where((item) => item.readStatus == 'ARCHIVED').length}',
+                    '${allItems.where((item) => item.readStatus == 'FAVORITED').length}',
                 color: const Color(0xFFECE9F7),
-                onTap: () => onFilterChanged(FeedFilter.archived),
+                onTap: () => onFilterChanged(FeedFilter.favorites),
               ),
               _ActionTile(
                 icon: Icons.travel_explore,
@@ -576,7 +592,7 @@ class ProfileTab extends StatelessWidget {
                           ),
                           const SizedBox(height: 2),
                           Text(
-                            session.user.role,
+                            _roleLabel(session.user.role),
                             style: Theme.of(context)
                                 .textTheme
                                 .bodyMedium
@@ -661,8 +677,14 @@ class _InformationDetailPageState extends State<InformationDetailPage> {
       _errorMessage = null;
     });
     try {
-      final item = await widget.api
+      var item = await widget.api
           .fetchInformationDetail(widget.seedItem.id, widget.session);
+      if (item.readStatus == 'NEW') {
+        try {
+          item = await widget.api.updateReadStatus(
+              item.id, 'READ', widget.session);
+        } catch (_) {}
+      }
       if (!mounted) return;
       setState(() {
         _item = item;
@@ -688,7 +710,7 @@ class _InformationDetailPageState extends State<InformationDetailPage> {
       setState(() => _item = item);
       widget.onItemChanged(item);
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(status == 'ARCHIVED' ? '已归档' : '已标记为已读')),
+        SnackBar(content: Text(status == 'FAVORITED' ? '已收藏' : '已取消收藏')),
       );
     } catch (error) {
       if (!mounted) return;
@@ -749,7 +771,8 @@ class _InformationDetailPageState extends State<InformationDetailPage> {
                 _MetaChip(icon: Icons.source_outlined, text: _item.sourceName),
                 _MetaChip(icon: Icons.schedule, text: _item.displayTime),
                 _MetaChip(
-                    icon: Icons.verified_outlined, text: _item.itemStatus),
+                    icon: Icons.verified_outlined,
+                    text: _itemStatusLabel(_item.itemStatus)),
               ],
             ),
             const SizedBox(height: 18),
@@ -766,16 +789,15 @@ class _InformationDetailPageState extends State<InformationDetailPage> {
               ),
             ),
             const SizedBox(height: 14),
-            FilledButton.icon(
-              onPressed: _updating ? null : () => _changeStatus('READ'),
-              icon: const Icon(Icons.done_all),
-              label: const Text('标记已读'),
-            ),
-            const SizedBox(height: 10),
             OutlinedButton.icon(
-              onPressed: _updating ? null : () => _changeStatus('ARCHIVED'),
-              icon: const Icon(Icons.archive_outlined),
-              label: const Text('归档'),
+              onPressed: _updating
+                  ? null
+                  : () => _changeStatus(
+                      _item.readStatus == 'FAVORITED' ? 'READ' : 'FAVORITED'),
+              icon: Icon(_item.readStatus == 'FAVORITED'
+                  ? Icons.bookmark
+                  : Icons.bookmark_outline),
+              label: Text(_item.readStatus == 'FAVORITED' ? '取消收藏' : '收藏'),
             ),
             const SizedBox(height: 10),
             OutlinedButton.icon(
@@ -798,7 +820,7 @@ class _InformationDetailPageState extends State<InformationDetailPage> {
   }
 }
 
-enum FeedFilter { all, unread, archived }
+enum FeedFilter { all, unread, favorites }
 
 class _BrandMark extends StatelessWidget {
   const _BrandMark();
@@ -977,9 +999,9 @@ class _FilterBar extends StatelessWidget {
             icon: Icon(Icons.markunread_outlined),
             label: Text('未读')),
         ButtonSegment(
-            value: FeedFilter.archived,
-            icon: Icon(Icons.archive_outlined),
-            label: Text('归档')),
+            value: FeedFilter.favorites,
+            icon: Icon(Icons.bookmark_outline),
+            label: Text('收藏')),
       ],
     );
   }
@@ -1183,7 +1205,7 @@ class _StatusBadge extends StatelessWidget {
   Widget build(BuildContext context) {
     final color = switch (text) {
       'NEW' => const Color(0xFFE8F3F6),
-      'ARCHIVED' => const Color(0xFFECE9F7),
+      'FAVORITED' => const Color(0xFFECE9F7),
       _ => const Color(0xFFEAF0E2),
     };
     return Container(
@@ -1193,7 +1215,7 @@ class _StatusBadge extends StatelessWidget {
         borderRadius: BorderRadius.circular(8),
       ),
       child: Text(
-        text,
+        _readStatusLabel(text),
         style: Theme.of(context).textTheme.labelSmall?.copyWith(
               color: const Color(0xFF17212B),
               fontWeight: FontWeight.w800,
@@ -1339,4 +1361,22 @@ String _formatDateTime(DateTime value) {
       '${value.day.toString().padLeft(2, '0')} '
       '${value.hour.toString().padLeft(2, '0')}:'
       '${value.minute.toString().padLeft(2, '0')}';
+}
+
+String _readStatusLabel(String status) {
+  return {'NEW': '未读', 'READ': '已读', 'FAVORITED': '已收藏'}[status] ?? status;
+}
+
+String _roleLabel(String role) {
+  return {'ADMIN': '管理员', 'OPERATOR': '运营人员', 'STUDENT': '学生'}[role] ?? role;
+}
+
+String _itemStatusLabel(String status) {
+  return {
+        'ACTIVE': '正常展示',
+        'UPDATED': '已更新',
+        'OFFLINE': '已下线',
+        'FAILED': '处理失败'
+      }[status] ??
+      status;
 }

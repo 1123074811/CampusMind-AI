@@ -6,7 +6,8 @@ import 'package:campus_flutter_app/main.dart';
 
 void main() {
   testWidgets('renders login and information home flow', (tester) async {
-    await tester.pumpWidget(CampusMindApp(api: _FakeCampusApi()));
+    final api = _FakeCampusApi();
+    await tester.pumpWidget(CampusMindApp(api: api));
 
     expect(find.text('登录'), findsOneWidget);
 
@@ -26,10 +27,17 @@ void main() {
 
     expect(find.text('信息详情'), findsOneWidget);
     expect(find.textContaining('报名时间'), findsOneWidget);
+    expect(api.statusUpdates, contains('READ'));
+    expect(find.text('标记已读'), findsNothing);
+
+    await tester.tap(find.text('收藏'));
+    await tester.pumpAndSettle();
+    expect(find.text('取消收藏'), findsOneWidget);
   });
 }
 
 class _FakeCampusApi implements CampusApi {
+  final statusUpdates = <String>[];
   final _item = InformationItem(
     id: 1,
     title: '创新创业竞赛报名开放',
@@ -71,6 +79,7 @@ class _FakeCampusApi implements CampusApi {
     String readStatus,
     LoginSession session,
   ) async {
+    statusUpdates.add(readStatus);
     return _item.copyWith(readStatus: readStatus);
   }
 }

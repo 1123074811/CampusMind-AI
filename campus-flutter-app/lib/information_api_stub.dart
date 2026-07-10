@@ -68,6 +68,14 @@ class InformationItem {
 
   String get displayTime {
     final value = publishTime ?? fetchedAt;
+    if (publishTime != null &&
+        value.hour == 0 &&
+        value.minute == 0 &&
+        value.second == 0) {
+      return '${value.year.toString().padLeft(4, '0')}-'
+          '${value.month.toString().padLeft(2, '0')}-'
+          '${value.day.toString().padLeft(2, '0')}';
+    }
     return '${value.year.toString().padLeft(4, '0')}-'
         '${value.month.toString().padLeft(2, '0')}-'
         '${value.day.toString().padLeft(2, '0')} '
