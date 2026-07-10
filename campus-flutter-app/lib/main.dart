@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import 'information_api.dart';
 
@@ -730,6 +731,20 @@ class _InformationDetailPageState extends State<InformationDetailPage> {
     );
   }
 
+  Future<void> _openOriginalUrl() async {
+    final uri = Uri.tryParse(_item.originalUrl);
+    if (uri == null || !await launchUrl(uri, mode: LaunchMode.externalApplication)) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('无法打开原文链接')));
+    }
+  }
+
+  String _cardValue(String key) {
+    final value = _item.aiCard[key];
+    if (value is List) return value.where((item) => item != null).join('、');
+    return value?.toString() ?? '';
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -776,11 +791,40 @@ class _InformationDetailPageState extends State<InformationDetailPage> {
               ],
             ),
             const SizedBox(height: 18),
+            if (_item.aiCard.isNotEmpty) ...[
+              Text('智能精简', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800)),
+              const SizedBox(height: 8),
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      SelectableText(_item.preview.isEmpty ? '暂未生成摘要' : _item.preview,
+                        style: Theme.of(context).textTheme.bodyLarge?.copyWith(height: 1.65)),
+                      for (final field in const [
+                        ('报名开始', 'registrationStartTime'), ('报名截止', 'registrationDeadline'),
+                        ('持续时间', 'eventDuration'), ('所需材料', 'requiredMaterials'),
+                        ('参与方式', 'participationMethod'), ('组队要求', 'teamRequirement')
+                      ])
+                        if (_cardValue(field.$2).isNotEmpty)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 10),
+                            child: Text('${field.$1}：${_cardValue(field.$2)}'),
+                          ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 14),
+              Text('完整原文', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800)),
+              const SizedBox(height: 8),
+            ],
             Card(
               child: Padding(
                 padding: const EdgeInsets.all(16),
                 child: SelectableText(
-                  _item.preview.isEmpty ? '暂无正文内容' : _item.preview,
+                  _item.detailContent.isEmpty ? (_item.preview.isEmpty ? '暂无正文内容' : _item.preview) : _item.detailContent,
                   style: Theme.of(context).textTheme.bodyLarge?.copyWith(
                         height: 1.72,
                         color: const Color(0xFF27313B),
@@ -798,6 +842,12 @@ class _InformationDetailPageState extends State<InformationDetailPage> {
                   ? Icons.bookmark
                   : Icons.bookmark_outline),
               label: Text(_item.readStatus == 'FAVORITED' ? '取消收藏' : '收藏'),
+            ),
+            const SizedBox(height: 10),
+            OutlinedButton.icon(
+              onPressed: _item.originalUrl.isEmpty ? null : _openOriginalUrl,
+              icon: const Icon(Icons.open_in_new),
+              label: const Text('查看原文'),
             ),
             const SizedBox(height: 10),
             OutlinedButton.icon(

@@ -49,10 +49,14 @@ class InformationItem {
     required this.title,
     required this.sourceName,
     required this.preview,
+    this.detailContent = '',
     required this.originalUrl,
     required this.readStatus,
     required this.itemStatus,
     required this.fetchedAt,
+    this.aiStatus = 'PENDING',
+    this.eventType = 'OTHER',
+    this.aiCard = const {},
     this.publishTime,
   });
 
@@ -60,10 +64,14 @@ class InformationItem {
   final String title;
   final String sourceName;
   final String preview;
+  final String detailContent;
   final String originalUrl;
   final String readStatus;
   final String itemStatus;
   final DateTime fetchedAt;
+  final String aiStatus;
+  final String eventType;
+  final Map<String, Object?> aiCard;
   final DateTime? publishTime;
 
   String get displayTime {
@@ -89,10 +97,14 @@ class InformationItem {
       title: json['title'] as String? ?? '未命名信息',
       sourceName: json['sourceName'] as String? ?? '未知来源',
       preview: (json['preview'] ?? json['detailContent']) as String? ?? '',
+      detailContent: json['detailContent'] as String? ?? '',
       originalUrl: (json['originalUrl'] ?? json['itemUrl']) as String? ?? '',
       readStatus: json['readStatus'] as String? ?? 'NEW',
       itemStatus: json['itemStatus'] as String? ?? 'ACTIVE',
       fetchedAt: DateTime.parse(json['fetchedAt'] as String),
+      aiStatus: json['aiStatus'] as String? ?? 'PENDING',
+      eventType: json['eventType'] as String? ?? 'OTHER',
+      aiCard: (json['aiCard'] as Map?)?.cast<String, Object?>() ?? const {},
       publishTime: json['publishTime'] == null
           ? null
           : DateTime.tryParse(json['publishTime'] as String),
@@ -101,6 +113,7 @@ class InformationItem {
 
   InformationItem copyWith({
     String? preview,
+    String? detailContent,
     String? readStatus,
     String? itemStatus,
   }) {
@@ -109,10 +122,14 @@ class InformationItem {
       title: title,
       sourceName: sourceName,
       preview: preview ?? this.preview,
+      detailContent: detailContent ?? this.detailContent,
       originalUrl: originalUrl,
       readStatus: readStatus ?? this.readStatus,
       itemStatus: itemStatus ?? this.itemStatus,
       fetchedAt: fetchedAt,
+      aiStatus: aiStatus,
+      eventType: eventType,
+      aiCard: aiCard,
       publishTime: publishTime,
     );
   }

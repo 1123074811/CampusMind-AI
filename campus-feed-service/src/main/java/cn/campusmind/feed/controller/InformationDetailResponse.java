@@ -1,6 +1,7 @@
 package cn.campusmind.feed.controller;
 
 import java.time.LocalDateTime;
+import java.util.Map;
 
 public record InformationDetailResponse(
         Long id,
@@ -15,6 +16,12 @@ public record InformationDetailResponse(
         String itemStatus,
         String readStatus,
         LocalDateTime createdAt,
-        LocalDateTime updatedAt
+        LocalDateTime updatedAt,
+        String aiStatus,
+        String eventType,
+        String aiSummary,
+        Double aiConfidence,
+        Boolean aiNeedReview,
+        Map<String, Object> aiCard
 ) {
 }

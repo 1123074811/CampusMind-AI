@@ -10,6 +10,8 @@ import cn.campusmind.feed.infrastructure.mapper.InformationItemMapper;
 import cn.campusmind.feed.infrastructure.mapper.UserInformationStateMapper;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -27,14 +29,18 @@ public class InformationService {
     private static final Set<String> VISIBLE_ITEM_STATUS = Set.of("ACTIVE", "UPDATED");
     private static final Set<String> READ_STATUSES = Set.of("NEW", "READ", "FAVORITED", "ARCHIVED");
     private static final int PREVIEW_LENGTH = 160;
+    private static final TypeReference<Map<String, Object>> AI_CARD = new TypeReference<>() { };
 
     private final InformationItemMapper informationItemMapper;
     private final UserInformationStateMapper userInformationStateMapper;
+    private final ObjectMapper objectMapper;
 
     public InformationService(InformationItemMapper informationItemMapper,
-                              UserInformationStateMapper userInformationStateMapper) {
+                              UserInformationStateMapper userInformationStateMapper,
+                              ObjectMapper objectMapper) {
         this.informationItemMapper = informationItemMapper;
         this.userInformationStateMapper = userInformationStateMapper;
+        this.objectMapper = objectMapper;
     }
 
     @Transactional(readOnly = true)
@@ -81,7 +87,13 @@ public class InformationService {
                 item.getItemStatus(),
                 readStatus,
                 item.getCreatedAt(),
-                item.getUpdatedAt()
+                item.getUpdatedAt(),
+                item.getAiStatus(),
+                item.getAiEventType(),
+                item.getAiSummary(),
+                item.getAiConfidence(),
+                item.getAiNeedReview(),
+                aiCard(item)
         );
     }
 
@@ -161,9 +173,26 @@ public class InformationService {
                 item.getFetchedAt(),
                 readStatus,
                 item.getItemStatus(),
-                preview(item.getDetailContent()),
-                item.getItemUrl()
+                preview(StringUtils.hasText(item.getAiSummary()) ? item.getAiSummary() : item.getDetailContent()),
+                item.getItemUrl(),
+                item.getAiStatus(),
+                item.getAiEventType(),
+                item.getAiSummary(),
+                item.getAiConfidence(),
+                item.getAiNeedReview(),
+                aiCard(item)
         );
+    }
+
+    private Map<String, Object> aiCard(InformationItem item) {
+        if (!StringUtils.hasText(item.getAiCardJson())) {
+            return Map.of();
+        }
+        try {
+            return objectMapper.readValue(item.getAiCardJson(), AI_CARD);
+        } catch (Exception ignored) {
+            return Map.of();
+        }
     }
 
     private boolean isVisible(InformationItem item) {

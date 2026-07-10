@@ -49,6 +49,12 @@ class InformationControllerTest {
                       item_status VARCHAR(32) NOT NULL,
                       parse_status VARCHAR(32) NOT NULL,
                       parse_error VARCHAR(1024),
+                      ai_status VARCHAR(32) DEFAULT 'PENDING',
+                      ai_event_type VARCHAR(32),
+                      ai_summary CLOB,
+                      ai_card_json CLOB,
+                      ai_confidence DECIMAL(5,4),
+                      ai_need_review BOOLEAN DEFAULT FALSE,
                       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                       updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                     )
@@ -83,6 +89,7 @@ class InformationControllerTest {
                 .andExpect(jsonPath("$.data.items[0].title").value("创新创业竞赛报名开放"))
                 .andExpect(jsonPath("$.data.items[0].readStatus").value("NEW"))
                 .andExpect(jsonPath("$.data.items[0].originalUrl").value("https://ss.xju.edu.cn/info/1.htm"))
+                .andExpect(jsonPath("$.data.items[0].aiStatus").value("PENDING"))
                 .andExpect(jsonPath("$.data.hasMore").value(false));
     }
 

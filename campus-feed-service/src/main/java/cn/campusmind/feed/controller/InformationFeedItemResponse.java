@@ -1,6 +1,7 @@
 package cn.campusmind.feed.controller;
 
 import java.time.LocalDateTime;
+import java.util.Map;
 
 public record InformationFeedItemResponse(
         Long id,
@@ -11,6 +12,12 @@ public record InformationFeedItemResponse(
         String readStatus,
         String itemStatus,
         String preview,
-        String originalUrl
+        String originalUrl,
+        String aiStatus,
+        String eventType,
+        String aiSummary,
+        Double aiConfidence,
+        Boolean aiNeedReview,
+        Map<String, Object> aiCard
 ) {
 }
