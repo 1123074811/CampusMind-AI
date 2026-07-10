@@ -25,6 +25,15 @@ const filteredSources = computed(() => {
 const selectedSource = computed(() => {
   return props.dataSources.find((source) => source.id === selectedSourceId.value) ?? props.dataSources[0];
 });
+
+function sourceChannelLabel(channel: string) {
+  return {
+    PUBLIC_WEB: '公开网页',
+    RAIN_CLASSROOM: '雨课堂',
+    USER_TEXT: '用户文本',
+    USER_IMAGE: '用户截图'
+  }[channel] ?? channel;
+}
 </script>
 
 <template>
@@ -44,25 +53,28 @@ const selectedSource = computed(() => {
       </div>
 
       <div class="source-cards">
-        <button
+        <article
           v-for="source in filteredSources"
           :key="source.id"
           class="source-card"
           :class="{ selected: selectedSource?.id === source.id }"
-          type="button"
+          role="button"
+          tabindex="0"
           @click="selectedSourceId = source.id"
+          @keydown.enter="selectedSourceId = source.id"
         >
           <span class="source-card-head">
             <strong>{{ source.name }}</strong>
             <StatusPill :status="source.status" />
           </span>
-          <span class="source-meta">{{ source.channel }} · {{ source.lastSync }}</span>
+          <span class="source-meta">{{ sourceChannelLabel(source.channel) }} · {{ source.lastSync }}</span>
+          <a class="source-url" :href="source.sourceUrl" target="_blank" rel="noreferrer" @click.stop>{{ source.sourceUrl }}</a>
           <span class="bar-track"><i :style="{ width: `${source.successRate}%` }"></i></span>
           <span class="source-foot">
             <b>{{ source.successRate }}%</b>
             <small>{{ source.pending }} 条待处理</small>
           </span>
-        </button>
+        </article>
       </div>
     </section>
 
@@ -72,7 +84,11 @@ const selectedSource = computed(() => {
       <dl class="stacked-list">
         <div>
           <dt>通道类型</dt>
-          <dd>{{ selectedSource.channel }}</dd>
+          <dd>{{ sourceChannelLabel(selectedSource.channel) }}</dd>
+        </div>
+        <div>
+          <dt>源网址</dt>
+          <dd><a :href="selectedSource.sourceUrl" target="_blank" rel="noreferrer">{{ selectedSource.sourceUrl }}</a></dd>
         </div>
         <div>
           <dt>最近同步</dt>

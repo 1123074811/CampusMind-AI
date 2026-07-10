@@ -17,6 +17,7 @@ defineEmits<{
 
 const typeFilter = ref<'ALL' | EventType>('ALL');
 const searchText = ref('');
+const detailDialog = ref<HTMLDialogElement | null>(null);
 
 const filteredEvents = computed(() => {
   const keyword = searchText.value.trim();
@@ -30,6 +31,17 @@ const filteredEvents = computed(() => {
 const selectedEvent = computed(() => {
   return props.events.find((item) => item.id === props.selectedId) ?? filteredEvents.value[0] ?? props.events[0];
 });
+
+function eventTypeLabel(type: EventType) {
+  return {
+    NOTICE: '通知', COURSE: '课程', EXAM: '考试', HOMEWORK: '作业', ACTIVITY: '活动',
+    LECTURE: '讲座', COMPETITION: '竞赛', SERVICE: '服务', OTHER: '其他'
+  }[type];
+}
+
+function openDetail() {
+  detailDialog.value?.showModal();
+}
 </script>
 
 <template>
@@ -67,7 +79,7 @@ const selectedEvent = computed(() => {
           type="button"
           @click="$emit('select', item.id)"
         >
-          <span class="event-type">{{ item.type }}</span>
+          <span class="event-type">{{ eventTypeLabel(item.type) }}</span>
           <span class="event-main">
             <strong>{{ item.title }}</strong>
             <small>{{ item.source }} · {{ item.startTime }} · {{ item.location }}</small>
@@ -111,9 +123,30 @@ const selectedEvent = computed(() => {
       </div>
 
       <div class="decision-actions">
-        <button v-if="selectedEvent.status !== 'OFFLINE'" type="button" class="ghost-button danger" @click="$emit('archive')">归档</button>
-        <button v-else type="button" class="solid-button" @click="$emit('unarchive')">取消归档</button>
+        <button type="button" class="ghost-button" @click="openDetail">查看完整详情</button>
+        <button v-if="selectedEvent.status !== 'OFFLINE'" type="button" class="ghost-button danger" @click="$emit('archive')">下线</button>
+        <button v-else type="button" class="solid-button" @click="$emit('unarchive')">恢复展示</button>
       </div>
     </aside>
+
+    <dialog ref="detailDialog" class="event-dialog">
+      <template v-if="selectedEvent">
+        <div class="dialog-head">
+          <div>
+            <p class="eyebrow">Information Detail</p>
+            <h3>{{ selectedEvent.title }}</h3>
+          </div>
+          <button type="button" class="ghost-button tiny" @click="detailDialog?.close()">关闭</button>
+        </div>
+        <dl class="detail-list dialog-list">
+          <div><dt>类型</dt><dd>{{ eventTypeLabel(selectedEvent.type) }}</dd></div>
+          <div><dt>发布时间</dt><dd>{{ selectedEvent.startTime }}</dd></div>
+          <div><dt>发布单位</dt><dd>{{ selectedEvent.organizer }}</dd></div>
+          <div><dt>适用对象</dt><dd>{{ selectedEvent.scope }}</dd></div>
+        </dl>
+        <p class="summary-text dialog-content">{{ selectedEvent.summary }}</p>
+        <a v-if="selectedEvent.sourceUrl" class="source-url" :href="selectedEvent.sourceUrl" target="_blank" rel="noreferrer">打开原文</a>
+      </template>
+    </dialog>
   </section>
 </template>

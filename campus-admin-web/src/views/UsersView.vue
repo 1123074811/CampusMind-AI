@@ -45,6 +45,10 @@ function submitCreate() {
   form.role = 'STUDENT';
   form.password = '123456';
 }
+
+function roleLabel(role: string) {
+  return { ADMIN: '管理员', OPERATOR: '运营人员', STUDENT: '学生' }[role] ?? role;
+}
 </script>
 
 <template>
@@ -68,7 +72,7 @@ function submitCreate() {
           <time>#{{ user.id }}</time>
           <div>
             <strong>{{ user.username }}</strong>
-            <small>{{ user.phone || '未填写手机号' }} · {{ user.role }}</small>
+            <small>{{ user.phone || '未填写手机号' }} · {{ roleLabel(user.role) }}</small>
           </div>
           <StatusPill :status="user.status === 1 ? 'HEALTHY' : 'PAUSED'" />
         </li>
@@ -93,7 +97,7 @@ function submitCreate() {
       <p class="eyebrow">Quick Actions</p>
       <dl class="stacked-list">
         <div v-for="user in filteredUsers.slice(0, 6)" :key="user.id">
-          <dt>{{ user.username }} · {{ user.role }}</dt>
+          <dt>{{ user.username }} · {{ roleLabel(user.role) }}</dt>
           <dd class="mini-actions">
             <button type="button" class="ghost-button tiny" @click="emit('toggle', user)">
               {{ user.status === 1 ? '禁用' : '启用' }}

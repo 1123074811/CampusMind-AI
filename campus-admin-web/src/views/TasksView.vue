@@ -22,8 +22,14 @@ const filteredTasks = computed(() => {
   if (statusFilter.value === 'ALL') {
     return props.tasks;
   }
-  return props.tasks.filter((task) => task.status === statusFilter.value);
+  return props.tasks.filter((task) => displayStatus(task.status) === statusFilter.value);
 });
+
+function displayStatus(status: TaskStatus): 'SUCCESS' | 'RUNNING' | 'FAILED' {
+  if (status === 'SUCCESS') return 'SUCCESS';
+  if (status === 'RUNNING' || status === 'PENDING') return 'RUNNING';
+  return 'FAILED';
+}
 
 function formatItemTime(value: string | null) {
   if (!value) {
@@ -80,9 +86,9 @@ function selectItem(id: number) {
             </button>
             <div class="segmented-control" aria-label="任务状态过滤">
               <button type="button" :class="{ active: statusFilter === 'ALL' }" @click="statusFilter = 'ALL'">全部</button>
-              <button type="button" :class="{ active: statusFilter === 'RUNNING' }" @click="statusFilter = 'RUNNING'">运行</button>
+              <button type="button" :class="{ active: statusFilter === 'SUCCESS' }" @click="statusFilter = 'SUCCESS'">成功</button>
+              <button type="button" :class="{ active: statusFilter === 'RUNNING' }" @click="statusFilter = 'RUNNING'">运行中</button>
               <button type="button" :class="{ active: statusFilter === 'FAILED' }" @click="statusFilter = 'FAILED'">失败</button>
-              <button type="button" :class="{ active: statusFilter === 'PENDING' }" @click="statusFilter = 'PENDING'">等待</button>
             </div>
           </div>
         </div>
@@ -91,7 +97,7 @@ function selectItem(id: number) {
           <li
             v-for="task in filteredTasks"
             :key="task.id"
-            :data-status="task.status"
+            :data-status="displayStatus(task.status)"
             :class="{ selected: detailMode === 'task' && selectedTaskId === task.id }"
             role="button"
             tabindex="0"
@@ -103,7 +109,7 @@ function selectItem(id: number) {
               <strong>{{ task.name }}</strong>
               <small>{{ task.owner }} · {{ task.note }}</small>
             </div>
-            <StatusPill :status="task.status" />
+            <StatusPill :status="displayStatus(task.status)" />
           </li>
         </ol>
       </section>
@@ -145,7 +151,7 @@ function selectItem(id: number) {
             <div class="crawl-item-main">
               <span>
                 <strong>{{ item.detailTitle || item.title }}</strong>
-                <small>{{ item.sourceName }} · {{ item.dateText || '日期待解析' }}</small>
+                <small>{{ item.sourceName }} · {{ item.dateText || '日期待解析' }} · {{ item.favoriteCount }} 人收藏</small>
               </span>
               <p>{{ previewText(item) }}</p>
               <a :href="item.itemUrl" target="_blank" rel="noreferrer" @click.stop>{{ item.itemUrl }}</a>
@@ -171,7 +177,11 @@ function selectItem(id: number) {
           </div>
           <div>
             <dt>解析状态</dt>
-            <dd>{{ selectedItem.parseStatus }}</dd>
+            <dd><StatusPill :status="selectedItem.parseStatus" /></dd>
+          </div>
+          <div>
+            <dt>收藏人数</dt>
+            <dd>{{ selectedItem.favoriteCount }} 人</dd>
           </div>
           <div>
             <dt>HTTP</dt>
@@ -198,7 +208,7 @@ function selectItem(id: number) {
           </div>
           <div>
             <dt>状态</dt>
-            <dd>{{ selectedTask.status }}</dd>
+            <dd><StatusPill :status="displayStatus(selectedTask.status)" /></dd>
           </div>
         </dl>
         <p class="summary-text">{{ selectedTask.note }}</p>

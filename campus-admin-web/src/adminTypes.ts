@@ -15,11 +15,14 @@ export interface ReviewEvent {
   id: number;
   title: string;
   source: string;
+  sourceUrl: string;
   type: EventType;
   status: ReviewStatus;
   confidence: number;
   location: string;
   startTime: string;
+  endTime: string;
+  organizer: string;
   scope: string;
   summary: string;
   risk: string;
@@ -29,6 +32,7 @@ export interface ReviewEvent {
 export interface DataSource {
   id: number;
   name: string;
+  sourceUrl: string;
   channel: string;
   status: SourceStatus;
   lastSync: string;
@@ -86,6 +90,7 @@ export interface CrawlItem {
   detailHttpStatus: number | null;
   fetchedAt: string;
   detailFetchedAt: string | null;
+  favoriteCount: number;
 }
 
 export interface DashboardMetrics {
@@ -149,8 +154,8 @@ export interface AdminUserListResponse {
 
 export interface AdminAuditLog {
   id: number;
-  eventId: number;
-  operatorId: number;
+  eventId: number | null;
+  operatorId: number | null;
   action: string;
   beforeSnapshot: string | null;
   afterSnapshot: string | null;

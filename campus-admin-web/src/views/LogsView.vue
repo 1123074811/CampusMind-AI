@@ -12,7 +12,16 @@ defineEmits<{
 }>();
 
 const actionFilter = ref('ALL');
-const actions = ['ALL', 'REVIEW', 'CORRECT', 'REJECT', 'OFFLINE'];
+const actions = ['ALL', 'MANUAL_CRAWL', 'AUTO_CRAWL', 'REVIEW', 'CORRECT', 'REJECT', 'OFFLINE'];
+const actionLabels: Record<string, string> = {
+  ALL: '全部',
+  MANUAL_CRAWL: '手动抓取',
+  AUTO_CRAWL: '自动抓取',
+  REVIEW: '审核通过',
+  CORRECT: '人工修正',
+  REJECT: '驳回',
+  OFFLINE: '下线'
+};
 
 const visibleLogs = computed(() => {
   if (actionFilter.value === 'ALL') {
@@ -34,6 +43,9 @@ function actionStatus(action: string) {
   if (action === 'OFFLINE') {
     return 'OFFLINE';
   }
+  if (action === 'MANUAL_CRAWL' || action === 'AUTO_CRAWL') {
+    return 'SUCCESS';
+  }
   return 'PENDING';
 }
 </script>
@@ -54,7 +66,7 @@ function actionStatus(action: string) {
             :class="{ active: actionFilter === action }"
             @click="actionFilter = action; $emit('refresh', action)"
           >
-            {{ action === 'ALL' ? '全部' : action }}
+            {{ actionLabels[action] ?? action }}
           </button>
         </div>
       </div>
@@ -63,7 +75,7 @@ function actionStatus(action: string) {
         <li v-for="log in visibleLogs" :key="log.id">
           <time>{{ new Date(log.createdAt).toLocaleString('zh-CN', { hour12: false }) }}</time>
           <div>
-            <strong>事件 #{{ log.eventId }} · 操作人 #{{ log.operatorId }}</strong>
+            <strong>{{ log.eventId ? `事件 #${log.eventId}` : actionLabels[log.action] }} · {{ log.operatorId ? `操作人 #${log.operatorId}` : '系统任务' }}</strong>
             <small>{{ log.comment || '无备注' }}</small>
           </div>
           <StatusPill :status="actionStatus(log.action)" />

@@ -7,8 +7,8 @@ const emit = defineEmits<{
   authenticated: [session: AdminSession];
 }>();
 
-const username = ref('123456');
-const password = ref('123456');
+const username = ref('admin');
+const password = ref('admin');
 const loading = ref(false);
 const errorMessage = ref('');
 
@@ -62,8 +62,8 @@ async function submitLogin() {
         </article>
         <article>
           <span>03</span>
-          <strong>归档留痕</strong>
-          <small>事件默认呈现给用户，可归档或取消归档。</small>
+          <strong>操作留痕</strong>
+          <small>事件默认呈现给用户，可下线或恢复展示。</small>
         </article>
       </div>
     </section>

@@ -1,11 +1,8 @@
 import type { AdminSession, ApiResponse, BatchCrawlResult, CrawlItem, CrawlSourceResult } from '../adminTypes';
 import { authHeaders } from './auth';
 
-export async function crawlSource(session: AdminSession | null, sourceId: number, days = 30, maxItems = 50) {
-  const params = new URLSearchParams({
-    days: String(days),
-    maxItems: String(maxItems)
-  });
+export async function crawlSource(session: AdminSession | null, sourceId: number, days = 365) {
+  const params = new URLSearchParams({ days: String(days) });
   const response = await fetch(`/api/admin/crawler/sources/${sourceId}/crawl?${params.toString()}`, {
     method: 'POST',
     headers: authHeaders(session)
@@ -23,10 +20,7 @@ export async function crawlSource(session: AdminSession | null, sourceId: number
 }
 
 export async function crawlPublicSources(session: AdminSession | null, sourceIds: number[]) {
-  const params = new URLSearchParams({
-    days: '30',
-    maxItems: '50'
-  });
+  const params = new URLSearchParams({ days: '365' });
   const response = await fetch(`/api/admin/crawler/sources/crawl?${params.toString()}`, {
     method: 'POST',
     headers: authHeaders(session)

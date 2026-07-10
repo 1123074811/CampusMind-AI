@@ -214,11 +214,11 @@ async function reviewSelected(status: 'REVIEWED' | 'REJECTED' | 'CORRECTED' | 'O
 }
 
 function approveSelected() {
-  reviewSelected('REVIEWED', '取消归档，重新呈现给用户');
+  reviewSelected('REVIEWED', '恢复展示');
 }
 
 function rejectSelected() {
-  reviewSelected('OFFLINE', '管理员归档');
+  reviewSelected('OFFLINE', '管理员下线');
 }
 
 async function runCrawlerNow() {
@@ -801,7 +801,6 @@ h3 {
 }
 
 .status-pill[data-status='AI_PUBLISHED'],
-.status-pill[data-status='RUNNING'],
 .status-pill[data-status='RULE'],
 .status-pill[data-status='LLM'] {
   background: #e7f1ea;
@@ -810,6 +809,7 @@ h3 {
 
 .status-pill[data-status='CORRECTED'],
 .status-pill[data-status='NEEDS_AUTH'],
+.status-pill[data-status='RUNNING'],
 .status-pill[data-status='PENDING'] {
   background: #fff0c4;
   border-color: #d4b75c;
@@ -1074,6 +1074,42 @@ h3 {
 .crawl-item-main a {
   color: var(--accent);
   text-decoration: none;
+}
+
+.source-url,
+.stacked-list a {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--accent);
+  text-decoration: none;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.event-dialog {
+  width: min(720px, calc(100vw - 32px));
+  max-height: calc(100vh - 64px);
+  border: 0;
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-soft);
+  padding: 24px;
+}
+
+.event-dialog::backdrop {
+  background: rgba(12, 23, 20, 0.38);
+}
+
+.dialog-head {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.dialog-content {
+  white-space: pre-wrap;
+  line-height: 1.7;
 }
 
 .link-button {
@@ -1689,7 +1725,6 @@ h3 {
 }
 
 .status-pill[data-status='AI_PUBLISHED'],
-.status-pill[data-status='RUNNING'],
 .status-pill[data-status='RULE'],
 .status-pill[data-status='LLM'],
 .status-pill[data-status='SUCCESS'],
@@ -1702,6 +1737,7 @@ h3 {
 
 .status-pill[data-status='CORRECTED'],
 .status-pill[data-status='NEEDS_AUTH'],
+.status-pill[data-status='RUNNING'],
 .status-pill[data-status='PENDING'],
 .status-pill[data-status='LIST_ONLY'] {
   background: var(--soft-amber);
