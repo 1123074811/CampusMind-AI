@@ -296,7 +296,6 @@ FLUSH PRIVILEGES;
         "$ProjectRoot\infra\mysql\init\004_web_crawl_item.sql",
         "$ProjectRoot\infra\mysql\init\005_web_crawl_item_detail.sql",
         "$ProjectRoot\infra\mysql\init\006_information_item.sql",
-        "$ProjectRoot\infra\mysql\init\007_information_ai_card.sql",
         "$ProjectRoot\infra\mysql\init\002_admin_seed.sql",
         "$ProjectRoot\infra\mysql\init\003_public_sources.sql"
     )
