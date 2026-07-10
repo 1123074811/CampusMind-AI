@@ -2,7 +2,10 @@ SET NAMES utf8mb4;
 
 USE campusmind;
 
-DELETE FROM event_audit_log WHERE event_id BETWEEN 9101 AND 9110 OR operator_id = 9901;
+ALTER TABLE event_audit_log MODIFY event_id BIGINT NULL;
+ALTER TABLE event_audit_log MODIFY operator_id BIGINT NULL;
+
+DELETE FROM event_audit_log WHERE event_id BETWEEN 9101 AND 9110 OR operator_id = 9901 OR action IN ('MANUAL_CRAWL', 'AUTO_CRAWL');
 DELETE FROM import_task WHERE id BETWEEN 9601 AND 9604;
 DELETE FROM crawl_task WHERE id BETWEEN 9501 AND 9508;
 DELETE FROM crawl_task WHERE source_id BETWEEN 9401 AND 9404;
@@ -11,15 +14,21 @@ DELETE FROM information_item WHERE source_id BETWEEN 9401 AND 9404;
 DELETE FROM event_source_ref WHERE event_id BETWEEN 9101 AND 9110;
 DELETE FROM campus_event WHERE id BETWEEN 9101 AND 9110;
 DELETE FROM data_source WHERE id BETWEEN 9401 AND 9404;
-DELETE FROM user_profile WHERE user_id = 9901;
-DELETE FROM user WHERE id = 9901;
+DELETE FROM user_profile WHERE user_id IN (9901, 9902);
+DELETE FROM user WHERE id IN (9901, 9902);
 
 INSERT INTO user (
   id, username, phone, password_hash, role, status
-) VALUES (
-  9901, '123456', '13800139901',
-  '$2a$10$zzzqLXxQyJmfa.JmtbSWzuaJwKaSFei/Nv2t9cT6oYw9wukVmakH2',
+) VALUES
+(
+  9901, 'admin', '13800139901',
+  '$2a$10$arc18WSWtVsrvB55MsG5B.aLl4Ec6Vp0bYxGER2n6JnfDr4b8nq0y',
   'ADMIN', 1
+),
+(
+  9902, '123456', '13800139902',
+  '$2a$10$zzzqLXxQyJmfa.JmtbSWzuaJwKaSFei/Nv2t9cT6oYw9wukVmakH2',
+  'STUDENT', 1
 );
 
 INSERT INTO data_source (
@@ -78,4 +87,6 @@ INSERT INTO event_audit_log (
 ) VALUES
   (9102, 9901, 'CORRECT', JSON_OBJECT('location', '待确认'), JSON_OBJECT('location', '一号教学楼'), '修正考试地点', '2026-07-07 18:02:00'),
   (9104, 9901, 'REVIEW', JSON_OBJECT('status', 'AI_PUBLISHED'), JSON_OBJECT('status', 'REVIEWED'), '活动信息完整', '2026-07-07 18:03:00'),
-  (9109, 9901, 'REJECT', JSON_OBJECT('status', 'AI_PUBLISHED'), JSON_OBJECT('status', 'REJECTED'), '重复截图', '2026-07-07 18:04:00');
+  (9109, 9901, 'REJECT', JSON_OBJECT('status', 'AI_PUBLISHED'), JSON_OBJECT('status', 'REJECTED'), '重复截图', '2026-07-07 18:04:00'),
+  (NULL, NULL, 'MANUAL_CRAWL', NULL, JSON_OBJECT('sourceCount', 7, 'persistedCount', 10), '管理员手动抓取公开网页数据源', '2026-07-07 18:05:00'),
+  (NULL, NULL, 'AUTO_CRAWL', NULL, JSON_OBJECT('sourceCount', 7, 'persistedCount', 0), '系统定时抓取公开网页数据源', '2026-07-07 06:30:00');

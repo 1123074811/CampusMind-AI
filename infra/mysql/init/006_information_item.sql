@@ -28,10 +28,12 @@ CREATE TABLE IF NOT EXISTS user_information_state (
   id BIGINT PRIMARY KEY AUTO_INCREMENT,
   user_id BIGINT NOT NULL,
   item_id BIGINT NOT NULL,
-  read_status VARCHAR(32) NOT NULL DEFAULT 'NEW' COMMENT 'NEW/READ/ARCHIVED',
+  read_status VARCHAR(32) NOT NULL DEFAULT 'NEW' COMMENT 'NEW/READ/FAVORITED',
   first_seen_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   read_at DATETIME NULL,
   archived_at DATETIME NULL,
   UNIQUE KEY uk_user_item_state (user_id, item_id),
   KEY idx_user_read_status (user_id, read_status, first_seen_at)
 ) COMMENT='用户信息条目阅读状态表';
+
+UPDATE user_information_state SET read_status = 'FAVORITED' WHERE read_status = 'ARCHIVED';
