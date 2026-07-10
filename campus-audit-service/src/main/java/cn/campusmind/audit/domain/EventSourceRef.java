@@ -32,4 +32,5 @@ public class EventSourceRef {
     public String getSourceTitle() {
         return sourceTitle;
     }
+
 }

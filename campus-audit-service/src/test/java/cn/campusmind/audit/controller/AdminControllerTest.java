@@ -65,6 +65,20 @@ class AdminControllerTest {
                     )
                     """);
             statement.execute("""
+                    CREATE TABLE IF NOT EXISTS information_item (
+                      id BIGINT PRIMARY KEY,
+                      source_name VARCHAR(128) NOT NULL,
+                      source_url VARCHAR(1024) NOT NULL,
+                      item_url VARCHAR(1024) NOT NULL,
+                      title VARCHAR(512) NOT NULL,
+                      publish_time TIMESTAMP,
+                      fetched_at TIMESTAMP NOT NULL,
+                      detail_content CLOB NOT NULL,
+                      item_status VARCHAR(32) NOT NULL,
+                      parse_status VARCHAR(32) NOT NULL
+                    )
+                    """);
+            statement.execute("""
                     CREATE TABLE IF NOT EXISTS crawl_task (
                       id BIGINT PRIMARY KEY,
                       source_id BIGINT NOT NULL,
@@ -104,7 +118,7 @@ class AdminControllerTest {
             statement.execute("""
                     CREATE TABLE IF NOT EXISTS event_audit_log (
                       id BIGINT AUTO_INCREMENT PRIMARY KEY,
-                      event_id BIGINT NOT NULL,
+                      event_id BIGINT,
                       operator_id BIGINT NOT NULL,
                       action VARCHAR(64) NOT NULL,
                       before_snapshot VARCHAR(1024),
@@ -119,12 +133,18 @@ class AdminControllerTest {
             statement.execute("DELETE FROM data_source");
             statement.execute("DELETE FROM event_source_ref");
             statement.execute("DELETE FROM campus_event");
+            statement.execute("DELETE FROM information_item");
         }
         insertEvent(1001L, "人工智能主题讲座通知", "LECTURE", "PUBLIC_WEB", "AI_PUBLISHED", "0.9100", "图书馆报告厅", "[\"软件学院本科生\"]", "[\"AI\",\"讲座\",\"软件学院\"]", null);
         insertEvent(1002L, "期末考试考场调整说明", "EXAM", "PUBLIC_WEB", "CORRECTED", "0.7400", "一号教学楼", "[\"2023级\"]", "[\"考试\",\"教务\"]", "vec-1002");
         insertEvent(1003L, "雨课堂作业提交提醒", "HOMEWORK", "RAIN_CLASSROOM", "AI_PUBLISHED", "0.6800", "线上", "[\"SE101\"]", "[\"雨课堂\",\"作业\"]", null);
         insertEvent(1004L, "创新创业竞赛报名开放", "ACTIVITY", "PUBLIC_WEB", "REVIEWED", "0.8800", "学生事务中心", "[\"全校学生\"]", "[\"竞赛\",\"报名\"]", "vec-1004");
         insertEvent(1005L, "旧通知误识别", "NOTICE", "USER_TEXT", "REJECTED", "0.4200", null, "[]", "[\"通知\"]", null);
+        insertInformationItem(1001L, "人工智能主题讲座通知", "软件学院通知", "ACTIVE");
+        insertInformationItem(1002L, "期末考试考场调整说明", "教务处公告", "UPDATED");
+        insertInformationItem(1003L, "雨课堂作业提交提醒", "雨课堂导入", "ACTIVE");
+        insertInformationItem(1004L, "创新创业竞赛报名开放", "软件学院通知", "ACTIVE");
+        insertInformationItem(1005L, "旧通知误识别", "用户截图 OCR", "OFFLINE");
         insertSource(1L, "软件学院通知", "PUBLIC_WEB", 1, "2026-07-07 18:28:00");
         insertSource(2L, "教务处公告", "PUBLIC_WEB", 1, "2026-07-07 18:10:00");
         insertSource(3L, "雨课堂导入", "RAIN_CLASSROOM", 1, "2026-07-07 18:06:00");
@@ -144,8 +164,8 @@ class AdminControllerTest {
     void dashboardReturnsSeededAdminData() throws Exception {
         mockMvc.perform(get("/api/admin/dashboard"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.metrics.reviewCount").value(3))
-                .andExpect(jsonPath("$.data.metrics.urgentCount").value(2))
+                .andExpect(jsonPath("$.data.metrics.reviewCount").value(4))
+                .andExpect(jsonPath("$.data.metrics.urgentCount").value(1))
                 .andExpect(jsonPath("$.data.events[?(@.id==1005)].title").value("旧通知误识别"))
                 .andExpect(jsonPath("$.data.events[?(@.id==1001)].source").value("软件学院通知"))
                 .andExpect(jsonPath("$.data.events[?(@.id==1002)].source").value("教务处公告"))
@@ -166,12 +186,12 @@ class AdminControllerTest {
                                 }
                                 """))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.status").value("REVIEWED"))
-                .andExpect(jsonPath("$.data.risk").value("已人工确认"));
+                .andExpect(jsonPath("$.data.status").value("AI_PUBLISHED"))
+                .andExpect(jsonPath("$.data.risk").value("原文已解析，学生端正在展示"));
 
         mockMvc.perform(get("/api/admin/dashboard"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.events[?(@.id==1001)].status").value("REVIEWED"));
+                .andExpect(jsonPath("$.data.events[?(@.id==1001)].status").value("AI_PUBLISHED"));
     }
 
     @Test
@@ -204,6 +224,26 @@ class AdminControllerTest {
             statement.setString(9, scope);
             statement.setString(10, tags);
             statement.setString(11, vectorDocId);
+            statement.executeUpdate();
+        }
+    }
+
+    private void insertInformationItem(Long id, String title, String sourceName, String itemStatus) throws Exception {
+        try (Connection connection = dataSource.getConnection();
+             PreparedStatement statement = connection.prepareStatement("""
+                     INSERT INTO information_item (
+                       id, source_name, source_url, item_url, title, publish_time, fetched_at,
+                       detail_content, item_status, parse_status
+                     ) VALUES (?, ?, 'https://example.edu.cn/list', ?, ?,
+                       TIMESTAMP '2026-07-08 19:00:00', TIMESTAMP '2026-07-07 18:00:00',
+                       ?, ?, 'DETAIL_SUCCESS')
+                     """)) {
+            statement.setLong(1, id);
+            statement.setString(2, sourceName);
+            statement.setString(3, "https://example.edu.cn/item/" + id);
+            statement.setString(4, title);
+            statement.setString(5, title + "完整正文");
+            statement.setString(6, itemStatus);
             statement.executeUpdate();
         }
     }

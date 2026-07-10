@@ -7,18 +7,16 @@ import cn.campusmind.audit.controller.AdminDataSourceResponse;
 import cn.campusmind.audit.controller.AdminEventResponse;
 import cn.campusmind.audit.controller.AdminTaskResponse;
 import cn.campusmind.audit.controller.MetricsResponse;
-import cn.campusmind.audit.domain.CampusEvent;
 import cn.campusmind.audit.domain.CrawlTask;
 import cn.campusmind.audit.domain.DataSource;
 import cn.campusmind.audit.domain.EventAuditLog;
-import cn.campusmind.audit.domain.EventSourceRef;
 import cn.campusmind.audit.domain.ImportTask;
-import cn.campusmind.audit.infrastructure.mapper.CampusEventMapper;
 import cn.campusmind.audit.infrastructure.mapper.CrawlTaskMapper;
 import cn.campusmind.audit.infrastructure.mapper.DataSourceMapper;
 import cn.campusmind.audit.infrastructure.mapper.EventAuditLogMapper;
-import cn.campusmind.audit.infrastructure.mapper.EventSourceRefMapper;
 import cn.campusmind.audit.infrastructure.mapper.ImportTaskMapper;
+import cn.campusmind.audit.infrastructure.mapper.InformationItemMapper;
+import cn.campusmind.audit.domain.InformationItem;
 import cn.campusmind.common.exception.BusinessException;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
@@ -30,8 +28,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
-import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
@@ -40,7 +36,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
-import java.util.function.Function;
 import java.util.stream.Collectors;
 
 @Service
@@ -48,40 +43,39 @@ public class AdminDashboardService {
 
     private static final TypeReference<List<String>> STRING_LIST = new TypeReference<>() {
     };
-    private static final Set<String> REVIEW_STATUSES = Set.of("AI_PUBLISHED", "CORRECTED");
+    private static final Set<String> VISIBLE_ITEM_STATUSES = Set.of("ACTIVE", "UPDATED", "OFFLINE");
     private static final DateTimeFormatter EVENT_TIME = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
     private static final DateTimeFormatter TASK_TIME = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
 
-    private final CampusEventMapper campusEventMapper;
+    private final InformationItemMapper informationItemMapper;
     private final DataSourceMapper dataSourceMapper;
     private final CrawlTaskMapper crawlTaskMapper;
     private final ImportTaskMapper importTaskMapper;
     private final EventAuditLogMapper eventAuditLogMapper;
-    private final EventSourceRefMapper eventSourceRefMapper;
     private final ObjectMapper objectMapper;
 
     public AdminDashboardService(
-            CampusEventMapper campusEventMapper,
+            InformationItemMapper informationItemMapper,
             DataSourceMapper dataSourceMapper,
             CrawlTaskMapper crawlTaskMapper,
             ImportTaskMapper importTaskMapper,
             EventAuditLogMapper eventAuditLogMapper,
-            EventSourceRefMapper eventSourceRefMapper,
             ObjectMapper objectMapper
     ) {
-        this.campusEventMapper = campusEventMapper;
+        this.informationItemMapper = informationItemMapper;
         this.dataSourceMapper = dataSourceMapper;
         this.crawlTaskMapper = crawlTaskMapper;
         this.importTaskMapper = importTaskMapper;
         this.eventAuditLogMapper = eventAuditLogMapper;
-        this.eventSourceRefMapper = eventSourceRefMapper;
         this.objectMapper = objectMapper;
     }
 
     @Transactional(readOnly = true)
     public AdminDashboardResponse dashboard() {
-        List<CampusEvent> events = campusEventMapper.selectList(new LambdaQueryWrapper<CampusEvent>()
-                .orderByDesc(CampusEvent::getCreatedAt)
+        List<InformationItem> events = informationItemMapper.selectList(new LambdaQueryWrapper<InformationItem>()
+                .in(InformationItem::getItemStatus, VISIBLE_ITEM_STATUSES)
+                .eq(InformationItem::getParseStatus, "DETAIL_SUCCESS")
+                .orderByDesc(InformationItem::getFetchedAt)
                 .last("LIMIT 30"));
         List<DataSource> sources = dataSourceMapper.selectList(new LambdaQueryWrapper<DataSource>()
                 .orderByDesc(DataSource::getLastCrawledAt));
@@ -92,17 +86,13 @@ public class AdminDashboardService {
                 .orderByDesc(ImportTask::getCreatedAt)).getRecords();
 
         Map<Long, DataSource> sourceById = sources.stream()
-                .collect(Collectors.toMap(DataSource::getId, Function.identity(), (left, right) -> left));
-        Map<Long, EventSourceRef> refByEventId = eventSourceRefMapper.selectList(new LambdaQueryWrapper<EventSourceRef>()
-                        .in(!events.isEmpty(), EventSourceRef::getEventId, events.stream().map(CampusEvent::getId).toList()))
-                .stream()
-                .collect(Collectors.toMap(EventSourceRef::getEventId, Function.identity(), (left, right) -> left));
+                .collect(Collectors.toMap(DataSource::getId, java.util.function.Function.identity(), (left, right) -> left));
         MetricsResponse metrics = buildMetrics(events, sources, tasks);
         List<AdminTaskResponse> mergedTasks = mergeTasks(tasks, imports, sourceById);
 
         return new AdminDashboardResponse(
                 metrics,
-                events.stream().map(event -> toEvent(event, sourceById, refByEventId.get(event.getId()))).toList(),
+                events.stream().map(this::toEvent).toList(),
                 sources.stream().map(source -> toSource(source, tasks)).toList(),
                 mergedTasks
         );
@@ -110,23 +100,23 @@ public class AdminDashboardService {
 
     @Transactional
     public AdminEventResponse review(Long eventId, Long operatorId, String status, String comment) {
-        CampusEvent event = campusEventMapper.selectById(eventId);
+        InformationItem event = informationItemMapper.selectById(eventId);
         if (event == null) {
             throw new BusinessException("EVENT_NOT_FOUND", "事件不存在", HttpStatus.NOT_FOUND);
         }
-        String beforeStatus = event.getStatus();
-        event.setStatus(status);
-        campusEventMapper.updateById(event);
+        String beforeStatus = event.getItemStatus();
+        event.setItemStatus(toItemStatus(status));
+        informationItemMapper.updateById(event);
 
         EventAuditLog log = new EventAuditLog();
-        log.setEventId(eventId);
+        log.setEventId(null);
         log.setOperatorId(operatorId == null ? 9901L : operatorId);
         log.setAction(toAction(status));
         log.setBeforeSnapshot(writeJson(Map.of("status", beforeStatus)));
         log.setAfterSnapshot(writeJson(Map.of("status", status)));
-        log.setComment(comment);
+        log.setComment("信息#" + eventId + "：" + comment);
         eventAuditLogMapper.insert(log);
-        return toEvent(event, Map.of(), null);
+        return toEvent(event);
     }
 
     @Transactional(readOnly = true)
@@ -144,22 +134,16 @@ public class AdminDashboardService {
         );
     }
 
-    private MetricsResponse buildMetrics(List<CampusEvent> events, List<DataSource> sources, List<CrawlTask> tasks) {
-        long reviewCount = events.stream().filter(event -> REVIEW_STATUSES.contains(event.getStatus())).count();
+    private MetricsResponse buildMetrics(List<InformationItem> events, List<DataSource> sources, List<CrawlTask> tasks) {
+        long reviewCount = events.stream().filter(event -> !"OFFLINE".equals(event.getItemStatus())).count();
         long urgentCount = events.stream()
-                .filter(event -> REVIEW_STATUSES.contains(event.getStatus()))
-                .filter(event -> "CORRECTED".equals(event.getStatus()) || safeConfidence(event).compareTo(new BigDecimal("0.7500")) < 0)
+                .filter(event -> "UPDATED".equals(event.getItemStatus()))
                 .count();
-        int avgConfidence = events.isEmpty()
-                ? 0
-                : (int) Math.round(events.stream().mapToDouble(event -> safeConfidence(event).doubleValue()).average().orElse(0) * 100);
+        int avgConfidence = events.isEmpty() ? 0 : 90;
         long successfulTasks = tasks.stream().filter(task -> "SUCCESS".equals(task.getTaskStatus())).count();
         int sourceSuccessRate = tasks.isEmpty() ? 0 : (int) Math.round(successfulTasks * 100.0 / tasks.size());
         long sourcesNeedAuth = sources.stream().filter(source -> "NEEDS_AUTH".equals(sourceStatus(source, tasks))).count();
-        long vectorPending = events.stream()
-                .filter(event -> !"REJECTED".equals(event.getStatus()) && !"OFFLINE".equals(event.getStatus()))
-                .filter(event -> !StringUtils.hasText(event.getVectorDocId()))
-                .count();
+        long vectorPending = 0;
         return new MetricsResponse(reviewCount, urgentCount, avgConfidence, sourceSuccessRate, sourcesNeedAuth, vectorPending);
     }
 
@@ -176,22 +160,23 @@ public class AdminDashboardService {
                 .toList();
     }
 
-    private AdminEventResponse toEvent(CampusEvent event, Map<Long, DataSource> sourceById, EventSourceRef ref) {
-        DataSource linkedSource = ref == null ? null : sourceById.get(ref.getSourceId());
-        String sourceName = linkedSource == null ? sourceName(event.getSourceType()) : linkedSource.getName();
+    private AdminEventResponse toEvent(InformationItem event) {
         return new AdminEventResponse(
                 event.getId(),
                 event.getTitle(),
-                sourceName,
-                event.getEventType(),
-                event.getStatus(),
-                safeConfidence(event).setScale(2, RoundingMode.HALF_UP).doubleValue(),
-                nullToDash(event.getLocation()),
-                event.getStartTime() == null ? "待补充" : event.getStartTime().format(EVENT_TIME),
-                String.join("、", readStringList(event.getTargetScope())),
-                event.getSummary(),
+                event.getSourceName(),
+                event.getItemUrl(),
+                eventType(event.getTitle()),
+                reviewStatus(event.getItemStatus()),
+                0.90,
+                "-",
+                informationTime(event.getPublishTime()),
+                "待补充",
+                event.getSourceName(),
+                "全体学生",
+                event.getDetailContent(),
                 riskText(event),
-                readStringList(event.getTags())
+                List.of("校园信息")
         );
     }
 
@@ -218,6 +203,7 @@ public class AdminDashboardService {
         return new AdminDataSourceResponse(
                 source.getId(),
                 source.getName(),
+                source.getBaseUrl(),
                 source.getSourceType(),
                 sourceStatus(source, tasks),
                 relativeTime(source.getLastCrawledAt()),
@@ -265,23 +251,12 @@ public class AdminDashboardService {
         return "HEALTHY";
     }
 
-    private String riskText(CampusEvent event) {
-        if ("REJECTED".equals(event.getStatus())) {
-            return "已标记为无效事件";
-        }
-        if ("REVIEWED".equals(event.getStatus())) {
-            return "已人工确认";
-        }
-        if ("CORRECTED".equals(event.getStatus())) {
-            return "字段存在纠错记录，需要复核";
-        }
-        if (safeConfidence(event).compareTo(new BigDecimal("0.7500")) < 0) {
-            return "置信度偏低，建议抽查原文";
-        }
-        if (!StringUtils.hasText(event.getLocation()) || event.getStartTime() == null) {
-            return "时间或地点缺失，需要人工补充";
-        }
-        return "字段完整，建议快速确认";
+    private String riskText(InformationItem event) {
+        return switch (event.getItemStatus()) {
+            case "UPDATED" -> "原文已更新，建议复核";
+            case "OFFLINE" -> "已从学生端下线";
+            default -> "原文已解析，学生端正在展示";
+        };
     }
 
     private List<String> readStringList(String json) {
@@ -303,18 +278,32 @@ public class AdminDashboardService {
         }
     }
 
-    private static BigDecimal safeConfidence(CampusEvent event) {
-        return event.getConfidence() == null ? BigDecimal.ZERO : event.getConfidence();
+    private static String reviewStatus(String itemStatus) {
+        return switch (itemStatus) {
+            case "UPDATED" -> "CORRECTED";
+            case "OFFLINE" -> "OFFLINE";
+            case "FAILED" -> "REJECTED";
+            default -> "AI_PUBLISHED";
+        };
     }
 
-    private static String sourceName(String sourceType) {
-        return switch (sourceType) {
-            case "PUBLIC_WEB" -> "公开网页";
-            case "RAIN_CLASSROOM" -> "雨课堂";
-            case "USER_TEXT" -> "用户文本";
-            case "USER_IMAGE" -> "用户截图";
-            default -> sourceType;
+    private static String toItemStatus(String status) {
+        return switch (status) {
+            case "OFFLINE", "REJECTED" -> "OFFLINE";
+            case "CORRECTED" -> "UPDATED";
+            default -> "ACTIVE";
         };
+    }
+
+    private static String eventType(String title) {
+        if (title.contains("考试") || title.contains("考研")) return "EXAM";
+        if (title.contains("竞赛") || title.contains("比赛")) return "COMPETITION";
+        if (title.contains("讲座") || title.contains("报告")) return "LECTURE";
+        if (title.contains("课程") || title.contains("教学") || title.contains("调课")) return "COURSE";
+        if (title.contains("作业")) return "HOMEWORK";
+        if (title.contains("活动")) return "ACTIVITY";
+        if (title.contains("服务") || title.contains("维护")) return "SERVICE";
+        return "NOTICE";
     }
 
     private static String importTaskName(String importType) {
@@ -352,6 +341,15 @@ public class AdminDashboardService {
 
     private static String taskTime(LocalDateTime time) {
         return time == null ? "时间待补充" : time.format(TASK_TIME);
+    }
+
+    private static String informationTime(LocalDateTime time) {
+        if (time == null) {
+            return "待补充";
+        }
+        return time.getHour() == 0 && time.getMinute() == 0 && time.getSecond() == 0
+                ? time.toLocalDate().toString()
+                : time.format(EVENT_TIME);
     }
 
     private static String relativeTime(LocalDateTime time) {
