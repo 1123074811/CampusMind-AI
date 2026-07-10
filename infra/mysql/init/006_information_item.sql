@@ -16,12 +16,21 @@ CREATE TABLE IF NOT EXISTS information_item (
   item_status VARCHAR(32) NOT NULL DEFAULT 'ACTIVE' COMMENT 'ACTIVE/UPDATED/OFFLINE/FAILED',
   parse_status VARCHAR(32) NOT NULL COMMENT 'DETAIL_SUCCESS/PARSE_FAILED/DETAIL_FAILED',
   parse_error VARCHAR(1024) NULL COMMENT '解析失败原因',
+  ai_status VARCHAR(32) NOT NULL DEFAULT 'PENDING' COMMENT 'PENDING/SUCCESS/REVIEW/FAILED',
+  ai_event_type VARCHAR(32) NULL COMMENT '智能体识别的信息类型',
+  ai_summary TEXT NULL COMMENT '智能精简摘要',
+  ai_card_json JSON NULL COMMENT '智能体结构化信息卡片',
+  ai_confidence DECIMAL(5,4) NULL COMMENT '智能提取置信度',
+  ai_need_review TINYINT(1) NOT NULL DEFAULT 0 COMMENT '是否需要人工复核',
+  ai_error VARCHAR(1024) NULL COMMENT '智能提取失败原因',
+  ai_processed_at DATETIME NULL COMMENT '智能提取完成时间',
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   UNIQUE KEY uk_information_item_url_title (item_url(512), title(191)),
   KEY idx_information_item_time (publish_time, fetched_at),
   KEY idx_information_item_source (source_id, fetched_at),
-  KEY idx_information_item_status (item_status)
+  KEY idx_information_item_status (item_status),
+  KEY idx_information_item_ai_status (ai_status, fetched_at)
 ) COMMENT='信息集中站信息条目表';
 
 CREATE TABLE IF NOT EXISTS user_information_state (

@@ -48,6 +48,30 @@ public class InformationItem {
     @TableField("parse_error")
     private String parseError;
 
+    @TableField("ai_status")
+    private String aiStatus;
+
+    @TableField("ai_event_type")
+    private String aiEventType;
+
+    @TableField("ai_summary")
+    private String aiSummary;
+
+    @TableField("ai_card_json")
+    private String aiCardJson;
+
+    @TableField("ai_confidence")
+    private Double aiConfidence;
+
+    @TableField("ai_need_review")
+    private Boolean aiNeedReview;
+
+    @TableField("ai_error")
+    private String aiError;
+
+    @TableField("ai_processed_at")
+    private LocalDateTime aiProcessedAt;
+
     public Long getId() {
         return id;
     }
@@ -63,6 +87,20 @@ public class InformationItem {
     public String getContentHash() {
         return contentHash;
     }
+
+    public String getDetailContent() {
+        return detailContent;
+    }
+
+    public String getParseStatus() { return parseStatus; }
+
+    public LocalDateTime getFetchedAt() { return fetchedAt; }
+
+    public String getAiStatus() {
+        return aiStatus;
+    }
+
+    public LocalDateTime getAiProcessedAt() { return aiProcessedAt; }
 
     public void setId(Long id) {
         this.id = id;
@@ -115,4 +153,13 @@ public class InformationItem {
     public void setParseError(String parseError) {
         this.parseError = parseError;
     }
+
+    public void setAiStatus(String aiStatus) { this.aiStatus = aiStatus; }
+    public void setAiEventType(String aiEventType) { this.aiEventType = aiEventType; }
+    public void setAiSummary(String aiSummary) { this.aiSummary = aiSummary; }
+    public void setAiCardJson(String aiCardJson) { this.aiCardJson = aiCardJson; }
+    public void setAiConfidence(Double aiConfidence) { this.aiConfidence = aiConfidence; }
+    public void setAiNeedReview(Boolean aiNeedReview) { this.aiNeedReview = aiNeedReview; }
+    public void setAiError(String aiError) { this.aiError = aiError; }
+    public void setAiProcessedAt(LocalDateTime aiProcessedAt) { this.aiProcessedAt = aiProcessedAt; }
 }

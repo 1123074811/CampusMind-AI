@@ -29,6 +29,18 @@ public class InformationItem {
     private String itemStatus;
     @TableField("parse_status")
     private String parseStatus;
+    @TableField("ai_status")
+    private String aiStatus;
+    @TableField("ai_event_type")
+    private String aiEventType;
+    @TableField("ai_summary")
+    private String aiSummary;
+    @TableField("ai_card_json")
+    private String aiCardJson;
+    @TableField("ai_confidence")
+    private Double aiConfidence;
+    @TableField("ai_need_review")
+    private Boolean aiNeedReview;
 
     public Long getId() { return id; }
     public String getSourceName() { return sourceName; }
@@ -40,5 +52,11 @@ public class InformationItem {
     public String getDetailContent() { return detailContent; }
     public String getItemStatus() { return itemStatus; }
     public String getParseStatus() { return parseStatus; }
+    public String getAiStatus() { return aiStatus; }
+    public String getAiEventType() { return aiEventType; }
+    public String getAiSummary() { return aiSummary; }
+    public String getAiCardJson() { return aiCardJson; }
+    public Double getAiConfidence() { return aiConfidence; }
+    public Boolean getAiNeedReview() { return aiNeedReview; }
     public void setItemStatus(String itemStatus) { this.itemStatus = itemStatus; }
 }
