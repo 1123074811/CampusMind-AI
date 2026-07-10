@@ -16,6 +16,7 @@ defineEmits<{
 
 const titles: Record<NavKey, { title: string; subtitle: string }> = {
   review: { title: '校园事件审核', subtitle: '集中处理待确认、待下线和需纠错的信息' },
+  agent: { title: '智能体处理', subtitle: '查看精简卡片、关键字段、置信度和待复核信息' },
   sources: { title: '数据源管理', subtitle: '查看公开网页来源健康度并手动触发采集' },
   tasks: { title: '采集任务', subtitle: '跟踪爬虫、导入和解析任务的执行状态' },
   users: { title: '用户管理', subtitle: '维护后台账号、用户状态和初始密码' },

@@ -43,6 +43,7 @@ public class AdminDashboardService {
 
     private static final TypeReference<List<String>> STRING_LIST = new TypeReference<>() {
     };
+    private static final TypeReference<Map<String, Object>> AI_CARD = new TypeReference<>() { };
     private static final Set<String> VISIBLE_ITEM_STATUSES = Set.of("ACTIVE", "UPDATED", "OFFLINE");
     private static final DateTimeFormatter EVENT_TIME = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
     private static final DateTimeFormatter TASK_TIME = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
@@ -161,23 +162,51 @@ public class AdminDashboardService {
     }
 
     private AdminEventResponse toEvent(InformationItem event) {
+        Map<String, Object> card = readAiCard(event.getAiCardJson());
         return new AdminEventResponse(
                 event.getId(),
                 event.getTitle(),
                 event.getSourceName(),
                 event.getItemUrl(),
-                eventType(event.getTitle()),
+                StringUtils.hasText(event.getAiEventType()) ? event.getAiEventType() : eventType(event.getTitle()),
                 reviewStatus(event.getItemStatus()),
-                0.90,
-                "-",
+                event.getAiConfidence() == null ? 0 : event.getAiConfidence(),
+                text(card.get("location"), "-"),
                 informationTime(event.getPublishTime()),
-                "待补充",
-                event.getSourceName(),
-                "全体学生",
-                event.getDetailContent(),
+                text(card.get("endTime"), "待补充"),
+                text(card.get("organizer"), event.getSourceName()),
+                listText(card.get("targetScopes"), "全体学生"),
+                StringUtils.hasText(event.getAiSummary()) ? event.getAiSummary() : event.getDetailContent(),
                 riskText(event),
-                List.of("校园信息")
+                stringList(card.get("tags"), List.of("校园信息")),
+                event.getAiStatus() == null ? "PENDING" : event.getAiStatus(),
+                Boolean.TRUE.equals(event.getAiNeedReview()),
+                card
         );
+    }
+
+    private Map<String, Object> readAiCard(String json) {
+        if (!StringUtils.hasText(json)) return Map.of();
+        try {
+            return objectMapper.readValue(json, AI_CARD);
+        } catch (JsonProcessingException ex) {
+            return Map.of();
+        }
+    }
+
+    private static String text(Object value, String fallback) {
+        return value instanceof String text && StringUtils.hasText(text) ? text : fallback;
+    }
+
+    private static String listText(Object value, String fallback) {
+        List<String> values = stringList(value, List.of());
+        return values.isEmpty() ? fallback : String.join("、", values);
+    }
+
+    private static List<String> stringList(Object value, List<String> fallback) {
+        if (!(value instanceof List<?> values)) return fallback;
+        List<String> result = values.stream().filter(String.class::isInstance).map(String.class::cast).toList();
+        return result.isEmpty() ? fallback : result;
     }
 
     private AdminAuditLogResponse toAuditLog(EventAuditLog log) {

@@ -1,4 +1,4 @@
-export type NavKey = 'review' | 'sources' | 'tasks' | 'users' | 'logs';
+export type NavKey = 'review' | 'agent' | 'sources' | 'tasks' | 'users' | 'logs';
 
 export type ReviewStatus = 'AI_PUBLISHED' | 'CORRECTED' | 'REVIEWED' | 'REJECTED' | 'OFFLINE';
 export type EventType = 'NOTICE' | 'COURSE' | 'EXAM' | 'HOMEWORK' | 'ACTIVITY' | 'LECTURE' | 'COMPETITION' | 'SERVICE' | 'OTHER';
@@ -27,6 +27,9 @@ export interface ReviewEvent {
   summary: string;
   risk: string;
   tags: string[];
+  aiStatus: 'PENDING' | 'SUCCESS' | 'REVIEW' | 'FAILED';
+  aiNeedReview: boolean;
+  aiCard: Record<string, unknown>;
 }
 
 export interface DataSource {

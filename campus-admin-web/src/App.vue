@@ -20,6 +20,7 @@ import SourcesView from './views/SourcesView.vue';
 import TasksView from './views/TasksView.vue';
 import UsersView from './views/UsersView.vue';
 import LogsView from './views/LogsView.vue';
+import AgentView from './views/AgentView.vue';
 
 const session = ref<AdminSession | null>(loadSession());
 const activeNav = ref<NavKey>('review');
@@ -56,6 +57,7 @@ const avgConfidence = computed(() => {
 
 const navItems = computed<NavItem[]>(() => [
   { key: 'review', label: '校园事件', count: reviewEvents.value.length },
+  { key: 'agent', label: '智能体', count: reviewEvents.value.filter((item) => item.aiStatus !== 'SUCCESS').length },
   { key: 'sources', label: '数据源', count: visibleDataSources.value.length },
   { key: 'tasks', label: '采集任务', count: visibleCrawlTasks.value.length },
   { key: 'users', label: '用户管理', count: adminUsers.value.length },
@@ -345,6 +347,11 @@ onMounted(() => {
         @select="selectEvent"
         @unarchive="approveSelected"
         @archive="rejectSelected"
+        @refresh="loadDashboard"
+      />
+      <AgentView
+        v-else-if="activeNav === 'agent'"
+        :events="reviewEvents"
         @refresh="loadDashboard"
       />
       <SourcesView
@@ -1739,6 +1746,7 @@ h3 {
 .status-pill[data-status='NEEDS_AUTH'],
 .status-pill[data-status='RUNNING'],
 .status-pill[data-status='PENDING'],
+.status-pill[data-status='REVIEW'],
 .status-pill[data-status='LIST_ONLY'] {
   background: var(--soft-amber);
   border-color: rgba(201, 143, 38, 0.2);

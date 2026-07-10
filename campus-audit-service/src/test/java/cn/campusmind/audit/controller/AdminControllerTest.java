@@ -75,7 +75,13 @@ class AdminControllerTest {
                       fetched_at TIMESTAMP NOT NULL,
                       detail_content CLOB NOT NULL,
                       item_status VARCHAR(32) NOT NULL,
-                      parse_status VARCHAR(32) NOT NULL
+                      parse_status VARCHAR(32) NOT NULL,
+                      ai_status VARCHAR(32) DEFAULT 'PENDING',
+                      ai_event_type VARCHAR(32),
+                      ai_summary CLOB,
+                      ai_card_json CLOB,
+                      ai_confidence DECIMAL(5,4),
+                      ai_need_review BOOLEAN DEFAULT FALSE
                     )
                     """);
             statement.execute("""
@@ -168,6 +174,7 @@ class AdminControllerTest {
                 .andExpect(jsonPath("$.data.metrics.urgentCount").value(1))
                 .andExpect(jsonPath("$.data.events[?(@.id==1005)].title").value("旧通知误识别"))
                 .andExpect(jsonPath("$.data.events[?(@.id==1001)].source").value("软件学院通知"))
+                .andExpect(jsonPath("$.data.events[?(@.id==1001)].aiStatus").value("PENDING"))
                 .andExpect(jsonPath("$.data.events[?(@.id==1002)].source").value("教务处公告"))
                 .andExpect(jsonPath("$.data.dataSources[?(@.id==3)].status").value("NEEDS_AUTH"))
                 .andExpect(jsonPath("$.data.dataSources[?(@.id==4)].status").value("PAUSED"))

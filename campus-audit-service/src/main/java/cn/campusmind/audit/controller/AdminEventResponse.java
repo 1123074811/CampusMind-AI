@@ -1,6 +1,7 @@
 package cn.campusmind.audit.controller;
 
 import java.util.List;
+import java.util.Map;
 
 public record AdminEventResponse(
         Long id,
@@ -17,6 +18,9 @@ public record AdminEventResponse(
         String scope,
         String summary,
         String risk,
-        List<String> tags
+        List<String> tags,
+        String aiStatus,
+        Boolean aiNeedReview,
+        Map<String, Object> aiCard
 ) {
 }
