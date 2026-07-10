@@ -114,6 +114,16 @@ class InformationControllerTest {
                 .andExpect(jsonPath("$.data.items[0].readStatus").value("READ"));
     }
 
+    @Test
+    void favoriteStatusIsStoredAndReturned() throws Exception {
+        mockMvc.perform(put("/api/v1/information/items/1/read-status")
+                        .header("X-User-Id", "1")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"readStatus\":\"FAVORITED\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.readStatus").value("FAVORITED"));
+    }
+
     private void insertInformationItem(Long id, String title, String itemStatus, String parseStatus, String fetchedAt)
             throws Exception {
         try (Connection connection = dataSource.getConnection();

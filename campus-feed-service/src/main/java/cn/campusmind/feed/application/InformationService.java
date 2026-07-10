@@ -25,7 +25,7 @@ import java.util.stream.Collectors;
 public class InformationService {
 
     private static final Set<String> VISIBLE_ITEM_STATUS = Set.of("ACTIVE", "UPDATED");
-    private static final Set<String> READ_STATUSES = Set.of("NEW", "READ", "ARCHIVED");
+    private static final Set<String> READ_STATUSES = Set.of("NEW", "READ", "FAVORITED", "ARCHIVED");
     private static final int PREVIEW_LENGTH = 160;
 
     private final InformationItemMapper informationItemMapper;
@@ -53,7 +53,7 @@ public class InformationService {
         List<InformationItem> visibleRecords = records.stream().limit(safeSize).toList();
         Map<Long, String> readStatuses = readStatuses(userId, visibleRecords);
         List<InformationFeedItemResponse> items = visibleRecords.stream()
-                .map(item -> toFeedItem(item, readStatuses.getOrDefault(item.getId(), "NEW")))
+                .map(item -> toFeedItem(item, normalizeReadStatus(readStatuses.getOrDefault(item.getId(), "NEW"))))
                 .toList();
         LocalDateTime nextCursor = items.isEmpty()
                 ? null
@@ -67,7 +67,7 @@ public class InformationService {
         if (item == null || !isVisible(item)) {
             throw new BusinessException("INFORMATION_ITEM_NOT_FOUND", "信息条目不存在", HttpStatus.NOT_FOUND);
         }
-        String readStatus = readStatus(userId, itemId);
+        String readStatus = normalizeReadStatus(readStatus(userId, itemId));
         return new InformationDetailResponse(
                 item.getId(),
                 item.getTitle(),
@@ -90,6 +90,7 @@ public class InformationService {
         if (userId == null) {
             throw new BusinessException("USER_REQUIRED", "更新阅读状态需要用户身份", HttpStatus.UNAUTHORIZED);
         }
+        String normalizedReadStatus = normalizeReadStatus(readStatus);
         if (!READ_STATUSES.contains(readStatus)) {
             throw new BusinessException("READ_STATUS_INVALID", "阅读状态无效", HttpStatus.BAD_REQUEST);
         }
@@ -105,14 +106,14 @@ public class InformationService {
         UserInformationState state = existing == null ? new UserInformationState() : existing;
         state.setUserId(userId);
         state.setItemId(itemId);
-        state.setReadStatus(readStatus);
+        state.setReadStatus(normalizedReadStatus);
         if (existing == null) {
             state.setFirstSeenAt(now);
         }
-        if ("READ".equals(readStatus)) {
+        if ("READ".equals(normalizedReadStatus)) {
             state.setReadAt(now);
         }
-        if ("ARCHIVED".equals(readStatus)) {
+        if ("FAVORITED".equals(normalizedReadStatus)) {
             state.setArchivedAt(now);
         }
         if (existing == null) {
@@ -145,6 +146,10 @@ public class InformationService {
                 .eq(UserInformationState::getItemId, itemId)
                 .last("LIMIT 1"));
         return state == null ? "NEW" : state.getReadStatus();
+    }
+
+    private String normalizeReadStatus(String status) {
+        return "ARCHIVED".equals(status) ? "FAVORITED" : status;
     }
 
     private InformationFeedItemResponse toFeedItem(InformationItem item, String readStatus) {
