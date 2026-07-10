@@ -8,7 +8,12 @@ public record CognitionExtractRequest(
         String sourceType,
 
         @NotBlank
-        @Size(max = 20000)
-        String plainText
+        @Size(max = 200000)
+        String plainText,
+
+        Long originalItemId,
+
+        @Size(max = 1024)
+        String originalUrl
 ) {
 }

@@ -44,6 +44,27 @@ class AiControllerTest {
     }
 
     @Test
+    void cognitionBuildsTraceableCompetitionCard() throws Exception {
+        mockMvc.perform(post("/api/v1/ai/cognition/extract")
+                        .contentType("application/json")
+                        .content("""
+                                {
+                                  "sourceType": "PUBLIC_WEB",
+                                  "originalItemId": 120,
+                                  "originalUrl": "https://example.edu/competition/120",
+                                  "plainText": "创新创业竞赛报名通知\\n报名时间：2026年7月1日 09:00\\n报名截止：2026年7月15日 18:00\\n所需材料：报名表、项目计划书、学生证照片\\n报名方式：在线填写报名表\\n组队要求：每队3至5人\\n报名网址：https://example.edu/apply"
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.eventType").value("COMPETITION"))
+                .andExpect(jsonPath("$.data.originalItemId").value(120))
+                .andExpect(jsonPath("$.data.originalUrl").value("https://example.edu/competition/120"))
+                .andExpect(jsonPath("$.data.registrationDeadline").value("2026年7月15日 18:00"))
+                .andExpect(jsonPath("$.data.requiredMaterials[0]").value("报名表"))
+                .andExpect(jsonPath("$.data.registrationUrl").value("https://example.edu/apply"));
+    }
+
+    @Test
     void decisionPlansSemanticSearch() throws Exception {
         mockMvc.perform(post("/api/v1/ai/decision/plan")
                         .contentType("application/json")

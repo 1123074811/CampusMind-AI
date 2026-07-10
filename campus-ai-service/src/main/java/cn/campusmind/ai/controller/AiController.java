@@ -23,7 +23,8 @@ public class AiController {
 
     @PostMapping("/cognition/extract")
     public ApiResponse<CampusEventCandidate> extract(@Valid @RequestBody CognitionExtractRequest request) {
-        return ApiResponse.ok(aiApplicationService.extractEvent(request.sourceType(), request.plainText()));
+        return ApiResponse.ok(aiApplicationService.extractEvent(
+                request.sourceType(), request.plainText(), request.originalItemId(), request.originalUrl()));
     }
 
     @PostMapping("/decision/plan")

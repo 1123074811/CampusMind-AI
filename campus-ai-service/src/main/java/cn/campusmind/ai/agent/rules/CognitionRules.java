@@ -26,6 +26,15 @@ public final class CognitionRules {
     private static final Pattern LOCATION_PATTERN = Pattern.compile("(?:地点|地址)[:：]?\\s*([^，。\\n；;]+)");
     private static final Pattern ORGANIZER_PATTERN = Pattern.compile("(?:主办|组织者|发布单位|举办单位)[:：]?\\s*([^，。\\n；;]+)");
     private static final Pattern SCOPE_PATTERN = Pattern.compile("(?:面向|对象|范围)[:：]?\\s*([^，。\\n；;]+)");
+    private static final String DATE_TIME_VALUE = "((?:20\\d{2}[-/.年]\\d{1,2}[-/.月]\\d{1,2}日?|\\d{1,2}月\\d{1,2}日)(?:\\s*\\d{1,2}:\\d{2})?)";
+    private static final Pattern REGISTRATION_START_PATTERN = Pattern.compile("(?:报名开始时间|报名起始时间|报名时间)[:：]?\\s*" + DATE_TIME_VALUE);
+    private static final Pattern REGISTRATION_DEADLINE_PATTERN = Pattern.compile("(?:报名截止时间|报名截止|截止时间|截止日期)[:：]?\\s*" + DATE_TIME_VALUE);
+    private static final Pattern DURATION_PATTERN = Pattern.compile("(?:比赛时间|竞赛时间|活动时间|持续时间)[:：]?\\s*([^。\\n；;]+)");
+    private static final Pattern MATERIALS_PATTERN = Pattern.compile("(?:所需材料|报名材料|提交材料)[:：]?\\s*([^。\\n；;]+)");
+    private static final Pattern PARTICIPATION_PATTERN = Pattern.compile("(?:参赛方式|报名方式|参与方式)[:：]?\\s*([^。\\n；;]+)");
+    private static final Pattern TEAM_PATTERN = Pattern.compile("(?:组队要求|团队要求)[:：]?\\s*([^。\\n；;]+)");
+    private static final Pattern ATTACHMENT_PATTERN = Pattern.compile("附件(?:\\d+)?[:：]?\\s*([^。\\n；;]+)");
+    private static final Pattern URL_PATTERN = Pattern.compile("https?://[^\\s，。；;]+", Pattern.CASE_INSENSITIVE);
 
     private CognitionRules() {
     }
@@ -39,10 +48,22 @@ public final class CognitionRules {
         String organizer = matchFirst(ORGANIZER_PATTERN, normalizedText);
         List<String> scopes = splitList(matchFirst(SCOPE_PATTERN, normalizedText));
         List<String> tags = detectTags(normalizedText, eventType);
-        boolean needReview = startTime == null || location == null || title.length() < 6 || normalizedText.length() < 20;
+        List<String> keyDates = extractKeyDates(normalizedText);
+        List<String> actions = detectActions(normalizedText);
+        String registrationStart = matchFirst(REGISTRATION_START_PATTERN, normalizedText);
+        String registrationDeadline = matchFirst(REGISTRATION_DEADLINE_PATTERN, normalizedText);
+        String duration = matchFirst(DURATION_PATTERN, normalizedText);
+        List<String> materials = splitList(matchFirst(MATERIALS_PATTERN, normalizedText));
+        String registrationUrl = matchUrl(normalizedText);
+        String participationMethod = matchFirst(PARTICIPATION_PATTERN, normalizedText);
+        String teamRequirement = matchFirst(TEAM_PATTERN, normalizedText);
+        List<String> attachments = splitList(matchFirst(ATTACHMENT_PATTERN, normalizedText));
+        boolean competitionIncomplete = "COMPETITION".equals(eventType)
+                && (registrationDeadline == null || registrationUrl == null);
+        boolean needReview = startTime == null || title.length() < 6 || normalizedText.length() < 20 || competitionIncomplete;
         double confidence = calculateConfidence(startTime, location, organizer, tags, needReview);
         String summary = summarize(title, startTime, location, scopes);
-        String reason = needReview ? "时间、地点或内容完整性不足，需要人工复核" : "规则抽取字段较完整，可进入AI预测发布";
+        String reason = needReview ? "关键字段或内容完整性不足，需要人工复核" : "规则抽取字段较完整，可生成精简卡片";
 
         return new CampusEventCandidate(
                 title,
@@ -56,8 +77,43 @@ public final class CognitionRules {
                 tags,
                 confidence,
                 needReview,
-                reason
+                reason,
+                null,
+                null,
+                keyDates,
+                actions,
+                registrationStart,
+                registrationDeadline,
+                duration,
+                materials,
+                registrationUrl,
+                participationMethod,
+                teamRequirement,
+                attachments
         );
+    }
+
+    private static List<String> extractKeyDates(String text) {
+        Set<String> values = new LinkedHashSet<>();
+        Matcher matcher = DATE_PATTERN.matcher(text);
+        while (matcher.find()) {
+            values.add(normalizeDate(matcher.group()));
+        }
+        return List.copyOf(values);
+    }
+
+    private static List<String> detectActions(String text) {
+        List<String> actions = new ArrayList<>();
+        if (text.contains("报名")) actions.add("完成报名");
+        if (text.contains("提交") || text.contains("材料")) actions.add("提交所需材料");
+        if (text.contains("缴费")) actions.add("完成缴费");
+        if (text.contains("签到") || text.contains("到场")) actions.add("按时到场");
+        return actions.stream().distinct().toList();
+    }
+
+    private static String matchUrl(String text) {
+        Matcher matcher = URL_PATTERN.matcher(text);
+        return matcher.find() ? matcher.group() : null;
     }
 
     private static String normalize(String value) {
@@ -79,6 +135,9 @@ public final class CognitionRules {
         if (containsAny(text, "考试", "期末", "补考", "考场")) {
             return "EXAM";
         }
+        if (containsAny(text, "竞赛", "比赛", "大赛")) {
+            return "COMPETITION";
+        }
         if (containsAny(text, "作业", "提交", "截止", "雨课堂")) {
             return "HOMEWORK";
         }
@@ -87,9 +146,6 @@ public final class CognitionRules {
         }
         if (containsAny(text, "讲座", "报告", "论坛", "沙龙") || lower.contains("ai")) {
             return "LECTURE";
-        }
-        if (containsAny(text, "竞赛", "比赛", "大赛")) {
-            return "COMPETITION";
         }
         if (containsAny(text, "活动", "报名", "社团")) {
             return "ACTIVITY";

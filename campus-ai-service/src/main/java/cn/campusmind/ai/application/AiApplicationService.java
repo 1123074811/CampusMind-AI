@@ -38,8 +38,8 @@ public class AiApplicationService {
         this.eventVectorStore = eventVectorStore;
     }
 
-    public CampusEventCandidate extractEvent(String sourceType, String plainText) {
-        return cognitionAgent.extract(sourceType, plainText);
+    public CampusEventCandidate extractEvent(String sourceType, String plainText, Long originalItemId, String originalUrl) {
+        return cognitionAgent.extract(sourceType, plainText).withOriginal(originalItemId, originalUrl);
     }
 
     public SearchPlan planSearch(String query, List<String> userScopes, boolean usePersonalProfile) {
