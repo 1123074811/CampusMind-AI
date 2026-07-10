@@ -11,6 +11,9 @@ spring:
     driver-class-name: org.h2.Driver
 
 campus:
+  ai:
+    extract-url: http://127.0.0.1:1/api/v1/ai/cognition/extract
+    backfill-initial-delay-ms: 3600000
   crawler:
     user-agent: "CampusEventBot/1.0 (+contact: admin@example.edu)"
     min-interval-seconds: 3

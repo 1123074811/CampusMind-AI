@@ -10,6 +10,10 @@ spring:
     password: ${CRAWLER_DB_PASSWORD}
 
 campus:
+  ai:
+    extract-url: ${CAMPUS_AI_EXTRACT_URL:http://localhost:8089/api/v1/ai/cognition/extract}
+    backfill-initial-delay-ms: ${CAMPUS_AI_BACKFILL_INITIAL_DELAY_MS:10000}
+    backfill-delay-ms: ${CAMPUS_AI_BACKFILL_DELAY_MS:60000}
   crawler:
     default-interval-seconds: 5
     min-interval-seconds: 3

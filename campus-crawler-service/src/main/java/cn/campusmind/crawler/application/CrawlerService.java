@@ -60,6 +60,7 @@ public class CrawlerService {
     private final PublicWebFetcher publicWebFetcher;
     private final CrawlerProperties crawlerProperties;
     private final JdbcTemplate jdbcTemplate;
+    private final AiCardExtractor aiCardExtractor;
 
     public CrawlerService(DataSourceMapper dataSourceMapper,
                           CrawlTaskMapper crawlTaskMapper,
@@ -70,7 +71,8 @@ public class CrawlerService {
                           DetailPageParser detailPageParser,
                           PublicWebFetcher publicWebFetcher,
                           CrawlerProperties crawlerProperties,
-                          JdbcTemplate jdbcTemplate) {
+                          JdbcTemplate jdbcTemplate,
+                          AiCardExtractor aiCardExtractor) {
         this.dataSourceMapper = dataSourceMapper;
         this.crawlTaskMapper = crawlTaskMapper;
         this.webCrawlItemMapper = webCrawlItemMapper;
@@ -81,6 +83,7 @@ public class CrawlerService {
         this.publicWebFetcher = publicWebFetcher;
         this.crawlerProperties = crawlerProperties;
         this.jdbcTemplate = jdbcTemplate;
+        this.aiCardExtractor = aiCardExtractor;
     }
 
     @Transactional
@@ -133,6 +136,21 @@ public class CrawlerService {
             }
         }
         return publishedCount;
+    }
+
+    public int processPendingAiCards(int size) {
+        int batchSize = Math.min(Math.max(size, 1), 200);
+        LocalDateTime retryBefore = LocalDateTime.now().minusMinutes(30);
+        List<InformationItem> items = informationItemMapper.selectList(new LambdaQueryWrapper<InformationItem>()
+                .eq(InformationItem::getParseStatus, "DETAIL_SUCCESS")
+                .and(status -> status.eq(InformationItem::getAiStatus, "PENDING")
+                        .or().isNull(InformationItem::getAiStatus)
+                        .or(failed -> failed.eq(InformationItem::getAiStatus, "FAILED")
+                                .lt(InformationItem::getAiProcessedAt, retryBefore)))
+                .orderByAsc(InformationItem::getFetchedAt)
+                .last("LIMIT " + batchSize));
+        items.forEach(this::extractAiCard);
+        return items.size();
     }
 
     @Transactional
@@ -338,13 +356,41 @@ public class CrawlerService {
 
         if (existing == null) {
             informationItem.setItemStatus("ACTIVE");
+            informationItem.setAiStatus("PENDING");
             informationItemMapper.insert(informationItem);
         } else {
             informationItem.setId(existing.getId());
-            informationItem.setItemStatus(Objects.equals(existing.getContentHash(), contentHash) ? "ACTIVE" : "UPDATED");
+            boolean changed = !Objects.equals(existing.getContentHash(), contentHash);
+            informationItem.setItemStatus(changed ? "UPDATED" : "ACTIVE");
+            if (changed) {
+                informationItem.setAiStatus("PENDING");
+                informationItem.setAiEventType("OTHER");
+                informationItem.setAiSummary("");
+                informationItem.setAiCardJson("{}");
+                informationItem.setAiConfidence(0.0);
+                informationItem.setAiNeedReview(false);
+            }
             informationItemMapper.updateById(informationItem);
         }
         return true;
+    }
+
+    private void extractAiCard(InformationItem item) {
+        try {
+            AiCardExtractor.Result result = aiCardExtractor.extract(item.getId(), item.getItemUrl(), item.getDetailContent());
+            item.setAiStatus(result.needHumanReview() ? "REVIEW" : "SUCCESS");
+            item.setAiEventType(result.eventType());
+            item.setAiSummary(result.summary());
+            item.setAiCardJson(result.cardJson());
+            item.setAiConfidence(result.confidence());
+            item.setAiNeedReview(result.needHumanReview());
+            item.setAiError(null);
+        } catch (Exception ex) {
+            item.setAiStatus("FAILED");
+            item.setAiError(truncate(ex.getMessage(), MAX_FAIL_REASON_LENGTH));
+        }
+        item.setAiProcessedAt(LocalDateTime.now());
+        informationItemMapper.updateById(item);
     }
 
     private LocalDateTime parseEventDate(String dateText) {

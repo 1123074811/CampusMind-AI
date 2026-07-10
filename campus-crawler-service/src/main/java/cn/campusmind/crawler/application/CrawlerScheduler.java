@@ -16,4 +16,10 @@ public class CrawlerScheduler {
     public void crawlPublicSourcesDaily() {
         crawlerService.crawlEnabledSources(new CrawlOptions(365, null, "AUTO"));
     }
+
+    @Scheduled(initialDelayString = "${campus.ai.backfill-initial-delay-ms:10000}",
+            fixedDelayString = "${campus.ai.backfill-delay-ms:60000}")
+    public void processPendingAiCards() {
+        crawlerService.processPendingAiCards(20);
+    }
 }
