@@ -49,6 +49,7 @@ class DetailPageParserTest {
                 """);
         String html = """
                 <table><tr><td class="titlestyle130886">软件学院教研室研讨</td></tr></table>
+                <div>发布时间：2026-04-08 14:30</div>
                 <div id="vsb_content"><div class="v_news_content">
                   <p>软件学院于4月8日开展课程内容改革研讨。</p>
                 </div></div>
@@ -58,6 +59,7 @@ class DetailPageParserTest {
 
         assertThat(result.status()).isEqualTo("DETAIL_SUCCESS");
         assertThat(result.title()).isEqualTo("软件学院教研室研讨");
+        assertThat(result.publishedAtText()).isEqualTo("2026-04-08 14:30");
         assertThat(result.content()).contains("课程内容改革研讨");
     }
 

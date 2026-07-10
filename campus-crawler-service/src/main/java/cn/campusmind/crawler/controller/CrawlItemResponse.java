@@ -17,6 +17,7 @@ public record CrawlItemResponse(
         String parseError,
         Integer detailHttpStatus,
         LocalDateTime fetchedAt,
-        LocalDateTime detailFetchedAt
+        LocalDateTime detailFetchedAt,
+        long favoriteCount
 ) {
 }

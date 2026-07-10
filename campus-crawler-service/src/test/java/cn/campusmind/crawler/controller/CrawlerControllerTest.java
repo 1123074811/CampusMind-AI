@@ -17,6 +17,7 @@ import java.sql.PreparedStatement;
 import java.sql.Statement;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -130,6 +131,18 @@ class CrawlerControllerTest {
                     )
                     """);
             statement.execute("""
+                    CREATE TABLE IF NOT EXISTS user_information_state (
+                      id BIGINT AUTO_INCREMENT PRIMARY KEY,
+                      user_id BIGINT NOT NULL,
+                      item_id BIGINT NOT NULL,
+                      read_status VARCHAR(32) NOT NULL,
+                      first_seen_at TIMESTAMP NOT NULL,
+                      read_at TIMESTAMP,
+                      archived_at TIMESTAMP,
+                      UNIQUE KEY uk_user_item_state (user_id, item_id)
+                    )
+                    """);
+            statement.execute("""
                     CREATE TABLE IF NOT EXISTS event_source_ref (
                       id BIGINT AUTO_INCREMENT PRIMARY KEY,
                       event_id BIGINT NOT NULL,
@@ -140,9 +153,23 @@ class CrawlerControllerTest {
                       content_hash CHAR(64)
                     )
                     """);
+            statement.execute("""
+                    CREATE TABLE IF NOT EXISTS event_audit_log (
+                      id BIGINT AUTO_INCREMENT PRIMARY KEY,
+                      event_id BIGINT,
+                      operator_id BIGINT,
+                      action VARCHAR(64) NOT NULL,
+                      before_snapshot CLOB,
+                      after_snapshot CLOB,
+                      comment VARCHAR(512),
+                      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    )
+                    """);
+            statement.execute("DELETE FROM event_audit_log");
             statement.execute("DELETE FROM event_source_ref");
             statement.execute("DELETE FROM campus_event");
             statement.execute("DELETE FROM information_item");
+            statement.execute("DELETE FROM user_information_state");
             statement.execute("DELETE FROM web_crawl_item");
             statement.execute("DELETE FROM crawl_task");
             statement.execute("DELETE FROM data_source");
@@ -218,6 +245,24 @@ class CrawlerControllerTest {
                 .andExpect(jsonPath("$.data.status").value("SUCCESS"))
                 .andExpect(jsonPath("$.data.discoveredCount").value(1))
                 .andExpect(jsonPath("$.data.persistedCount").value(0));
+    }
+
+    @Test
+    void latestItemsReturnsFavoriteCount() throws Exception {
+        mockMvc.perform(post("/api/admin/crawler/sources/9411/crawl"))
+                .andExpect(status().isOk());
+
+        try (Connection connection = dataSource.getConnection();
+             Statement statement = connection.createStatement()) {
+            statement.execute("""
+                    INSERT INTO user_information_state (user_id, item_id, read_status, first_seen_at)
+                    SELECT 1, id, 'FAVORITED', CURRENT_TIMESTAMP FROM information_item
+                    """);
+        }
+
+        mockMvc.perform(get("/api/admin/crawler/items").param("size", "10"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[0].favoriteCount").value(1));
     }
 
     private void insertSource() throws Exception {

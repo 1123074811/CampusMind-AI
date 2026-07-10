@@ -15,6 +15,7 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -30,9 +31,11 @@ import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.HexFormat;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -56,6 +59,7 @@ public class CrawlerService {
     private final DetailPageParser detailPageParser;
     private final PublicWebFetcher publicWebFetcher;
     private final CrawlerProperties crawlerProperties;
+    private final JdbcTemplate jdbcTemplate;
 
     public CrawlerService(DataSourceMapper dataSourceMapper,
                           CrawlTaskMapper crawlTaskMapper,
@@ -65,7 +69,8 @@ public class CrawlerService {
                           ListPageParser listPageParser,
                           DetailPageParser detailPageParser,
                           PublicWebFetcher publicWebFetcher,
-                          CrawlerProperties crawlerProperties) {
+                          CrawlerProperties crawlerProperties,
+                          JdbcTemplate jdbcTemplate) {
         this.dataSourceMapper = dataSourceMapper;
         this.crawlTaskMapper = crawlTaskMapper;
         this.webCrawlItemMapper = webCrawlItemMapper;
@@ -75,11 +80,12 @@ public class CrawlerService {
         this.detailPageParser = detailPageParser;
         this.publicWebFetcher = publicWebFetcher;
         this.crawlerProperties = crawlerProperties;
+        this.jdbcTemplate = jdbcTemplate;
     }
 
     @Transactional
     public CrawlSourceResult crawlSource(Long sourceId) {
-        return crawlSource(sourceId, new CrawlOptions(30, 50));
+        return crawlSource(sourceId, new CrawlOptions(365, null, "MANUAL"));
     }
 
     public BatchCrawlResult crawlEnabledSources(CrawlOptions options) {
@@ -139,11 +145,11 @@ public class CrawlerService {
         crawlTaskMapper.insert(task);
         if (!isSupported(source)) {
             return finish(task, source, "SKIPPED", null, null, 0, 0, List.of(), null,
-                    "仅支持启用的 PUBLIC_WEB/WEBMAGIC 数据源");
+                    "仅支持启用的 PUBLIC_WEB/WEBMAGIC 数据源", options.normalizedTrigger());
         }
         if (intervalTooSmall(source)) {
             return finish(task, source, "SKIPPED", null, null, 0, 0, List.of(), null,
-                    "采集间隔必须大于 " + crawlerProperties.getMinIntervalSeconds() + " 秒");
+                    "采集间隔必须大于 " + crawlerProperties.getMinIntervalSeconds() + " 秒", options.normalizedTrigger());
         }
         try {
             SelectorConfig selectorConfig = selectorConfigParser.parse(source.getSelectorConfig());
@@ -156,9 +162,9 @@ public class CrawlerService {
             source.setLastCrawledAt(LocalDateTime.now());
             dataSourceMapper.updateById(source);
             return finish(task, source, "SUCCESS", pageCrawl.httpStatus(), pageCrawl.parserVersion(),
-                    pageCrawl.links().size(), persistedCount, filteredLinks, null, null);
+                    pageCrawl.links().size(), persistedCount, filteredLinks, null, null, options.normalizedTrigger());
         } catch (Exception e) {
-            return finish(task, source, "FAILED", task.getHttpStatus(), null, 0, 0, List.of(), e.getMessage(), e.getMessage());
+            return finish(task, source, "FAILED", task.getHttpStatus(), null, 0, 0, List.of(), e.getMessage(), e.getMessage(), options.normalizedTrigger());
         }
     }
 
@@ -171,7 +177,6 @@ public class CrawlerService {
     }
 
     private ListPageCrawl crawlListPages(DataSource source, SelectorConfig selectorConfig, CrawlOptions options) {
-        int maxPages = Math.max(crawlerProperties.getMaxPagesPerSource(), 1);
         Map<String, CrawledLink> discovered = new LinkedHashMap<>();
         String nextUrl = source.getBaseUrl();
         String parserVersion = selectorConfig.getParserVersion();
@@ -179,7 +184,12 @@ public class CrawlerService {
         String firstEtag = null;
         String firstLastModified = null;
         int page = 1;
-        while (StringUtils.hasText(nextUrl) && page <= maxPages && discovered.size() < options.normalizedMaxItems()) {
+        Set<String> visitedPages = new LinkedHashSet<>();
+        LocalDate cutoff = LocalDate.now().minusDays(options.normalizedDays() - 1L);
+        while (StringUtils.hasText(nextUrl)) {
+            if (!visitedPages.add(nextUrl)) {
+                break;
+            }
             PublicWebFetcher.FetchResult fetchResult = publicWebFetcher.fetch(nextUrl);
             if (page == 1) {
                 firstHttpStatus = fetchResult.httpStatus();
@@ -188,9 +198,14 @@ public class CrawlerService {
             }
             ParsedListPage parsed = listPageParser.parse(fetchResult.body(), nextUrl, selectorConfig);
             parserVersion = parsed.parserVersion();
+            boolean reachedOldPage = !parsed.links().isEmpty() && parsed.links().stream()
+                    .allMatch(link -> link.publishedDate() != null && link.publishedDate().isBefore(cutoff));
             int before = discovered.size();
             for (CrawledLink link : parsed.links()) {
                 discovered.putIfAbsent(link.url(), link);
+            }
+            if (reachedOldPage) {
+                break;
             }
             String linkedNext = findNextPageUrl(fetchResult.body(), nextUrl);
             nextUrl = StringUtils.hasText(linkedNext) ? linkedNext : patternedNextPage(selectorConfig, page);
@@ -324,11 +339,11 @@ public class CrawlerService {
         if (existing == null) {
             informationItem.setItemStatus("ACTIVE");
             informationItemMapper.insert(informationItem);
-            return true;
+        } else {
+            informationItem.setId(existing.getId());
+            informationItem.setItemStatus(Objects.equals(existing.getContentHash(), contentHash) ? "ACTIVE" : "UPDATED");
+            informationItemMapper.updateById(informationItem);
         }
-        informationItem.setId(existing.getId());
-        informationItem.setItemStatus(Objects.equals(existing.getContentHash(), contentHash) ? "ACTIVE" : "UPDATED");
-        informationItemMapper.updateById(informationItem);
         return true;
     }
 
@@ -410,22 +425,42 @@ public class CrawlerService {
     private CrawlSourceResult finish(CrawlTask task, DataSource source, String status, Integer httpStatus,
                                      String parserVersion, int discoveredCount, int persistedCount,
                                      List<CrawledLink> links, String failReason,
-                                     String storedFailReason) {
+                                     String storedFailReason, String trigger) {
         task.setTaskStatus(status);
         task.setHttpStatus(httpStatus);
         task.setFailReason(truncate(storedFailReason, MAX_FAIL_REASON_LENGTH));
         task.setFinishedAt(LocalDateTime.now());
         crawlTaskMapper.updateById(task);
+        writeCrawlLog(source, task, status, discoveredCount, persistedCount, trigger);
         return new CrawlSourceResult(task.getId(), source.getId(), source.getName(), status, httpStatus,
                 source.getBaseUrl(), discoveredCount, persistedCount, links, parserVersion, failReason,
                 task.getStartedAt(), task.getFinishedAt());
+    }
+
+    private void writeCrawlLog(DataSource source, CrawlTask task, String status, int discoveredCount, int persistedCount, String trigger) {
+        String action = "AUTO".equalsIgnoreCase(trigger) ? "AUTO_CRAWL" : "MANUAL_CRAWL";
+        String comment = source.getName() + "：" + status + "，发现 " + discoveredCount + " 条，入库 " + persistedCount + " 条";
+        jdbcTemplate.update("""
+                INSERT INTO event_audit_log (event_id, operator_id, action, before_snapshot, after_snapshot, comment)
+                VALUES (NULL, NULL, ?, NULL, JSON_OBJECT('taskId', ?, 'sourceId', ?, 'status', ?), ?)
+                """, action, task.getId(), source.getId(), status, truncate(comment, 512));
     }
 
     private CrawlItemResponse toItemResponse(WebCrawlItem item) {
         return new CrawlItemResponse(item.getId(), item.getSourceId(), item.getSourceName(), item.getSourceUrl(),
                 item.getItemUrl(), item.getTitle(), item.getDetailTitle(), item.getDateText(), item.getSummary(),
                 item.getDetailContent(), item.getParseStatus(), item.getParseError(), item.getDetailHttpStatus(),
-                item.getFetchedAt(), item.getDetailFetchedAt());
+                item.getFetchedAt(), item.getDetailFetchedAt(), favoriteCount(item.getItemUrl()));
+    }
+
+    private long favoriteCount(String itemUrl) {
+        Long count = jdbcTemplate.queryForObject("""
+                SELECT COUNT(*)
+                FROM user_information_state state
+                JOIN information_item item ON item.id = state.item_id
+                WHERE item.item_url = ? AND state.read_status IN ('FAVORITED', 'ARCHIVED')
+                """, Long.class, itemUrl);
+        return count == null ? 0 : count;
     }
 
     private String firstNonBlank(String... values) {

@@ -2,20 +2,22 @@ package cn.campusmind.crawler.application;
 
 public record CrawlOptions(
         Integer days,
-        Integer maxItems
+        Integer maxItems,
+        String trigger
 ) {
 
     public int normalizedDays() {
         if (days == null || days <= 0) {
-            return 30;
+            return 365;
         }
         return Math.min(days, 365);
     }
 
     public int normalizedMaxItems() {
-        if (maxItems == null || maxItems <= 0) {
-            return 50;
-        }
-        return Math.min(maxItems, 200);
+        return Integer.MAX_VALUE;
+    }
+
+    public String normalizedTrigger() {
+        return "AUTO".equalsIgnoreCase(trigger) ? "AUTO" : "MANUAL";
     }
 }

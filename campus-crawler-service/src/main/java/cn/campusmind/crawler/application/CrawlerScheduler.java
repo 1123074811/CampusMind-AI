@@ -14,6 +14,6 @@ public class CrawlerScheduler {
 
     @Scheduled(cron = "${campus.crawler.daily-cron}", zone = "Asia/Shanghai")
     public void crawlPublicSourcesDaily() {
-        crawlerService.crawlEnabledSources(new CrawlOptions(30, 50));
+        crawlerService.crawlEnabledSources(new CrawlOptions(365, null, "AUTO"));
     }
 }

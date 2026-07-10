@@ -11,6 +11,8 @@ import java.util.regex.Pattern;
 @Component
 public class DetailPageParser {
 
+    private static final Pattern DATE_TIME = Pattern.compile("(?<!\\d)(20\\d{2}[-/.]\\d{1,2}[-/.]\\d{1,2}\\s+\\d{1,2}:\\d{2}(?::\\d{2})?)");
+
     public ParsedDetailPage parse(String html, String url, SelectorConfig selectorConfig) {
         SelectorConfig.DetailSelector detailSelector = selectorConfig.getDetail();
         Document document = Jsoup.parse(html, url);
@@ -41,14 +43,14 @@ public class DetailPageParser {
     private String extractPublishedAtText(Document document, SelectorConfig.DetailSelector detailSelector) {
         String metaText = clean(firstText(document, detailSelector.getMeta()));
         String regex = detailSelector.getPublishedAtRegex();
-        if (metaText.isBlank() || regex == null || regex.isBlank()) {
-            return "";
+        if (!metaText.isBlank() && regex != null && !regex.isBlank()) {
+            Matcher matcher = Pattern.compile(regex).matcher(metaText);
+            if (matcher.find()) {
+                return clean(matcher.groupCount() >= 1 ? matcher.group(1) : matcher.group());
+            }
         }
-        Matcher matcher = Pattern.compile(regex).matcher(metaText);
-        if (!matcher.find()) {
-            return "";
-        }
-        return clean(matcher.groupCount() >= 1 ? matcher.group(1) : matcher.group());
+        Matcher fallback = DATE_TIME.matcher(document.text());
+        return fallback.find() ? clean(fallback.group(1)) : "";
     }
 
     private String firstText(Document document, String selector) {

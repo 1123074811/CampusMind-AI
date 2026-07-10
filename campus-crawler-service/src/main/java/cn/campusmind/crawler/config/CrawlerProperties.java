@@ -9,7 +9,6 @@ public class CrawlerProperties {
     private int minIntervalSeconds = 3;
     private int robotsCacheTtlHours = 12;
     private int maxRetry = 3;
-    private int maxPagesPerSource = 5;
     private String dailyCron = "0 30 6 * * *";
     private String userAgent = "CampusEventBot/1.0 (+contact: admin@example.edu)";
 
@@ -43,14 +42,6 @@ public class CrawlerProperties {
 
     public void setMaxRetry(int maxRetry) {
         this.maxRetry = maxRetry;
-    }
-
-    public int getMaxPagesPerSource() {
-        return maxPagesPerSource;
-    }
-
-    public void setMaxPagesPerSource(int maxPagesPerSource) {
-        this.maxPagesPerSource = maxPagesPerSource;
     }
 
     public String getDailyCron() {

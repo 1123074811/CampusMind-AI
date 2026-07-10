@@ -27,18 +27,18 @@ public class CrawlerController {
     @PostMapping("/sources/{sourceId}/crawl")
     public ApiResponse<CrawlSourceResult> crawlSource(
             @PathVariable Long sourceId,
-            @RequestParam(defaultValue = "30") Integer days,
-            @RequestParam(defaultValue = "50") Integer maxItems
+            @RequestParam(defaultValue = "365") Integer days,
+            @RequestParam(required = false) Integer maxItems
     ) {
-        return ApiResponse.ok(crawlerService.crawlSource(sourceId, new CrawlOptions(days, maxItems)));
+        return ApiResponse.ok(crawlerService.crawlSource(sourceId, new CrawlOptions(days, maxItems, "MANUAL")));
     }
 
     @PostMapping("/sources/crawl")
     public ApiResponse<BatchCrawlResult> crawlEnabledSources(
-            @RequestParam(defaultValue = "30") Integer days,
-            @RequestParam(defaultValue = "50") Integer maxItems
+            @RequestParam(defaultValue = "365") Integer days,
+            @RequestParam(required = false) Integer maxItems
     ) {
-        return ApiResponse.ok(crawlerService.crawlEnabledSources(new CrawlOptions(days, maxItems)));
+        return ApiResponse.ok(crawlerService.crawlEnabledSources(new CrawlOptions(days, maxItems, "MANUAL")));
     }
 
     @GetMapping("/items")
