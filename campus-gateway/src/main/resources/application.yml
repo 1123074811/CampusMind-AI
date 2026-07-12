@@ -4,6 +4,8 @@ server:
 spring:
   application:
     name: campus-gateway
+  codec:
+    max-in-memory-size: 15MB
   cloud:
     gateway:
       server:

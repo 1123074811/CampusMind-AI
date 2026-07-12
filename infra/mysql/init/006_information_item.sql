@@ -20,7 +20,6 @@ CREATE TABLE IF NOT EXISTS information_item (
   ai_event_type VARCHAR(32) NULL COMMENT '智能体识别的信息类型',
   ai_summary TEXT NULL COMMENT '智能精简摘要',
   ai_card_json JSON NULL COMMENT '智能体结构化信息卡片',
-  ai_confidence DECIMAL(5,4) NULL COMMENT '智能提取置信度',
   ai_need_review TINYINT(1) NOT NULL DEFAULT 0 COMMENT '是否需要人工复核',
   ai_error VARCHAR(1024) NULL COMMENT '智能提取失败原因',
   ai_processed_at DATETIME NULL COMMENT '智能提取完成时间',
