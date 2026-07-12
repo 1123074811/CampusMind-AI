@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" href="popup.css">
+  <title>CampusMind 导出</title>
+</head>
+<body>
+  <main>
+    <h1>雨课堂本地导出</h1>
+    <p>登录后点击一次即可自动刷新并同步当前页数据；不会读取或上传 Cookie、Token、密码。</p>
+    <strong id="count">已捕获 0 条</strong>
+    <button id="start">一键自动同步</button>
+    <button id="stop" class="secondary">停止自动同步</button>
+    <button id="copy" class="secondary">复制导入 JSON</button>
+    <small id="status">打开雨课堂后开始捕获，再正常进入相应页面。</small>
+  </main>
+  <script src="popup.js"></script>
+</body>
+</html>

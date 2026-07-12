@@ -1,0 +1,28 @@
+{
+  "manifest_version": 3,
+  "name": "CampusMind 雨课堂本地导出器",
+  "version": "0.1.0",
+  "description": "仅在用户主动开启后，从雨课堂已加载的课程、作业和通知 JSON 生成可导入 CampusMind 的文件。",
+  "permissions": ["storage", "clipboardWrite"],
+  "host_permissions": ["https://*.yuketang.cn/*"],
+  "action": {
+    "default_title": "CampusMind 雨课堂导出",
+    "default_popup": "popup.html"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://*.yuketang.cn/*"],
+      "js": ["content.js"],
+      "run_at": "document_start"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["normalizer.js", "page-hook.js"],
+      "matches": ["https://*.yuketang.cn/*"]
+    }
+  ]
+}
