@@ -1,233 +1,364 @@
--- CampusMind AI MySQL schema export.
--- Import with:
---   mysql --default-character-set=utf8mb4 -uroot -p < infra/mysql/campusmind_schema.sql
+mysqldump: [Warning] Using a password on the command line interface can be insecure.
+-- MySQL dump 10.13  Distrib 9.1.0, for Win64 (x86_64)
+--
+-- Host: localhost    Database: campusmind
+-- ------------------------------------------------------
+-- Server version	9.1.0
 
-SET NAMES utf8mb4;
+/*!40101 SET @OLD_CHARACTER_SET_CLIENT=@@CHARACTER_SET_CLIENT */;
+/*!40101 SET @OLD_CHARACTER_SET_RESULTS=@@CHARACTER_SET_RESULTS */;
+/*!40101 SET @OLD_COLLATION_CONNECTION=@@COLLATION_CONNECTION */;
+/*!50503 SET NAMES utf8mb4 */;
+/*!40103 SET @OLD_TIME_ZONE=@@TIME_ZONE */;
+/*!40103 SET TIME_ZONE='+00:00' */;
+/*!40014 SET @OLD_UNIQUE_CHECKS=@@UNIQUE_CHECKS, UNIQUE_CHECKS=0 */;
+/*!40014 SET @OLD_FOREIGN_KEY_CHECKS=@@FOREIGN_KEY_CHECKS, FOREIGN_KEY_CHECKS=0 */;
+/*!40101 SET @OLD_SQL_MODE=@@SQL_MODE, SQL_MODE='NO_AUTO_VALUE_ON_ZERO' */;
+/*!40111 SET @OLD_SQL_NOTES=@@SQL_NOTES, SQL_NOTES=0 */;
+mysqldump: Error: 'Access denied; you need (at least one of) the PROCESS privilege(s) for this operation' when trying to dump tablespaces
 
-CREATE DATABASE IF NOT EXISTS campusmind
-  DEFAULT CHARACTER SET utf8mb4
-  DEFAULT COLLATE utf8mb4_0900_ai_ci;
+--
+-- Table structure for table `campus_event`
+--
 
-USE campusmind;
+DROP TABLE IF EXISTS `campus_event`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `campus_event` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `title` varchar(255) NOT NULL COMMENT '浜嬩欢鏍囬',
+  `summary` text COMMENT 'AI鎽樿鎴栦汉宸ユ憳瑕?,
+  `event_type` varchar(64) NOT NULL COMMENT 'NOTICE/COURSE/EXAM/HOMEWORK/ACTIVITY/LECTURE/COMPETITION/SERVICE',
+  `source_type` varchar(64) NOT NULL COMMENT 'PUBLIC_WEB/RAIN_CLASSROOM/USER_TEXT/USER_IMAGE/USER_FILE',
+  `visibility` varchar(16) NOT NULL DEFAULT 'PUBLIC' COMMENT 'PUBLIC/PRIVATE锛圥RIVATE=鐢ㄦ埛绉佹湁浜嬩欢锛屼粎owner鍙锛?,
+  `owner_user_id` bigint DEFAULT NULL COMMENT 'PRIVATE浜嬩欢鎵€灞炵敤鎴?,
+  `status` varchar(32) NOT NULL DEFAULT 'AI_PUBLISHED' COMMENT 'AI_PUBLISHED/REVIEWED/CORRECTED/REJECTED/OFFLINE',
+  `start_time` datetime DEFAULT NULL,
+  `end_time` datetime DEFAULT NULL,
+  `location` varchar(255) DEFAULT NULL,
+  `organizer` varchar(255) DEFAULT NULL COMMENT '鍙戝竷鍗曚綅鎴栬绋嬫暀甯?,
+  `target_scope` json DEFAULT NULL COMMENT '閫傜敤鑼冨洿锛氬闄?涓撲笟/骞寸骇/璇剧▼',
+  `tags` json DEFAULT NULL COMMENT '鏍囩',
+  `dedup_key` char(64) DEFAULT NULL COMMENT '鏍囬+鏃堕棿+鏉ユ簮鐢熸垚鐨凷HA256',
+  `vector_doc_id` varchar(128) DEFAULT NULL COMMENT '鍚戦噺搴撴枃妗D',
+  `published_at` datetime DEFAULT NULL,
+  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_event_dedup_key` (`dedup_key`),
+  KEY `idx_event_type_time` (`event_type`,`start_time`),
+  KEY `idx_event_status_created` (`status`,`created_at`),
+  KEY `idx_event_source_type` (`source_type`),
+  KEY `idx_event_owner_visibility` (`owner_user_id`,`visibility`,`start_time`),
+  CONSTRAINT `fk_campus_event_owner` FOREIGN KEY (`owner_user_id`) REFERENCES `user` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB AUTO_INCREMENT=9193 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='鏍″洯浜嬩欢涓昏〃';
+/*!40101 SET character_set_client = @saved_cs_client */;
 
-CREATE TABLE IF NOT EXISTS user (
-  id BIGINT PRIMARY KEY AUTO_INCREMENT COMMENT '用户ID',
-  username VARCHAR(64) NOT NULL COMMENT '登录名',
-  phone VARCHAR(32) NULL COMMENT '手机号，需加密或脱敏展示',
-  password_hash VARCHAR(255) NOT NULL COMMENT '密码哈希',
-  role VARCHAR(32) NOT NULL DEFAULT 'STUDENT' COMMENT 'STUDENT/ADMIN/SUPER_ADMIN',
-  status TINYINT NOT NULL DEFAULT 1 COMMENT '1正常 0禁用',
-  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  UNIQUE KEY uk_user_username (username),
-  KEY idx_user_role_status (role, status)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='用户表';
+--
+-- Table structure for table `crawl_task`
+--
 
-CREATE TABLE IF NOT EXISTS user_profile (
-  id BIGINT PRIMARY KEY AUTO_INCREMENT,
-  user_id BIGINT NOT NULL,
-  college VARCHAR(128) NULL COMMENT '学院',
-  major VARCHAR(128) NULL COMMENT '专业',
-  grade VARCHAR(32) NULL COMMENT '年级',
-  class_name VARCHAR(128) NULL COMMENT '班级',
-  interest_tags JSON NULL COMMENT '兴趣标签，如讲座/竞赛/就业',
-  course_codes JSON NULL COMMENT '课程标识列表',
-  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  UNIQUE KEY uk_profile_user (user_id),
-  KEY idx_profile_college_major_grade (college, major, grade),
-  CONSTRAINT fk_user_profile_user FOREIGN KEY (user_id) REFERENCES user (id)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='用户画像表';
+DROP TABLE IF EXISTS `crawl_task`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `crawl_task` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `source_id` bigint NOT NULL,
+  `task_status` varchar(32) NOT NULL COMMENT 'PENDING/RUNNING/SUCCESS/FAILED/SKIPPED',
+  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `crawl_url` varchar(1024) NOT NULL,
+  `http_status` int DEFAULT NULL,
+  `etag` varchar(255) DEFAULT NULL,
+  `last_modified` varchar(255) DEFAULT NULL,
+  `fail_reason` varchar(1024) DEFAULT NULL,
+  `started_at` datetime DEFAULT NULL,
+  `finished_at` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `idx_task_source_status` (`source_id`,`task_status`),
+  KEY `idx_task_started` (`started_at`),
+  CONSTRAINT `fk_crawl_task_source` FOREIGN KEY (`source_id`) REFERENCES `data_source` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB AUTO_INCREMENT=9998 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='閲囬泦浠诲姟琛?;
+/*!40101 SET character_set_client = @saved_cs_client */;
 
-CREATE TABLE IF NOT EXISTS campus_event (
-  id BIGINT PRIMARY KEY AUTO_INCREMENT,
-  title VARCHAR(255) NOT NULL COMMENT '事件标题',
-  summary TEXT NULL COMMENT 'AI摘要或人工摘要',
-  event_type VARCHAR(64) NOT NULL COMMENT 'NOTICE/COURSE/EXAM/HOMEWORK/ACTIVITY/LECTURE/COMPETITION/SERVICE',
-  source_type VARCHAR(64) NOT NULL COMMENT 'PUBLIC_WEB/RAIN_CLASSROOM/USER_TEXT/USER_IMAGE',
-  visibility VARCHAR(16) NOT NULL DEFAULT 'PUBLIC' COMMENT 'PUBLIC/PRIVATE',
-  owner_user_id BIGINT NULL COMMENT 'PRIVATE事件所属用户',
-  status VARCHAR(32) NOT NULL DEFAULT 'AI_PUBLISHED' COMMENT 'AI_PUBLISHED/REVIEWED/CORRECTED/REJECTED/OFFLINE',
-  start_time DATETIME NULL,
-  end_time DATETIME NULL,
-  location VARCHAR(255) NULL,
-  organizer VARCHAR(255) NULL COMMENT '发布单位或课程教师',
-  target_scope JSON NULL COMMENT '适用范围：学院/专业/年级/课程',
-  tags JSON NULL COMMENT '标签',
-  dedup_key CHAR(64) NULL COMMENT '标题+时间+来源生成的SHA256',
-  vector_doc_id VARCHAR(128) NULL COMMENT '向量库文档ID',
-  published_at DATETIME NULL,
-  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  KEY idx_event_type_time (event_type, start_time),
-  KEY idx_event_status_created (status, created_at),
-  KEY idx_event_source_type (source_type),
-  KEY idx_event_owner_visibility (owner_user_id, visibility, start_time),
-  UNIQUE KEY uk_event_dedup_key (dedup_key),
-  CONSTRAINT fk_campus_event_owner FOREIGN KEY (owner_user_id) REFERENCES user (id) ON DELETE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='校园事件主表';
+--
+-- Table structure for table `data_source`
+--
 
-CREATE TABLE IF NOT EXISTS event_source_ref (
-  id BIGINT PRIMARY KEY AUTO_INCREMENT,
-  event_id BIGINT NOT NULL,
-  source_id BIGINT NULL COMMENT '公开网页数据源ID',
-  raw_doc_id VARCHAR(64) NOT NULL COMMENT 'MongoDB原始文档ID',
-  source_url VARCHAR(1024) NULL,
-  source_title VARCHAR(255) NULL,
-  content_hash CHAR(64) NOT NULL,
-  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  KEY idx_ref_event (event_id),
-  KEY idx_ref_hash (content_hash),
-  CONSTRAINT fk_event_source_ref_event FOREIGN KEY (event_id) REFERENCES campus_event (id)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='事件来源引用表';
+DROP TABLE IF EXISTS `data_source`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `data_source` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `name` varchar(128) NOT NULL,
+  `source_type` varchar(64) NOT NULL COMMENT 'PUBLIC_WEB/RAIN_CLASSROOM/USER_TEXT/USER_IMAGE/USER_FILE',
+  `base_url` varchar(1024) NOT NULL,
+  `robots_url` varchar(1024) DEFAULT NULL,
+  `crawl_interval_seconds` int NOT NULL DEFAULT '5' COMMENT '蹇呴』澶т簬2绉?,
+  `parser_type` varchar(64) NOT NULL COMMENT 'WEBMAGIC/PLAYWRIGHT/RSS/SITEMAP',
+  `selector_config` json DEFAULT NULL COMMENT 'CSS/XPath/姝ｆ枃鎶藉彇瑙勫垯',
+  `enabled` tinyint NOT NULL DEFAULT '1',
+  `last_crawled_at` datetime DEFAULT NULL,
+  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_source_base_url` (`base_url`(255)),
+  KEY `idx_source_enabled` (`enabled`)
+) ENGINE=InnoDB AUTO_INCREMENT=9429 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='鍏紑缃戦〉鏁版嵁婧愯〃';
+/*!40101 SET character_set_client = @saved_cs_client */;
 
-CREATE TABLE IF NOT EXISTS event_audit_log (
-  id BIGINT PRIMARY KEY AUTO_INCREMENT,
-  event_id BIGINT NULL,
-  operator_id BIGINT NULL,
-  action VARCHAR(64) NOT NULL COMMENT 'REVIEW/CORRECT/MERGE/REJECT/OFFLINE',
-  before_snapshot JSON NULL,
-  after_snapshot JSON NULL,
-  comment VARCHAR(512) NULL,
-  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  KEY idx_audit_event_time (event_id, created_at),
-  KEY idx_audit_operator (operator_id),
-  CONSTRAINT fk_event_audit_log_event FOREIGN KEY (event_id) REFERENCES campus_event (id),
-  CONSTRAINT fk_event_audit_log_operator FOREIGN KEY (operator_id) REFERENCES user (id)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='事件审核日志表';
+--
+-- Table structure for table `event_audit_log`
+--
 
-CREATE TABLE IF NOT EXISTS data_source (
-  id BIGINT PRIMARY KEY AUTO_INCREMENT,
-  name VARCHAR(128) NOT NULL,
-  source_type VARCHAR(64) NOT NULL COMMENT 'PUBLIC_WEB',
-  base_url VARCHAR(1024) NOT NULL,
-  robots_url VARCHAR(1024) NULL,
-  crawl_interval_seconds INT NOT NULL DEFAULT 5 COMMENT '必须大于2秒',
-  parser_type VARCHAR(64) NOT NULL COMMENT 'WEBMAGIC/PLAYWRIGHT/RSS/SITEMAP',
-  selector_config JSON NULL COMMENT 'CSS/XPath/正文抽取规则',
-  enabled TINYINT NOT NULL DEFAULT 1,
-  last_crawled_at DATETIME NULL,
-  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  KEY idx_source_enabled (enabled),
-  UNIQUE KEY uk_source_base_url (base_url(255))
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='公开网页数据源表';
+DROP TABLE IF EXISTS `event_audit_log`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `event_audit_log` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `event_id` bigint DEFAULT NULL,
+  `operator_id` bigint DEFAULT NULL,
+  `action` varchar(64) NOT NULL COMMENT 'REVIEW/CORRECT/MERGE/REJECT/OFFLINE/MANUAL_CRAWL/AUTO_CRAWL',
+  `before_snapshot` json DEFAULT NULL,
+  `after_snapshot` json DEFAULT NULL,
+  `comment` varchar(512) DEFAULT NULL,
+  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_audit_event_time` (`event_id`,`created_at`),
+  KEY `idx_audit_operator` (`operator_id`),
+  CONSTRAINT `fk_event_audit_log_event` FOREIGN KEY (`event_id`) REFERENCES `campus_event` (`id`) ON DELETE SET NULL,
+  CONSTRAINT `fk_event_audit_log_operator` FOREIGN KEY (`operator_id`) REFERENCES `user` (`id`) ON DELETE SET NULL
+) ENGINE=InnoDB AUTO_INCREMENT=458 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='浜嬩欢瀹℃牳鏃ュ織琛?;
+/*!40101 SET character_set_client = @saved_cs_client */;
 
-ALTER TABLE event_source_ref
-  ADD CONSTRAINT fk_event_source_ref_source FOREIGN KEY (source_id) REFERENCES data_source (id) ON DELETE SET NULL;
+--
+-- Table structure for table `event_source_ref`
+--
 
-CREATE TABLE IF NOT EXISTS crawl_task (
-  id BIGINT PRIMARY KEY AUTO_INCREMENT,
-  source_id BIGINT NOT NULL,
-  task_status VARCHAR(32) NOT NULL COMMENT 'PENDING/RUNNING/SUCCESS/FAILED/SKIPPED',
-  crawl_url VARCHAR(1024) NOT NULL,
-  http_status INT NULL,
-  etag VARCHAR(255) NULL,
-  last_modified VARCHAR(255) NULL,
-  fail_reason VARCHAR(1024) NULL,
-  started_at DATETIME NULL,
-  finished_at DATETIME NULL,
-  KEY idx_task_source_status (source_id, task_status),
-  KEY idx_task_started (started_at),
-  CONSTRAINT fk_crawl_task_source FOREIGN KEY (source_id) REFERENCES data_source (id)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='采集任务表';
+DROP TABLE IF EXISTS `event_source_ref`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `event_source_ref` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `event_id` bigint NOT NULL,
+  `source_id` bigint DEFAULT NULL COMMENT '鍏紑缃戦〉鏁版嵁婧怚D',
+  `raw_doc_id` varchar(64) NOT NULL COMMENT 'MongoDB鍘熷鏂囨。ID',
+  `source_url` varchar(1024) DEFAULT NULL,
+  `source_title` varchar(255) DEFAULT NULL,
+  `content_hash` char(64) NOT NULL,
+  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_ref_event` (`event_id`),
+  KEY `idx_ref_hash` (`content_hash`),
+  KEY `fk_event_source_ref_source` (`source_id`),
+  CONSTRAINT `fk_event_source_ref_event` FOREIGN KEY (`event_id`) REFERENCES `campus_event` (`id`),
+  CONSTRAINT `fk_event_source_ref_source` FOREIGN KEY (`source_id`) REFERENCES `data_source` (`id`) ON DELETE SET NULL
+) ENGINE=InnoDB AUTO_INCREMENT=216 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='浜嬩欢鏉ユ簮寮曠敤琛?;
+/*!40101 SET character_set_client = @saved_cs_client */;
 
-CREATE TABLE IF NOT EXISTS web_crawl_item (
-  id BIGINT PRIMARY KEY AUTO_INCREMENT,
-  task_id BIGINT NOT NULL COMMENT '采集任务ID',
-  source_id BIGINT NOT NULL COMMENT '公开网页数据源ID',
-  source_name VARCHAR(128) NOT NULL COMMENT '数据源名称',
-  source_url VARCHAR(1024) NOT NULL COMMENT '列表页URL',
-  item_url VARCHAR(1024) NOT NULL COMMENT '详情页URL',
-  title VARCHAR(512) NOT NULL COMMENT '列表页解析标题',
-  detail_title VARCHAR(512) NULL COMMENT '详情页标题',
-  date_text VARCHAR(64) NULL COMMENT '列表页日期文本',
-  summary TEXT NULL COMMENT '列表页摘要',
-  detail_content MEDIUMTEXT NULL COMMENT '详情页正文文本',
-  content_hash CHAR(64) NOT NULL,
-  parser_version VARCHAR(64) NULL,
-  detail_http_status INT NULL,
-  detail_fetched_at DATETIME NULL,
-  detail_content_hash CHAR(64) NULL,
-  parse_status VARCHAR(32) NOT NULL DEFAULT 'LIST_ONLY',
-  parse_error VARCHAR(1024) NULL,
-  fetched_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  UNIQUE KEY uk_web_crawl_item_hash (content_hash),
-  KEY idx_web_crawl_item_source_time (source_id, fetched_at),
-  KEY idx_web_crawl_item_task (task_id),
-  CONSTRAINT fk_web_crawl_item_task FOREIGN KEY (task_id) REFERENCES crawl_task (id) ON DELETE CASCADE,
-  CONSTRAINT fk_web_crawl_item_source FOREIGN KEY (source_id) REFERENCES data_source (id) ON DELETE RESTRICT
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='公开网页采集结果表';
+--
+-- Table structure for table `import_task`
+--
 
-CREATE TABLE IF NOT EXISTS information_item (
-  id BIGINT PRIMARY KEY AUTO_INCREMENT,
-  source_id BIGINT NOT NULL,
-  source_name VARCHAR(128) NOT NULL,
-  source_url VARCHAR(1024) NOT NULL,
-  item_url VARCHAR(1024) NOT NULL,
-  title VARCHAR(512) NOT NULL,
-  publish_time DATETIME NULL,
-  fetched_at DATETIME NOT NULL,
-  detail_content MEDIUMTEXT NOT NULL,
-  content_hash CHAR(64) NOT NULL,
-  item_status VARCHAR(32) NOT NULL DEFAULT 'ACTIVE',
-  parse_status VARCHAR(32) NOT NULL,
-  parse_error VARCHAR(1024) NULL,
-  ai_status VARCHAR(32) NOT NULL DEFAULT 'PENDING',
-  ai_event_type VARCHAR(32) NULL,
-  ai_summary TEXT NULL,
-  ai_card_json JSON NULL,
-  ai_confidence DECIMAL(5,4) NULL,
-  ai_need_review TINYINT(1) NOT NULL DEFAULT 0,
-  ai_error VARCHAR(1024) NULL,
-  ai_processed_at DATETIME NULL,
-  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  UNIQUE KEY uk_information_item_url_title (item_url(512), title(191)),
-  KEY idx_information_item_time (publish_time, fetched_at),
-  KEY idx_information_item_source (source_id, fetched_at),
-  KEY idx_information_item_status (item_status),
-  KEY idx_information_item_ai_status (ai_status, fetched_at),
-  CONSTRAINT fk_information_item_source FOREIGN KEY (source_id) REFERENCES data_source (id) ON DELETE RESTRICT
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='信息集中站信息条目表';
+DROP TABLE IF EXISTS `import_task`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `import_task` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `user_id` bigint DEFAULT NULL,
+  `import_type` varchar(64) NOT NULL COMMENT 'RAIN_COOKIE/RAIN_JSON/USER_TEXT/USER_IMAGE',
+  `task_status` varchar(32) NOT NULL DEFAULT 'PENDING',
+  `raw_doc_id` varchar(64) DEFAULT NULL,
+  `result_summary` json DEFAULT NULL,
+  `error_message` varchar(1024) DEFAULT NULL,
+  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `finished_at` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `idx_import_user_time` (`user_id`,`created_at`),
+  KEY `idx_import_status` (`task_status`),
+  CONSTRAINT `fk_import_task_user` FOREIGN KEY (`user_id`) REFERENCES `user` (`id`) ON DELETE SET NULL
+) ENGINE=InnoDB AUTO_INCREMENT=9613 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='鐢ㄦ埛瀵煎叆浠诲姟琛?;
+/*!40101 SET character_set_client = @saved_cs_client */;
 
-CREATE TABLE IF NOT EXISTS user_information_state (
-  id BIGINT PRIMARY KEY AUTO_INCREMENT,
-  user_id BIGINT NOT NULL,
-  item_id BIGINT NOT NULL,
-  first_seen_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  read_at DATETIME NULL,
-  favorited_at DATETIME NULL,
-  UNIQUE KEY uk_user_item_state (user_id, item_id),
-  KEY idx_user_read_history (user_id, read_at),
-  KEY idx_user_favorites (user_id, favorited_at),
-  CONSTRAINT fk_user_information_state_user FOREIGN KEY (user_id) REFERENCES user (id) ON DELETE CASCADE,
-  CONSTRAINT fk_user_information_state_item FOREIGN KEY (item_id) REFERENCES information_item (id) ON DELETE RESTRICT
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='用户信息条目阅读与收藏状态表';
+--
+-- Table structure for table `information_item`
+--
 
-CREATE TABLE IF NOT EXISTS import_task (
-  id BIGINT PRIMARY KEY AUTO_INCREMENT,
-  user_id BIGINT NOT NULL,
-  import_type VARCHAR(64) NOT NULL COMMENT 'RAIN_COOKIE/RAIN_JSON/USER_TEXT/USER_IMAGE',
-  task_status VARCHAR(32) NOT NULL DEFAULT 'PENDING',
-  raw_doc_id VARCHAR(64) NULL,
-  result_summary JSON NULL,
-  error_message VARCHAR(1024) NULL,
-  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  finished_at DATETIME NULL,
-  KEY idx_import_user_time (user_id, created_at),
-  KEY idx_import_status (task_status),
-  CONSTRAINT fk_import_task_user FOREIGN KEY (user_id) REFERENCES user (id)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='用户导入任务表';
+DROP TABLE IF EXISTS `information_item`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `information_item` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `source_id` bigint NOT NULL COMMENT '鏁版嵁婧怚D',
+  `source_name` varchar(128) NOT NULL COMMENT '鏁版嵁婧愬悕绉?,
+  `source_url` varchar(1024) NOT NULL COMMENT '鍒楄〃椤垫垨鏍忕洰URL',
+  `item_url` varchar(1024) NOT NULL COMMENT '鍘熺綉椤佃鎯匲RL',
+  `title` varchar(512) NOT NULL COMMENT '淇℃伅鏍囬',
+  `publish_time` datetime DEFAULT NULL COMMENT '椤甸潰鍙戝竷鏃堕棿锛屾棤娉曡В鏋愭椂涓虹┖',
+  `fetched_at` datetime NOT NULL COMMENT '鎶撳彇鏃堕棿',
+  `detail_content` mediumtext NOT NULL COMMENT '绯荤粺鎻愬彇姝ｆ枃',
+  `content_hash` char(64) NOT NULL COMMENT '姝ｆ枃鍐呭鍝堝笇',
+  `item_status` varchar(32) NOT NULL DEFAULT 'ACTIVE' COMMENT 'ACTIVE/UPDATED/OFFLINE/FAILED',
+  `parse_status` varchar(32) NOT NULL COMMENT 'DETAIL_SUCCESS/PARSE_FAILED/DETAIL_FAILED',
+  `parse_error` varchar(1024) DEFAULT NULL COMMENT '瑙ｆ瀽澶辫触鍘熷洜',
+  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `ai_status` varchar(32) NOT NULL DEFAULT 'PENDING' COMMENT 'PENDING/SUCCESS/REVIEW/FAILED',
+  `ai_event_type` varchar(32) DEFAULT NULL COMMENT '鏅鸿兘浣撹瘑鍒殑淇℃伅绫诲瀷',
+  `ai_summary` text COMMENT '鏅鸿兘绮剧畝鎽樿',
+  `ai_card_json` json DEFAULT NULL COMMENT '鏅鸿兘浣撶粨鏋勫寲淇℃伅鍗＄墖',
+  `ai_confidence` decimal(5,4) DEFAULT NULL COMMENT '鏅鸿兘鎻愬彇缃俊搴?,
+  `ai_need_review` tinyint(1) NOT NULL DEFAULT '0' COMMENT '鏄惁闇€瑕佷汉宸ュ鏍?,
+  `ai_error` varchar(1024) DEFAULT NULL COMMENT '鏅鸿兘鎻愬彇澶辫触鍘熷洜',
+  `ai_processed_at` datetime DEFAULT NULL COMMENT '鏅鸿兘鎻愬彇瀹屾垚鏃堕棿',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_information_item_url_title` (`item_url`(512),`title`(191)),
+  KEY `idx_information_item_time` (`publish_time`,`fetched_at`),
+  KEY `idx_information_item_source` (`source_id`,`fetched_at`),
+  KEY `idx_information_item_status` (`item_status`),
+  KEY `idx_information_item_ai_status` (`ai_status`,`fetched_at`),
+  CONSTRAINT `fk_information_item_source` FOREIGN KEY (`source_id`) REFERENCES `data_source` (`id`) ON DELETE RESTRICT
+) ENGINE=InnoDB AUTO_INCREMENT=188 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='淇℃伅闆嗕腑绔欎俊鎭潯鐩〃';
+/*!40101 SET character_set_client = @saved_cs_client */;
 
-CREATE TABLE IF NOT EXISTS user_source_subscription (
-  id BIGINT PRIMARY KEY AUTO_INCREMENT,
-  user_id BIGINT NOT NULL,
-  source_id BIGINT NOT NULL,
-  enabled TINYINT NOT NULL DEFAULT 1 COMMENT '1启用 0禁用',
-  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  UNIQUE KEY uk_user_source_sub (user_id, source_id),
-  KEY idx_user_sub_user (user_id, enabled),
-  CONSTRAINT fk_user_source_subscription_user FOREIGN KEY (user_id) REFERENCES user (id) ON DELETE CASCADE,
-  CONSTRAINT fk_user_source_subscription_source FOREIGN KEY (source_id) REFERENCES data_source (id) ON DELETE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='用户数据源订阅关系表';
+--
+-- Table structure for table `user`
+--
+
+DROP TABLE IF EXISTS `user`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `user` (
+  `id` bigint NOT NULL AUTO_INCREMENT COMMENT '鐢ㄦ埛ID',
+  `username` varchar(64) NOT NULL COMMENT '鐧诲綍鍚?,
+  `phone` varchar(32) DEFAULT NULL COMMENT '鎵嬫満鍙凤紝闇€鍔犲瘑鎴栬劚鏁忓睍绀?,
+  `password_hash` varchar(255) NOT NULL COMMENT '瀵嗙爜鍝堝笇',
+  `role` varchar(32) NOT NULL DEFAULT 'STUDENT' COMMENT 'STUDENT/ADMIN/SUPER_ADMIN',
+  `status` tinyint NOT NULL DEFAULT '1' COMMENT '1姝ｅ父 0绂佺敤',
+  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_user_username` (`username`),
+  KEY `idx_user_role_status` (`role`,`status`)
+) ENGINE=InnoDB AUTO_INCREMENT=9905 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='鐢ㄦ埛琛?;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `user_information_state`
+--
+
+DROP TABLE IF EXISTS `user_information_state`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `user_information_state` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `user_id` bigint NOT NULL,
+  `item_id` bigint NOT NULL,
+  `first_seen_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `read_at` datetime DEFAULT NULL,
+  `favorited_at` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_user_item_state` (`user_id`,`item_id`),
+  KEY `idx_user_read_history` (`user_id`,`read_at`),
+  KEY `idx_user_favorites` (`user_id`,`favorited_at`),
+  KEY `fk_user_information_state_item` (`item_id`),
+  CONSTRAINT `fk_user_information_state_item` FOREIGN KEY (`item_id`) REFERENCES `information_item` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_user_information_state_user` FOREIGN KEY (`user_id`) REFERENCES `user` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB AUTO_INCREMENT=7 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='鐢ㄦ埛淇℃伅鏉＄洰闃呰涓庢敹钘忕姸鎬佽〃';
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `user_profile`
+--
+
+DROP TABLE IF EXISTS `user_profile`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `user_profile` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `user_id` bigint NOT NULL,
+  `college` varchar(128) DEFAULT NULL COMMENT '瀛﹂櫌',
+  `major` varchar(128) DEFAULT NULL COMMENT '涓撲笟',
+  `grade` varchar(32) DEFAULT NULL COMMENT '骞寸骇',
+  `class_name` varchar(128) DEFAULT NULL COMMENT '鐝骇',
+  `interest_tags` json DEFAULT NULL COMMENT '鍏磋叮鏍囩锛屽璁插骇/绔炶禌/灏变笟',
+  `course_codes` json DEFAULT NULL COMMENT '璇剧▼鏍囪瘑鍒楄〃',
+  `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_profile_user` (`user_id`),
+  KEY `idx_profile_college_major_grade` (`college`,`major`,`grade`),
+  CONSTRAINT `fk_user_profile_user` FOREIGN KEY (`user_id`) REFERENCES `user` (`id`)
+) ENGINE=InnoDB AUTO_INCREMENT=2 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='鐢ㄦ埛鐢诲儚琛?;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `user_source_subscription`
+--
+
+DROP TABLE IF EXISTS `user_source_subscription`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `user_source_subscription` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `user_id` bigint NOT NULL,
+  `source_id` bigint NOT NULL,
+  `enabled` tinyint NOT NULL DEFAULT '1' COMMENT '1鍚敤 0绂佺敤',
+  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_user_source_sub` (`user_id`,`source_id`),
+  KEY `idx_user_sub_user` (`user_id`,`enabled`),
+  KEY `fk_user_source_subscription_source` (`source_id`),
+  CONSTRAINT `fk_user_source_subscription_source` FOREIGN KEY (`source_id`) REFERENCES `data_source` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `fk_user_source_subscription_user` FOREIGN KEY (`user_id`) REFERENCES `user` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB AUTO_INCREMENT=32 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='鐢ㄦ埛鏁版嵁婧愯闃呭叧绯昏〃';
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `web_crawl_item`
+--
+
+DROP TABLE IF EXISTS `web_crawl_item`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `web_crawl_item` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `task_id` bigint NOT NULL COMMENT '閲囬泦浠诲姟ID',
+  `source_id` bigint NOT NULL COMMENT '鍏紑缃戦〉鏁版嵁婧怚D',
+  `source_name` varchar(128) NOT NULL COMMENT '鏁版嵁婧愬悕绉?,
+  `source_url` varchar(1024) NOT NULL COMMENT '鍒楄〃椤礥RL',
+  `item_url` varchar(1024) NOT NULL COMMENT '璇︽儏椤礥RL',
+  `title` varchar(512) NOT NULL COMMENT '鍒楄〃椤佃В鏋愭爣棰?,
+  `detail_title` varchar(512) DEFAULT NULL COMMENT '璇︽儏椤垫爣棰?,
+  `date_text` varchar(64) DEFAULT NULL COMMENT '鍒楄〃椤垫棩鏈熸枃鏈?,
+  `summary` text COMMENT '鍒楄〃椤垫憳瑕?,
+  `detail_content` mediumtext COMMENT '璇︽儏椤垫鏂囨枃鏈?,
+  `content_hash` char(64) NOT NULL COMMENT '鏍囬+URL+鏃ユ湡鎽樿hash',
+  `parser_version` varchar(64) DEFAULT NULL COMMENT '瑙ｆ瀽鍣ㄧ増鏈?,
+  `detail_http_status` int DEFAULT NULL COMMENT '璇︽儏椤礖TTP鐘舵€?,
+  `detail_fetched_at` datetime DEFAULT NULL COMMENT '璇︽儏椤垫姄鍙栨椂闂?,
+  `detail_content_hash` char(64) DEFAULT NULL COMMENT '璇︽儏姝ｆ枃hash',
+  `parse_status` varchar(32) NOT NULL DEFAULT 'LIST_ONLY' COMMENT 'LIST_ONLY/DETAIL_SUCCESS/PARSE_FAILED/DETAIL_FAILED',
+  `parse_error` varchar(1024) DEFAULT NULL COMMENT '璇︽儏瑙ｆ瀽澶辫触鍘熷洜',
+  `fetched_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `information_item_id` bigint DEFAULT NULL COMMENT '鍏宠仈鐨勪俊鎭潯鐩甀D锛圓I澶勭悊瀹屾垚鍚庡洖濉級',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_web_crawl_item_hash` (`content_hash`),
+  KEY `idx_web_crawl_item_source_time` (`source_id`,`fetched_at`),
+  KEY `idx_web_crawl_item_task` (`task_id`),
+  KEY `idx_web_crawl_item_info` (`information_item_id`),
+  CONSTRAINT `fk_web_crawl_item_info` FOREIGN KEY (`information_item_id`) REFERENCES `information_item` (`id`) ON DELETE SET NULL,
+  CONSTRAINT `fk_web_crawl_item_source` FOREIGN KEY (`source_id`) REFERENCES `data_source` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_web_crawl_item_task` FOREIGN KEY (`task_id`) REFERENCES `crawl_task` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB AUTO_INCREMENT=310 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='鍏紑缃戦〉鍒楄〃閲囬泦缁撴灉琛?;
+/*!40101 SET character_set_client = @saved_cs_client */;
+/*!40103 SET TIME_ZONE=@OLD_TIME_ZONE */;
+
+/*!40101 SET SQL_MODE=@OLD_SQL_MODE */;
+/*!40014 SET FOREIGN_KEY_CHECKS=@OLD_FOREIGN_KEY_CHECKS */;
+/*!40014 SET UNIQUE_CHECKS=@OLD_UNIQUE_CHECKS */;
+/*!40101 SET CHARACTER_SET_CLIENT=@OLD_CHARACTER_SET_CLIENT */;
+/*!40101 SET CHARACTER_SET_RESULTS=@OLD_CHARACTER_SET_RESULTS */;
+/*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
+/*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
+
+-- Dump completed on 2026-07-12 21:22:12

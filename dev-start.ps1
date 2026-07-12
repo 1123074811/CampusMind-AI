@@ -358,6 +358,13 @@ FLUSH PRIVILEGES;
             exit 1
         }
     }
+    # 003: schema integrity fixes (indexes, comments, redundant columns, FK rules)
+    Write-Host "      Applying schema integrity fixes migration..." -ForegroundColor Yellow
+    $exitCode = Invoke-MySqlScript -ScriptPath "$ProjectRoot\infra\mysql\migrations\003_schema_integrity_fixes.sql"
+    if ($exitCode -ne 0) {
+        Write-Host "[ERROR] Failed to apply schema integrity fixes" -ForegroundColor Red
+        exit 1
+    }
     foreach ($script in @(
         "$ProjectRoot\infra\mysql\init\002_admin_seed.sql",
         "$ProjectRoot\infra\mysql\init\003_public_sources.sql",
