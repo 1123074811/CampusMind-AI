@@ -17,9 +17,11 @@ campus:
   crawler:
     default-interval-seconds: 5
     min-interval-seconds: 3
+    startup-delay-ms: ${CRAWLER_STARTUP_DELAY_MS:15000}
+    startup-repeat-delay-ms: ${CRAWLER_STARTUP_REPEAT_DELAY_MS:315360000000}
     robots-cache-ttl-hours: 12
     max-retry: 3
-    daily-cron: ${CRAWLER_DAILY_CRON:0 30 6 * * *}
+    hourly-cron: ${CRAWLER_HOURLY_CRON:0 0 * * * *}
     user-agent: "CampusEventBot/1.0 (+contact: admin@example.edu)"
     backoff:
       initial-seconds: 30

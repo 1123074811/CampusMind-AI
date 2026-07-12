@@ -257,6 +257,33 @@ function Invoke-MySqlCommand {
     }
 }
 
+function Get-MySqlScalar {
+    param(
+        [string]$Sql,
+        [string]$Username = $LocalDbUsername,
+        [string]$Password = $LocalDbPassword,
+        [string]$Database = $env:MYSQL_DATABASE
+    )
+    $mysql = Get-Command mysql -ErrorAction SilentlyContinue
+    if (-not $mysql) { return $null }
+    $previousMysqlPwd = $env:MYSQL_PWD
+    $env:MYSQL_PWD = $Password
+    try {
+        $args = @(
+            "--host=$($env:MYSQL_HOST)",
+            "--port=$($env:MYSQL_PORT)",
+            "--user=$Username",
+            "--default-character-set=utf8mb4",
+            "--skip-column-names",
+            "--execute=$Sql"
+        )
+        if ($Database) { $args += "--database=$Database" }
+        return (& $mysql.Source @args | Select-Object -First 1).ToString().Trim()
+    } finally {
+        $env:MYSQL_PWD = $previousMysqlPwd
+    }
+}
+
 function Ensure-MySqlSchema {
     $testExit = Invoke-MySqlCommand `
         -Sql "SELECT 1" `
@@ -291,21 +318,51 @@ FLUSH PRIVILEGES;
         }
     }
 
-    $scripts = @(
+    $schemaScripts = @(
         "$ProjectRoot\infra\mysql\init\001_schema.sql",
         "$ProjectRoot\infra\mysql\init\004_web_crawl_item.sql",
         "$ProjectRoot\infra\mysql\init\005_web_crawl_item_detail.sql",
         "$ProjectRoot\infra\mysql\init\006_information_item.sql",
-        "$ProjectRoot\infra\mysql\init\002_admin_seed.sql",
-        "$ProjectRoot\infra\mysql\init\003_public_sources.sql"
+        "$ProjectRoot\infra\mysql\init\007_information_ai_card.sql"
     )
-    foreach ($script in $scripts) {
+    foreach ($script in $schemaScripts) {
+        if ((Split-Path $script -Leaf) -eq "007_information_ai_card.sql") {
+            $aiColumnExists = Get-MySqlScalar `
+                -Sql "SELECT COUNT(*) FROM information_schema.columns WHERE table_schema='$($env:MYSQL_DATABASE)' AND table_name='information_item' AND column_name='ai_status'" `
+                -Username $LocalDbUsername `
+                -Password $LocalDbPassword `
+                -Database $env:MYSQL_DATABASE
+            if ($aiColumnExists -ne 0) {
+                Write-Host "      $(Split-Path $script -Leaf) already applied, skip" -ForegroundColor DarkGray
+                continue
+            }
+        }
         Write-Host "      Applying $(Split-Path $script -Leaf)..." -ForegroundColor Yellow
         $exitCode = Invoke-MySqlScript -ScriptPath $script
         if ($exitCode -ne 0) {
             Write-Host "[ERROR] Failed to apply MySQL script: $script" -ForegroundColor Red
             exit 1
         }
+    }
+    $sourceCount = Get-MySqlScalar `
+        -Sql "SELECT COUNT(*) FROM data_source" `
+        -Username $LocalDbUsername `
+        -Password $LocalDbPassword `
+        -Database $env:MYSQL_DATABASE
+    if ($sourceCount -eq 0) {
+        foreach ($script in @(
+            "$ProjectRoot\infra\mysql\init\002_admin_seed.sql",
+            "$ProjectRoot\infra\mysql\init\003_public_sources.sql"
+        )) {
+            Write-Host "      Applying $(Split-Path $script -Leaf)..." -ForegroundColor Yellow
+            $exitCode = Invoke-MySqlScript -ScriptPath $script
+            if ($exitCode -ne 0) {
+                Write-Host "[ERROR] Failed to apply seed script: $script" -ForegroundColor Red
+                exit 1
+            }
+        }
+    } else {
+        Write-Host "      Existing data sources found, skip destructive seed data" -ForegroundColor DarkGray
     }
     Write-Host "      [OK]  MySQL schema ready" -ForegroundColor Green
 }
