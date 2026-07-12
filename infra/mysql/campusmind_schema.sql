@@ -138,3 +138,13 @@ CREATE TABLE IF NOT EXISTS import_task (
   KEY idx_import_status (task_status),
   CONSTRAINT fk_import_task_user FOREIGN KEY (user_id) REFERENCES user (id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='用户导入任务表';
+
+CREATE TABLE IF NOT EXISTS user_source_subscription (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  user_id BIGINT NOT NULL,
+  source_id BIGINT NOT NULL,
+  enabled TINYINT NOT NULL DEFAULT 1 COMMENT '1启用 0禁用',
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY uk_user_source_sub (user_id, source_id),
+  KEY idx_user_sub_user (user_id, enabled)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='用户数据源订阅关系表';

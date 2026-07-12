@@ -8,12 +8,13 @@ ALTER TABLE event_audit_log MODIFY operator_id BIGINT NULL;
 DELETE FROM event_audit_log WHERE event_id BETWEEN 9101 AND 9110 OR operator_id = 9901 OR action IN ('MANUAL_CRAWL', 'AUTO_CRAWL');
 DELETE FROM import_task WHERE id BETWEEN 9601 AND 9604;
 DELETE FROM crawl_task WHERE id BETWEEN 9501 AND 9508;
-DELETE FROM crawl_task WHERE source_id BETWEEN 9401 AND 9404;
-DELETE FROM web_crawl_item WHERE source_id BETWEEN 9401 AND 9404;
-DELETE FROM information_item WHERE source_id BETWEEN 9401 AND 9404;
+DELETE FROM crawl_task WHERE source_id BETWEEN 9401 AND 9406;
+DELETE FROM web_crawl_item WHERE source_id BETWEEN 9401 AND 9406;
+DELETE FROM information_item WHERE source_id BETWEEN 9401 AND 9406;
+DELETE FROM information_item WHERE id BETWEEN 9201 AND 9205;
 DELETE FROM event_source_ref WHERE event_id BETWEEN 9101 AND 9110;
 DELETE FROM campus_event WHERE id BETWEEN 9101 AND 9110;
-DELETE FROM data_source WHERE id BETWEEN 9401 AND 9404;
+DELETE FROM data_source WHERE id BETWEEN 9401 AND 9406;
 DELETE FROM user_profile WHERE user_id IN (9901, 9902);
 DELETE FROM user WHERE id IN (9901, 9902);
 
@@ -38,7 +39,9 @@ INSERT INTO data_source (
   (9401, '软件学院通知', 'PUBLIC_WEB', 'https://software.example.edu.cn/notices', 'https://software.example.edu.cn/robots.txt', 5, 'WEBMAGIC', JSON_OBJECT('list', '.notice-list a', 'title', 'h1'), 1, '2026-07-07 18:28:00'),
   (9402, '教务处公告', 'PUBLIC_WEB', 'https://jwc.example.edu.cn/news', 'https://jwc.example.edu.cn/robots.txt', 8, 'RSS', JSON_OBJECT('feed', '/rss.xml'), 1, '2026-07-07 18:10:00'),
   (9403, '雨课堂导入', 'RAIN_CLASSROOM', 'https://www.yuketang.cn', NULL, 10, 'USER_JSON', JSON_OBJECT('mode', 'manual_json'), 1, '2026-07-07 18:06:00'),
-  (9404, '用户截图 OCR', 'USER_IMAGE', 'campusmind://user-image-import', NULL, 10, 'OCR', JSON_OBJECT('engine', 'manual_upload'), 0, '2026-07-07 17:30:00');
+  (9404, '用户截图 OCR', 'USER_IMAGE', 'campusmind://user-image-import', NULL, 10, 'OCR', JSON_OBJECT('engine', 'manual_upload'), 0, '2026-07-07 17:30:00'),
+  (9405, '用户文本提交', 'USER_TEXT', 'campusmind://user-text-import', NULL, 10, 'USER_PASTE', JSON_OBJECT('mode', 'manual_text'), 1, '2026-07-07 18:05:00'),
+  (9406, '用户文件上传', 'USER_FILE', 'campusmind://user-file-import', NULL, 10, 'USER_UPLOAD', JSON_OBJECT('mode', 'file_upload'), 1, '2026-07-07 17:50:00');
 
 INSERT INTO campus_event (
   id, title, summary, event_type, source_type, status,
@@ -62,7 +65,39 @@ INSERT INTO event_source_ref (
   (9101, 9401, 'raw-admin-9101', 'https://software.example.edu.cn/notices/9101', '人工智能主题讲座通知', SHA2('raw-admin-9101', 256)),
   (9102, 9402, 'raw-admin-9102', 'https://jwc.example.edu.cn/news/9102', '期末考试考场调整说明', SHA2('raw-admin-9102', 256)),
   (9103, 9403, 'raw-admin-9103', NULL, '雨课堂作业提交提醒', SHA2('raw-admin-9103', 256)),
-  (9107, 9404, 'raw-admin-9107', NULL, '社团嘉年华活动安排', SHA2('raw-admin-9107', 256));
+  (9107, 9404, 'raw-admin-9107', NULL, '社团嘉年华活动安排', SHA2('raw-admin-9107', 256)),
+  (9110, 9405, 'raw-admin-9110', NULL, '过期服务公告下线', SHA2('raw-admin-9110', 256));
+
+INSERT INTO information_item (
+  id, source_id, source_name, source_url, item_url, title, publish_time,
+  fetched_at, detail_content, content_hash, item_status, parse_status,
+  ai_status, ai_event_type, ai_summary, ai_need_review
+) VALUES
+  (9201, 9401, '软件学院通知', 'https://software.example.edu.cn/notices', 'https://software.example.edu.cn/notices/9101',
+   '人工智能主题讲座通知', '2026-07-07 10:00:00', '2026-07-07 18:00:00',
+   '软件学院将于 7 月 8 日举办 AI 主题讲座，面向软件学院本科生开放。',
+   SHA2('info-9201-ai-lecture', 256), 'ACTIVE', 'DETAIL_SUCCESS', 'SUCCESS', 'LECTURE',
+   '软件学院将于 7 月 8 日举办 AI 主题讲座，面向软件学院本科生开放。', FALSE),
+  (9202, 9402, '教务处公告', 'https://jwc.example.edu.cn/news', 'https://jwc.example.edu.cn/news/9102',
+   '期末考试考场调整说明', '2026-07-07 09:30:00', '2026-07-07 17:56:00',
+   '部分课程考试地点变更，学生需以最终考场清单为准。',
+   SHA2('info-9202-exam-change', 256), 'UPDATED', 'DETAIL_SUCCESS', 'SUCCESS', 'EXAM',
+   '部分课程考试地点变更，学生需以最终考场清单为准。', FALSE),
+  (9203, 9403, '雨课堂导入', 'https://www.yuketang.cn', 'campusmind://user-import',
+   '雨课堂作业提交提醒', '2026-07-07 09:00:00', '2026-07-07 17:40:00',
+   'SE101 课程作业截止到 7 月 9 日 23:59，来源为用户粘贴 JSON。',
+   SHA2('info-9203-rain-homework', 256), 'ACTIVE', 'DETAIL_SUCCESS', 'SUCCESS', 'HOMEWORK',
+   'SE101 课程作业截止到 7 月 9 日 23:59。', FALSE),
+  (9204, 9405, '用户文本提交', 'campusmind://user-text-import', 'campusmind://user-import',
+   '过期服务公告下线', '2026-06-20 08:00:00', '2026-07-07 15:40:00',
+   '公告已过有效期，不再在信息流展示。',
+   SHA2('info-9204-offline-service', 256), 'OFFLINE', 'DETAIL_SUCCESS', 'SUCCESS', 'SERVICE',
+   '公告已过有效期，不再在信息流展示。', FALSE),
+  (9205, 9404, '用户截图 OCR', 'campusmind://user-image-import', 'campusmind://user-import',
+   '社团嘉年华活动安排', '2026-07-07 08:00:00', '2026-07-07 16:30:00',
+   '社团嘉年华将在操场举办，面向全校学生开放报名。',
+   SHA2('info-9205-club-activity', 256), 'ACTIVE', 'DETAIL_SUCCESS', 'SUCCESS', 'ACTIVITY',
+   '社团嘉年华将在操场举办，面向全校学生开放报名。', FALSE);
 
 INSERT INTO crawl_task (
   id, source_id, task_status, crawl_url, http_status, etag, last_modified, fail_reason, started_at, finished_at

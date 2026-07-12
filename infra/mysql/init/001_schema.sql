@@ -38,7 +38,9 @@ CREATE TABLE IF NOT EXISTS campus_event (
   title VARCHAR(255) NOT NULL COMMENT '事件标题',
   summary TEXT NULL COMMENT 'AI摘要或人工摘要',
   event_type VARCHAR(64) NOT NULL COMMENT 'NOTICE/COURSE/EXAM/HOMEWORK/ACTIVITY/LECTURE/COMPETITION/SERVICE',
-  source_type VARCHAR(64) NOT NULL COMMENT 'PUBLIC_WEB/RAIN_CLASSROOM/USER_TEXT/USER_IMAGE',
+  source_type VARCHAR(64) NOT NULL COMMENT 'PUBLIC_WEB/RAIN_CLASSROOM/XIQUEER/USER_TEXT/USER_IMAGE',
+  visibility VARCHAR(16) NOT NULL DEFAULT 'PUBLIC' COMMENT 'PUBLIC/PRIVATE',
+  owner_user_id BIGINT NULL COMMENT 'PRIVATE事件所属用户',
   status VARCHAR(32) NOT NULL DEFAULT 'AI_PUBLISHED' COMMENT 'AI_PUBLISHED/REVIEWED/CORRECTED/REJECTED/OFFLINE',
   start_time DATETIME NULL,
   end_time DATETIME NULL,
@@ -54,6 +56,7 @@ CREATE TABLE IF NOT EXISTS campus_event (
   KEY idx_event_type_time (event_type, start_time),
   KEY idx_event_status_created (status, created_at),
   KEY idx_event_source_type (source_type),
+  KEY idx_event_owner_visibility (owner_user_id, visibility, start_time),
   UNIQUE KEY uk_event_dedup_key (dedup_key)
 ) COMMENT='校园事件主表';
 
