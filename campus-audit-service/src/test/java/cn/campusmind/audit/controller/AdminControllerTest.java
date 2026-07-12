@@ -41,7 +41,6 @@ class AdminControllerTest {
                       event_type VARCHAR(64) NOT NULL,
                       source_type VARCHAR(64) NOT NULL,
                       status VARCHAR(32) NOT NULL,
-                      confidence DECIMAL(5,4) NOT NULL,
                       start_time TIMESTAMP,
                       end_time TIMESTAMP,
                       location VARCHAR(255),
@@ -80,7 +79,6 @@ class AdminControllerTest {
                       ai_event_type VARCHAR(32),
                       ai_summary CLOB,
                       ai_card_json CLOB,
-                      ai_confidence DECIMAL(5,4),
                       ai_need_review BOOLEAN DEFAULT FALSE
                     )
                     """);
@@ -141,11 +139,11 @@ class AdminControllerTest {
             statement.execute("DELETE FROM campus_event");
             statement.execute("DELETE FROM information_item");
         }
-        insertEvent(1001L, "人工智能主题讲座通知", "LECTURE", "PUBLIC_WEB", "AI_PUBLISHED", "0.9100", "图书馆报告厅", "[\"软件学院本科生\"]", "[\"AI\",\"讲座\",\"软件学院\"]", null);
-        insertEvent(1002L, "期末考试考场调整说明", "EXAM", "PUBLIC_WEB", "CORRECTED", "0.7400", "一号教学楼", "[\"2023级\"]", "[\"考试\",\"教务\"]", "vec-1002");
-        insertEvent(1003L, "雨课堂作业提交提醒", "HOMEWORK", "RAIN_CLASSROOM", "AI_PUBLISHED", "0.6800", "线上", "[\"SE101\"]", "[\"雨课堂\",\"作业\"]", null);
-        insertEvent(1004L, "创新创业竞赛报名开放", "ACTIVITY", "PUBLIC_WEB", "REVIEWED", "0.8800", "学生事务中心", "[\"全校学生\"]", "[\"竞赛\",\"报名\"]", "vec-1004");
-        insertEvent(1005L, "旧通知误识别", "NOTICE", "USER_TEXT", "REJECTED", "0.4200", null, "[]", "[\"通知\"]", null);
+        insertEvent(1001L, "人工智能主题讲座通知", "LECTURE", "PUBLIC_WEB", "AI_PUBLISHED", "图书馆报告厅", "[\"\u8f6f\u4ef6\u5b66\u9662\u672c\u79d1\u751f\"]", "[\"AI\",\"\u8bb2\u5ea7\",\"\u8f6f\u4ef6\u5b66\u9662\"]", null);
+        insertEvent(1002L, "期末考试考场调整说明", "EXAM", "PUBLIC_WEB", "CORRECTED", "一号教学楼", "[\"2023\u7ea7\"]", "[\"\u8003\u8bd5\",\"\u6559\u52a1\"]", "vec-1002");
+        insertEvent(1003L, "雨课堂作业提交提醒", "HOMEWORK", "RAIN_CLASSROOM", "AI_PUBLISHED", "线上", "[\"SE101\"]", "[\"\u96e8\u8bfe\u5802\",\"\u4f5c\u4e1a\"]", null);
+        insertEvent(1004L, "创新创业竞赛报名开放", "ACTIVITY", "PUBLIC_WEB", "REVIEWED", "学生事务中心", "[\"\u5168\u6821\u5b66\u751f\"]", "[\"\u7ade\u8d5b\",\"\u62a5\u540d\"]", "vec-1004");
+        insertEvent(1005L, "旧通知误识别", "NOTICE", "USER_TEXT", "REJECTED", null, "[]", "[\"\u901a\u77e5\"]", null);
         insertInformationItem(1001L, "人工智能主题讲座通知", "软件学院通知", "ACTIVE");
         insertInformationItem(1002L, "期末考试考场调整说明", "教务处公告", "UPDATED");
         insertInformationItem(1003L, "雨课堂作业提交提醒", "雨课堂导入", "ACTIVE");
@@ -210,14 +208,14 @@ class AdminControllerTest {
                 .andExpect(jsonPath("$.data.items[0].operatorId").value(9901));
     }
 
-    private void insertEvent(Long id, String title, String type, String sourceType, String status, String confidence,
+    private void insertEvent(Long id, String title, String type, String sourceType, String status,
                              String location, String scope, String tags, String vectorDocId) throws Exception {
         try (Connection connection = dataSource.getConnection();
              PreparedStatement statement = connection.prepareStatement("""
                      INSERT INTO campus_event (
-                       id, title, summary, event_type, source_type, status, confidence,
+                       id, title, summary, event_type, source_type, status,
                        start_time, location, organizer, target_scope, tags, vector_doc_id, published_at, created_at
-                     ) VALUES (?, ?, ?, ?, ?, ?, ?, TIMESTAMP '2026-07-08 19:00:00', ?,
+                     ) VALUES (?, ?, ?, ?, ?, ?, TIMESTAMP '2026-07-08 19:00:00', ?,
                        '软件学院', ?, ?, ?, TIMESTAMP '2026-07-07 10:00:00', TIMESTAMP '2026-07-07 18:00:00')
                      """)) {
             statement.setLong(1, id);
@@ -226,11 +224,10 @@ class AdminControllerTest {
             statement.setString(4, type);
             statement.setString(5, sourceType);
             statement.setString(6, status);
-            statement.setBigDecimal(7, new java.math.BigDecimal(confidence));
-            statement.setString(8, location);
-            statement.setString(9, scope);
-            statement.setString(10, tags);
-            statement.setString(11, vectorDocId);
+            statement.setString(7, location);
+            statement.setString(8, scope);
+            statement.setString(9, tags);
+            statement.setString(10, vectorDocId);
             statement.executeUpdate();
         }
     }

@@ -9,6 +9,12 @@ spring:
     username: ${AUDIT_DB_USERNAME}
     password: ${AUDIT_DB_PASSWORD}
 
+campus:
+  auth:
+    jwt:
+      issuer: ${AUTH_JWT_ISSUER:campusmind-auth}
+      secret: ${AUTH_JWT_SECRET}
+
 management:
   endpoints:
     web:

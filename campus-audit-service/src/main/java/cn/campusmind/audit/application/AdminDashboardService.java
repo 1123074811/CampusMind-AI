@@ -120,6 +120,52 @@ public class AdminDashboardService {
         return toEvent(event);
     }
 
+    @Transactional
+    public AdminEventResponse updateEvent(Long eventId, String title, String summary, String eventType) {
+        InformationItem event = informationItemMapper.selectById(eventId);
+        if (event == null) {
+            throw new BusinessException("EVENT_NOT_FOUND", "事件不存在", HttpStatus.NOT_FOUND);
+        }
+        if (StringUtils.hasText(title)) {
+            event.setTitle(title);
+        }
+        if (summary != null) {
+            event.setAiSummary(summary);
+        }
+        if (StringUtils.hasText(eventType)) {
+            event.setAiEventType(eventType);
+        }
+        informationItemMapper.updateById(event);
+        return toEvent(event);
+    }
+
+    @Transactional
+    public void deleteEvent(Long eventId, Long operatorId) {
+        InformationItem event = informationItemMapper.selectById(eventId);
+        if (event == null) {
+            throw new BusinessException("EVENT_NOT_FOUND", "事件不存在", HttpStatus.NOT_FOUND);
+        }
+        String beforeStatus = event.getItemStatus();
+        event.setItemStatus("OFFLINE");
+        informationItemMapper.updateById(event);
+
+        EventAuditLog log = new EventAuditLog();
+        log.setEventId(null);
+        log.setOperatorId(operatorId == null ? 9901L : operatorId);
+        log.setAction("DELETE");
+        log.setBeforeSnapshot(writeJson(Map.of("status", beforeStatus)));
+        log.setAfterSnapshot(writeJson(Map.of("status", "OFFLINE")));
+        log.setComment("信息#" + eventId + "：管理员删除");
+        eventAuditLogMapper.insert(log);
+    }
+
+    @Transactional
+    public void batchDeleteEvents(List<Long> ids, Long operatorId) {
+        for (Long id : ids) {
+            deleteEvent(id, operatorId);
+        }
+    }
+
     @Transactional(readOnly = true)
     public AdminAuditLogListResponse auditLogs(String action, Long operatorId, int size) {
         int safeSize = Math.min(Math.max(size, 1), 100);
@@ -140,12 +186,11 @@ public class AdminDashboardService {
         long urgentCount = events.stream()
                 .filter(event -> "UPDATED".equals(event.getItemStatus()))
                 .count();
-        int avgConfidence = events.isEmpty() ? 0 : 90;
         long successfulTasks = tasks.stream().filter(task -> "SUCCESS".equals(task.getTaskStatus())).count();
         int sourceSuccessRate = tasks.isEmpty() ? 0 : (int) Math.round(successfulTasks * 100.0 / tasks.size());
         long sourcesNeedAuth = sources.stream().filter(source -> "NEEDS_AUTH".equals(sourceStatus(source, tasks))).count();
         long vectorPending = 0;
-        return new MetricsResponse(reviewCount, urgentCount, avgConfidence, sourceSuccessRate, sourcesNeedAuth, vectorPending);
+        return new MetricsResponse(reviewCount, urgentCount, sourceSuccessRate, sourcesNeedAuth, vectorPending);
     }
 
     private List<AdminTaskResponse> mergeTasks(List<CrawlTask> tasks, List<ImportTask> imports, Map<Long, DataSource> sourceById) {
@@ -170,7 +215,6 @@ public class AdminDashboardService {
                 event.getItemUrl(),
                 StringUtils.hasText(event.getAiEventType()) ? event.getAiEventType() : eventType(event.getTitle()),
                 reviewStatus(event.getItemStatus()),
-                event.getAiConfidence() == null ? 0 : event.getAiConfidence(),
                 text(card.get("location"), "-"),
                 informationTime(event.getPublishTime()),
                 text(card.get("endTime"), "待补充"),
