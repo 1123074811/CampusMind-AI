@@ -11,6 +11,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.time.LocalDateTime;
@@ -30,8 +31,10 @@ public class EventController {
     }
 
     @GetMapping("/{id}")
-    public ApiResponse<EventDetailResponse> detail(@PathVariable Long id) {
-        return ApiResponse.ok(eventQueryService.getById(id));
+    public ApiResponse<EventDetailResponse> detail(
+            @PathVariable Long id,
+            @RequestHeader(value = "X-User-Id", required = false) Long userId) {
+        return ApiResponse.ok(eventQueryService.getById(id, userId));
     }
 
     @GetMapping("/search")
@@ -41,17 +44,20 @@ public class EventController {
             @RequestParam(required = false) String keyword,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime startFrom,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime startTo,
+            @RequestHeader(value = "X-User-Id", required = false) Long userId,
             @RequestParam(defaultValue = "1") long page,
             @RequestParam(defaultValue = "20") long size
     ) {
-        return ApiResponse.ok(eventQueryService.search(eventType, status, keyword, startFrom, startTo, page, size));
+        return ApiResponse.ok(eventQueryService.search(eventType, status, keyword, startFrom, startTo, userId, page, size));
     }
 
     /**
      * 幂等创建事件 + 来源引用，供 import-service 等内部服务调用。
      */
     @PostMapping
-    public ApiResponse<Long> createEvent(@RequestBody CreateEventRequest request) {
+    public ApiResponse<Long> createEvent(
+            @RequestHeader(value = "X-User-Id", required = false) Long userId,
+            @RequestBody CreateEventRequest request) {
         UpsertEventRequest req = new UpsertEventRequest(
                 request.title(),
                 request.summary(),
@@ -63,6 +69,8 @@ public class EventController {
                 request.organizer(),
                 request.targetScopeJson(),
                 request.tagsJson(),
+                request.visibility(),
+                userId,
                 request.dedupKey(),
                 request.rawDocId(),
                 request.sourceUrl(),
@@ -83,6 +91,7 @@ public class EventController {
             String organizer,
             String targetScopeJson,
             String tagsJson,
+            String visibility,
             String dedupKey,
             String rawDocId,
             String sourceUrl,

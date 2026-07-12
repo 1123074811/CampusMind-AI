@@ -34,7 +34,7 @@ public class EventSearchService {
         this.properties = properties;
     }
 
-    public List<CampusEvent> feedQuery(DecisionPlan plan) {
+    public List<CampusEvent> feedQuery(Long userId, DecisionPlan plan) {
         LocalDateTime[] window = timeWindow(plan.timeRange());
         int topK = resolveTopK(plan, properties.defaultTopK());
         List<String> eventTypes = plan.eventTypes();
@@ -43,6 +43,7 @@ public class EventSearchService {
                 .in(eventTypes != null && !eventTypes.isEmpty(), CampusEvent::getEventType, eventTypes)
                 .ge(window != null, CampusEvent::getStartTime, window == null ? null : window[0])
                 .le(window != null, CampusEvent::getStartTime, window == null ? null : window[1])
+                .and(w -> visibleTo(w, userId))
                 .orderByDesc(CampusEvent::getPublishedAt)
                 .orderByDesc(CampusEvent::getCreatedAt)
                 .last("LIMIT " + topK);
@@ -59,6 +60,7 @@ public class EventSearchService {
         LambdaQueryWrapper<CampusEvent> query = new LambdaQueryWrapper<CampusEvent>()
                 .in(CampusEvent::getStatus, VISIBLE_STATUS)
                 .ge(CampusEvent::getStartTime, now)
+                .and(wrapper -> visibleTo(wrapper, userId))
                 .orderByAsc(CampusEvent::getStartTime)
                 .last("LIMIT " + topK);
         if (profile != null && StringUtils.hasText(profile.getCollege())) {
@@ -67,7 +69,7 @@ public class EventSearchService {
         return campusEventMapper.selectList(query);
     }
 
-    public List<CampusEvent> semanticSearch(String query, DecisionPlan plan) {
+    public List<CampusEvent> semanticSearch(Long userId, String query, DecisionPlan plan) {
         int topK = resolveTopK(plan, properties.keywordFallbackTopK());
         String keyword = sanitizeKeyword(query);
         LambdaQueryWrapper<CampusEvent> wrapper = new LambdaQueryWrapper<CampusEvent>()
@@ -76,6 +78,7 @@ public class EventSearchService {
                         .like(CampusEvent::getTitle, keyword)
                         .or()
                         .like(CampusEvent::getSummary, keyword))
+                .and(w -> visibleTo(w, userId))
                 .orderByDesc(CampusEvent::getPublishedAt)
                 .last("LIMIT " + topK);
         return campusEventMapper.selectList(wrapper);
@@ -84,6 +87,14 @@ public class EventSearchService {
     private static int resolveTopK(DecisionPlan plan, int fallback) {
         int topK = plan.topK();
         return topK > 0 ? topK : fallback;
+    }
+
+    private static void visibleTo(LambdaQueryWrapper<CampusEvent> query, Long userId) {
+        query.eq(CampusEvent::getVisibility, "PUBLIC")
+                .or()
+                .isNull(CampusEvent::getVisibility)
+                .or(userId != null)
+                .eq(userId != null, CampusEvent::getOwnerUserId, userId);
     }
 
     private static String sanitizeKeyword(String query) {

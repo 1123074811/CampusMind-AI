@@ -30,7 +30,7 @@ import java.nio.charset.StandardCharsets;
  *   <li>其余请求必须携带合法的 {@code Authorization: Bearer <jwt>} 头</li>
  *   <li>校验失败抛 {@link GatewayAuthenticationException}，由
  *       {@link GatewayWebExceptionHandler} 统一返回 401</li>
- *   <li>校验通过仅放行，不向下游注入用户信息头（各服务自解析 token，见设计文档）</li>
+ *   <li>校验通过后覆盖下游 {@code X-User-Id}，供未直接解析 JWT 的内部服务做数据隔离</li>
  * </ul>
  */
 @Component
@@ -78,13 +78,18 @@ public class JwtAuthenticationGlobalFilter implements GlobalFilter, Ordered {
                     .build()
                     .parseSignedClaims(token)
                     .getPayload();
-            // 触发 subject/username/role 的读取以校验完整性，结果不向下注入（各服务自解析）
-            claims.getSubject();
+            String userId = claims.getSubject();
+            Long.parseLong(userId);
+            ServerHttpRequest authenticatedRequest = request.mutate()
+                    .headers(headers -> {
+                        headers.remove("X-User-Id");
+                        headers.set("X-User-Id", userId);
+                    })
+                    .build();
+            return chain.filter(exchange.mutate().request(authenticatedRequest).build());
         } catch (RuntimeException ex) {
             return Mono.error(new GatewayAuthenticationException("访问令牌无效或已过期"));
         }
-
-        return chain.filter(exchange);
     }
 
     @Override

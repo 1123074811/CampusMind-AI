@@ -45,26 +45,26 @@ public class SearchService {
         switch (plan.intent() == null ? "" : plan.intent()) {
             case "IMPORT_HELP" -> {
                 events = List.of();
-                message = "导入帮助：请在导入入口粘贴雨课堂JSON或一次性Cookie，系统会在后台解析并生成待审核事件。";
+                message = "导入帮助：请在导入入口粘贴雨课堂 JSON，系统会为本人生成私有事件。";
             }
             case "PERSONAL_SCHEDULE" -> {
                 events = eventSearchService.personalSchedule(user.userId(), plan);
                 message = "已按个人日程检索近期事件";
             }
             case "FEED_QUERY" -> {
-                events = eventSearchService.feedQuery(plan);
+                events = eventSearchService.feedQuery(user.userId(), plan);
                 message = "已按条件查询事件";
             }
             case "SEMANTIC_SEARCH" -> {
-                events = eventSearchService.semanticSearch(query, plan);
+                events = eventSearchService.semanticSearch(user.userId(), query, plan);
                 message = "已按语义检索事件（向量库未接入，使用关键字降级）";
             }
             case "QA_EXPLAIN" -> {
-                events = eventSearchService.semanticSearch(query, plan);
+                events = eventSearchService.semanticSearch(user.userId(), query, plan);
                 message = "已按问答意图检索相关事件";
             }
             default -> {
-                events = eventSearchService.feedQuery(plan);
+                events = eventSearchService.feedQuery(user.userId(), plan);
                 message = "已查询事件";
             }
         }

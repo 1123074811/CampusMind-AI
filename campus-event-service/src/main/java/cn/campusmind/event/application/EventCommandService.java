@@ -1,11 +1,13 @@
 package cn.campusmind.event.application;
 
+import cn.campusmind.common.exception.BusinessException;
 import cn.campusmind.event.domain.CampusEvent;
 import cn.campusmind.event.domain.EventSourceRef;
 import cn.campusmind.event.infrastructure.mapper.CampusEventMapper;
 import cn.campusmind.event.infrastructure.mapper.EventSourceRefMapper;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import org.springframework.stereotype.Service;
+import org.springframework.http.HttpStatus;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
@@ -34,6 +36,13 @@ public class EventCommandService {
     @Transactional(rollbackFor = Exception.class)
     public Long upsertEvent(UpsertEventRequest req) {
         String dedupKey = req.dedupKey();
+        String visibility = "PRIVATE".equalsIgnoreCase(req.visibility()) ? "PRIVATE" : "PUBLIC";
+        if ("PRIVATE".equals(visibility) && req.ownerUserId() == null) {
+            throw new BusinessException("EVENT_OWNER_REQUIRED", "私有事件必须绑定用户", HttpStatus.BAD_REQUEST);
+        }
+        if ("RAIN_CLASSROOM".equals(req.sourceType()) && !"PRIVATE".equals(visibility)) {
+            throw new BusinessException("EVENT_VISIBILITY_INVALID", "雨课堂事件必须为私有事件", HttpStatus.BAD_REQUEST);
+        }
 
         // 查找已有事件
         CampusEvent existing = null;
@@ -53,6 +62,8 @@ public class EventCommandService {
             event.setSummary(req.summary());
             event.setEventType(StringUtils.hasText(req.eventType()) ? req.eventType() : "OTHER");
             event.setSourceType(req.sourceType());
+            event.setVisibility(visibility);
+            event.setOwnerUserId("PRIVATE".equals(visibility) ? req.ownerUserId() : null);
             event.setStatus("AI_PUBLISHED");
             event.setStartTime(parseDateTime(req.startTime()));
             event.setEndTime(parseDateTime(req.endTime()));
@@ -106,6 +117,8 @@ public class EventCommandService {
             String organizer,
             String targetScopeJson,
             String tagsJson,
+            String visibility,
+            Long ownerUserId,
             String dedupKey,
             String rawDocId,
             String sourceUrl,

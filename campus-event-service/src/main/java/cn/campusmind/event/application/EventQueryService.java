@@ -33,9 +33,9 @@ public class EventQueryService {
     }
 
     @Transactional(readOnly = true)
-    public EventDetailResponse getById(Long id) {
+    public EventDetailResponse getById(Long id, Long userId) {
         CampusEvent event = campusEventMapper.selectById(id);
-        if (event == null) {
+        if (event == null || !isVisibleTo(event, userId)) {
             throw new BusinessException("EVENT_NOT_FOUND", "事件不存在", HttpStatus.NOT_FOUND);
         }
         return toResponse(event);
@@ -48,6 +48,7 @@ public class EventQueryService {
             String keyword,
             LocalDateTime startFrom,
             LocalDateTime startTo,
+            Long userId,
             long page,
             long size
     ) {
@@ -62,6 +63,11 @@ public class EventQueryService {
                         .like(CampusEvent::getTitle, keyword)
                         .or()
                         .like(CampusEvent::getSummary, keyword))
+                .and(wrapper -> wrapper.eq(CampusEvent::getVisibility, "PUBLIC")
+                        .or()
+                        .isNull(CampusEvent::getVisibility)
+                        .or(userId != null)
+                        .eq(userId != null, CampusEvent::getOwnerUserId, userId))
                 .orderByDesc(CampusEvent::getPublishedAt)
                 .orderByDesc(CampusEvent::getCreatedAt);
 
@@ -70,6 +76,11 @@ public class EventQueryService {
                 .map(this::toResponse)
                 .toList();
         return new EventSearchResponse(items, result.getTotal(), safePage, safeSize, result.hasNext());
+    }
+
+    private boolean isVisibleTo(CampusEvent event, Long userId) {
+        return event.getVisibility() == null || "PUBLIC".equals(event.getVisibility())
+                || (userId != null && userId.equals(event.getOwnerUserId()));
     }
 
     private EventDetailResponse toResponse(CampusEvent event) {

@@ -22,6 +22,7 @@ import java.util.Date;
 import java.util.List;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -155,12 +156,13 @@ class JwtAuthenticationGlobalFilterTest {
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
                         .build());
         GatewayFilterChain chain = mock(GatewayFilterChain.class);
-        when(chain.filter(exchange)).thenReturn(Mono.empty());
+        when(chain.filter(any())).thenReturn(Mono.empty());
 
         StepVerifier.create(filter.filter(exchange, chain))
                 .verifyComplete();
 
-        verify(chain, times(1)).filter(exchange);
+        verify(chain, times(1)).filter(argThat(forwarded -> "1".equals(
+                forwarded.getRequest().getHeaders().getFirst("X-User-Id"))));
     }
 
     private String validToken() {

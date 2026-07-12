@@ -20,6 +20,8 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.Statement;
 import java.time.Instant;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.Date;
 import java.util.List;
 
@@ -87,6 +89,8 @@ class SearchControllerTest {
                     )
                     """);
             statement.execute("DELETE FROM campus_event");
+            statement.execute("ALTER TABLE campus_event ADD COLUMN IF NOT EXISTS visibility VARCHAR(16) DEFAULT 'PUBLIC'");
+            statement.execute("ALTER TABLE campus_event ADD COLUMN IF NOT EXISTS owner_user_id BIGINT");
             statement.execute("DELETE FROM user_profile");
         }
     }
@@ -125,7 +129,8 @@ class SearchControllerTest {
 
     @Test
     void personalScheduleReturnsUpcomingEvents() throws Exception {
-        insertEvent("明天的作业截止", "实验报告提交", "HOMEWORK", "AI_PUBLISHED", "2026-07-09 23:59:00");
+        insertEvent("明天的作业截止", "实验报告提交", "HOMEWORK", "AI_PUBLISHED",
+                LocalDateTime.now().plusDays(1).format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")));
         when(decisionClient.plan(anyString(), anyList(), anyBoolean()))
                 .thenReturn(new DecisionPlan("PERSONAL_SCHEDULE", List.of(), "ANY", List.of(), false, true, 20));
 
@@ -136,6 +141,19 @@ class SearchControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.intent").value("PERSONAL_SCHEDULE"))
                 .andExpect(jsonPath("$.data.total").value(1));
+    }
+
+    @Test
+    void searchDoesNotExposeAnotherUsersPrivateEvent() throws Exception {
+        insertPrivateEvent("我的机器学习作业", 2L);
+        when(decisionClient.plan(anyString(), anyList(), anyBoolean()))
+                .thenReturn(new DecisionPlan("SEMANTIC_SEARCH", List.of(), "ANY", List.of(), true, false, 10));
+
+        mockMvc.perform(get("/api/v1/search")
+                        .param("query", "机器学习")
+                        .header(AUTHORIZATION, bearerToken(1L, "alice", "STUDENT")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.total").value(0));
     }
 
     @Test
@@ -184,6 +202,20 @@ class SearchControllerTest {
             statement.setString(3, eventType);
             statement.setString(4, status);
             statement.setString(5, startTime);
+            statement.executeUpdate();
+        }
+    }
+
+    private void insertPrivateEvent(String title, Long ownerUserId) throws Exception {
+        try (Connection connection = dataSource.getConnection();
+             PreparedStatement statement = connection.prepareStatement("""
+                     INSERT INTO campus_event (
+                       title, summary, event_type, source_type, status, visibility, owner_user_id, start_time, published_at
+                     ) VALUES (?, '仅本人可见', 'HOMEWORK', 'RAIN_CLASSROOM', 'AI_PUBLISHED', 'PRIVATE', ?,
+                       TIMESTAMP '2026-07-09 23:59:00', TIMESTAMP '2026-07-07 10:00:00')
+                     """)) {
+            statement.setString(1, title);
+            statement.setLong(2, ownerUserId);
             statement.executeUpdate();
         }
     }
