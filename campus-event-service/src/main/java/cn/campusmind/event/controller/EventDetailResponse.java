@@ -19,6 +19,7 @@ public record EventDetailResponse(
         List<String> tags,
         LocalDateTime publishedAt,
         LocalDateTime createdAt,
-        LocalDateTime updatedAt
+        LocalDateTime updatedAt,
+        List<EventSourceRefResponse> sources
 ) {
 }

@@ -141,10 +141,9 @@ class CrawlerControllerTest {
                       id BIGINT AUTO_INCREMENT PRIMARY KEY,
                       user_id BIGINT NOT NULL,
                       item_id BIGINT NOT NULL,
-                      read_status VARCHAR(32) NOT NULL,
                       first_seen_at TIMESTAMP NOT NULL,
                       read_at TIMESTAMP,
-                      archived_at TIMESTAMP,
+                      favorited_at TIMESTAMP,
                       UNIQUE KEY uk_user_item_state (user_id, item_id)
                     )
                     """);
@@ -261,8 +260,8 @@ class CrawlerControllerTest {
         try (Connection connection = dataSource.getConnection();
              Statement statement = connection.createStatement()) {
             statement.execute("""
-                    INSERT INTO user_information_state (user_id, item_id, read_status, first_seen_at)
-                    SELECT 1, id, 'FAVORITED', CURRENT_TIMESTAMP FROM information_item
+                    INSERT INTO user_information_state (user_id, item_id, first_seen_at, read_at, favorited_at)
+                    SELECT 1, id, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP FROM information_item
                     """);
         }
 

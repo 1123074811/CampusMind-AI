@@ -131,6 +131,11 @@ class EventControllerTest {
         mockMvc.perform(get("/api/v1/events/3").header("X-User-Id", "2"))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value("EVENT_NOT_FOUND"));
+        mockMvc.perform(get("/api/v1/events/3")
+                        .header("X-User-Id", "9901")
+                        .header("X-User-Role", "ADMIN"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.title").value("我的作业"));
     }
 
     private void insertEvent(Long id, String title, String summary, String eventType, String status) throws Exception {

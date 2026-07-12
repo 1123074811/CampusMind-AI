@@ -72,7 +72,7 @@ public class AdminDashboardService {
     }
 
     @Transactional(readOnly = true)
-    public AdminDashboardResponse dashboard() {
+    public AdminDashboardResponse dashboard(Long userId, String role) {
         List<InformationItem> events = informationItemMapper.selectList(new LambdaQueryWrapper<InformationItem>()
                 .in(InformationItem::getItemStatus, VISIBLE_ITEM_STATUSES)
                 .eq(InformationItem::getParseStatus, "DETAIL_SUCCESS")
@@ -84,6 +84,7 @@ public class AdminDashboardService {
                 .orderByDesc(CrawlTask::getStartedAt)
                 .orderByDesc(CrawlTask::getId)).getRecords();
         List<ImportTask> imports = importTaskMapper.selectPage(Page.of(1, 10), new LambdaQueryWrapper<ImportTask>()
+                .eq(!"ADMIN".equals(role), ImportTask::getUserId, userId)
                 .orderByDesc(ImportTask::getCreatedAt)).getRecords();
 
         Map<Long, DataSource> sourceById = sources.stream()

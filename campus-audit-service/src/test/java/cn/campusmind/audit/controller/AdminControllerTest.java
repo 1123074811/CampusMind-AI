@@ -1,5 +1,7 @@
 package cn.campusmind.audit.controller;
 
+import io.jsonwebtoken.Jwts;
+import io.jsonwebtoken.security.Keys;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -12,6 +14,10 @@ import javax.sql.DataSource;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.Statement;
+import java.nio.charset.StandardCharsets;
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
+import java.util.Date;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
@@ -166,7 +172,7 @@ class AdminControllerTest {
 
     @Test
     void dashboardReturnsSeededAdminData() throws Exception {
-        mockMvc.perform(get("/api/admin/dashboard"))
+        mockMvc.perform(get("/api/admin/dashboard").header("Authorization", adminToken()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.metrics.reviewCount").value(4))
                 .andExpect(jsonPath("$.data.metrics.urgentCount").value(1))
@@ -182,7 +188,7 @@ class AdminControllerTest {
     @Test
     void reviewUpdatesStatusAndWritesAuditLog() throws Exception {
         mockMvc.perform(put("/api/admin/events/1001/review")
-                        .header("X-User-Id", "1")
+                        .header("Authorization", adminToken())
                         .contentType("application/json")
                         .content("""
                                 {
@@ -194,18 +200,48 @@ class AdminControllerTest {
                 .andExpect(jsonPath("$.data.status").value("AI_PUBLISHED"))
                 .andExpect(jsonPath("$.data.risk").value("原文已解析，学生端正在展示"));
 
-        mockMvc.perform(get("/api/admin/dashboard"))
+        mockMvc.perform(get("/api/admin/dashboard").header("Authorization", adminToken()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.events[?(@.id==1001)].status").value("AI_PUBLISHED"));
     }
 
     @Test
     void logsReturnsAuditLogList() throws Exception {
-        mockMvc.perform(get("/api/admin/logs?action=CORRECT"))
+        mockMvc.perform(get("/api/admin/logs?action=CORRECT").header("Authorization", adminToken()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.total").value(1))
                 .andExpect(jsonPath("$.data.items[0].action").value("CORRECT"))
                 .andExpect(jsonPath("$.data.items[0].operatorId").value(9901));
+    }
+
+    @Test
+    void studentCannotAccessAdminDashboard() throws Exception {
+        mockMvc.perform(get("/api/admin/dashboard").header("Authorization", token("STUDENT", 9902L)))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("FORBIDDEN"));
+    }
+
+    @Test
+    void adminCanReadControlledTableRows() throws Exception {
+        mockMvc.perform(get("/api/admin/tables/campus_event").header("Authorization", adminToken()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[0].id").value(1005));
+    }
+
+    private String adminToken() {
+        return token("ADMIN", 9901L);
+    }
+
+    private String token(String role, Long userId) {
+        String jwt = Jwts.builder()
+                .issuer("campusmind-auth")
+                .subject(String.valueOf(userId))
+                .claim("role", role)
+                .issuedAt(Date.from(Instant.now()))
+                .expiration(Date.from(Instant.now().plus(1, ChronoUnit.HOURS)))
+                .signWith(Keys.hmacShaKeyFor("test-secret-test-secret-test-secret-1234".getBytes(StandardCharsets.UTF_8)))
+                .compact();
+        return "Bearer " + jwt;
     }
 
     private void insertEvent(Long id, String title, String type, String sourceType, String status,

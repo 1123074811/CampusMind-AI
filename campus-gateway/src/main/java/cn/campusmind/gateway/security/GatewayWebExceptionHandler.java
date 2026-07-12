@@ -38,20 +38,21 @@ public class GatewayWebExceptionHandler implements WebExceptionHandler {
 
     @Override
     public Mono<Void> handle(ServerWebExchange exchange, Throwable ex) {
-        if (!(ex instanceof GatewayAuthenticationException authEx)) {
+        if (!(ex instanceof GatewayAuthenticationException) && !(ex instanceof GatewayAccessDeniedException)) {
             // 非鉴权异常，交给后续 handler 处理
             return Mono.error(ex);
         }
 
         ServerHttpResponse response = exchange.getResponse();
         if (response.isCommitted()) {
-            return Mono.error(authEx);
+            return Mono.error(ex);
         }
 
-        response.setStatusCode(HttpStatus.UNAUTHORIZED);
+        boolean denied = ex instanceof GatewayAccessDeniedException;
+        response.setStatusCode(denied ? HttpStatus.FORBIDDEN : HttpStatus.UNAUTHORIZED);
         response.getHeaders().setContentType(MediaType.APPLICATION_JSON);
 
-        ApiResponse<Void> body = ApiResponse.fail("UNAUTHORIZED", authEx.getMessage());
+        ApiResponse<Void> body = ApiResponse.fail(denied ? "FORBIDDEN" : "UNAUTHORIZED", ex.getMessage());
         byte[] bytes;
         try {
             bytes = objectMapper.writeValueAsBytes(body);

@@ -12,6 +12,8 @@ public class ImportTask {
 
     @TableId(type = IdType.AUTO)
     private Long id;
+    @TableField("user_id")
+    private Long userId;
     @TableField("import_type")
     private String importType;
     @TableField("task_status")
@@ -21,6 +23,10 @@ public class ImportTask {
 
     public Long getId() {
         return id;
+    }
+
+    public Long getUserId() {
+        return userId;
     }
 
     public String getImportType() {

@@ -61,6 +61,7 @@ public class CrawlerService {
     private final CrawlerProperties crawlerProperties;
     private final JdbcTemplate jdbcTemplate;
     private final AiCardExtractor aiCardExtractor;
+    private final VectorPusher vectorPusher;
 
     public CrawlerService(DataSourceMapper dataSourceMapper,
                           CrawlTaskMapper crawlTaskMapper,
@@ -72,7 +73,8 @@ public class CrawlerService {
                           PublicWebFetcher publicWebFetcher,
                           CrawlerProperties crawlerProperties,
                           JdbcTemplate jdbcTemplate,
-                          AiCardExtractor aiCardExtractor) {
+                          AiCardExtractor aiCardExtractor,
+                          VectorPusher vectorPusher) {
         this.dataSourceMapper = dataSourceMapper;
         this.crawlTaskMapper = crawlTaskMapper;
         this.webCrawlItemMapper = webCrawlItemMapper;
@@ -84,6 +86,26 @@ public class CrawlerService {
         this.crawlerProperties = crawlerProperties;
         this.jdbcTemplate = jdbcTemplate;
         this.aiCardExtractor = aiCardExtractor;
+        this.vectorPusher = vectorPusher;
+    }
+
+    /**
+     * 一次性回填：将 ai_status=SUCCESS 的历史条目推送到向量库，用于服务重启后恢复 RAG 检索。
+     */
+    public int backfillVectorStore(int size) {
+        int batchSize = Math.min(Math.max(size, 1), 500);
+        List<InformationItem> items = informationItemMapper.selectList(new LambdaQueryWrapper<InformationItem>()
+                .eq(InformationItem::getAiStatus, "SUCCESS")
+                .orderByDesc(InformationItem::getPublishTime)
+                .last("LIMIT " + batchSize));
+        int pushed = 0;
+        for (InformationItem item : items) {
+            if (item.getTitle() == null || item.getTitle().isBlank()) continue;
+            vectorPusher.push(item.getId(), item.getTitle(), item.getAiEventType(),
+                    item.getAiSummary(), item.getPublishTime(), item.getDetailContent());
+            pushed++;
+        }
+        return pushed;
     }
 
     @Transactional
@@ -383,6 +405,9 @@ public class CrawlerService {
             item.setAiCardJson(result.cardJson());
             item.setAiNeedReview(result.needHumanReview());
             item.setAiError(null);
+            // 推送事件到 AI 向量库，供 RAG 检索
+            vectorPusher.push(item.getId(), item.getTitle(), result.eventType(),
+                    result.summary(), item.getPublishTime(), item.getDetailContent());
         } catch (Exception ex) {
             item.setAiStatus("FAILED");
             item.setAiError(truncate(ex.getMessage(), MAX_FAIL_REASON_LENGTH));
@@ -502,7 +527,7 @@ public class CrawlerService {
                 SELECT COUNT(*)
                 FROM user_information_state state
                 JOIN information_item item ON item.id = state.item_id
-                WHERE item.item_url = ? AND state.read_status IN ('FAVORITED', 'ARCHIVED')
+                WHERE item.item_url = ? AND state.favorited_at IS NOT NULL
                 """, Long.class, itemUrl);
         return count == null ? 0 : count;
     }

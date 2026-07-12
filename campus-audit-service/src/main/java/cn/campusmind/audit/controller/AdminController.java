@@ -3,6 +3,7 @@ package cn.campusmind.audit.controller;
 import cn.campusmind.audit.application.AdminDashboardService;
 import cn.campusmind.audit.application.AiConfigService;
 import cn.campusmind.audit.application.AuditTokenService;
+import cn.campusmind.audit.application.AdminTableService;
 import cn.campusmind.common.web.ApiResponse;
 import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -23,27 +24,51 @@ public class AdminController {
     private final AdminDashboardService adminDashboardService;
     private final AiConfigService aiConfigService;
     private final AuditTokenService auditTokenService;
+    private final AdminTableService adminTableService;
 
     public AdminController(AdminDashboardService adminDashboardService,
                            AiConfigService aiConfigService,
-                           AuditTokenService auditTokenService) {
+                           AuditTokenService auditTokenService,
+                           AdminTableService adminTableService) {
         this.adminDashboardService = adminDashboardService;
         this.aiConfigService = aiConfigService;
         this.auditTokenService = auditTokenService;
+        this.adminTableService = adminTableService;
+    }
+
+    @GetMapping("/tables")
+    public ApiResponse<java.util.List<java.util.Map<String, Object>>> tables(
+            @RequestHeader(value = "Authorization", required = false) String authorization) {
+        auditTokenService.requireAdmin(authorization);
+        return ApiResponse.ok(adminTableService.tables());
+    }
+
+    @GetMapping("/tables/{table}")
+    public ApiResponse<java.util.List<java.util.Map<String, Object>>> tableRows(
+            @RequestHeader(value = "Authorization", required = false) String authorization,
+            @PathVariable String table,
+            @RequestParam(defaultValue = "50") int size) {
+        auditTokenService.requireAdmin(authorization);
+        return ApiResponse.ok(adminTableService.rows(table, size));
     }
 
     @GetMapping("/dashboard")
-    public ApiResponse<AdminDashboardResponse> dashboard() {
-        return ApiResponse.ok(adminDashboardService.dashboard());
+    public ApiResponse<AdminDashboardResponse> dashboard(
+            @RequestHeader(value = "Authorization", required = false) String authorization) {
+        var operator = auditTokenService.requireOperatorOrAdmin(authorization);
+        return ApiResponse.ok(adminDashboardService.dashboard(operator.userId(), operator.role()));
     }
 
     @GetMapping("/logs")
     public ApiResponse<AdminAuditLogListResponse> logs(
+            @RequestHeader(value = "Authorization", required = false) String authorization,
             @RequestParam(required = false) String action,
             @RequestParam(required = false) Long operatorId,
             @RequestParam(defaultValue = "50") int size
     ) {
-        return ApiResponse.ok(adminDashboardService.auditLogs(action, operatorId, size));
+        var operator = auditTokenService.requireOperatorOrAdmin(authorization);
+        Long visibleOperatorId = "ADMIN".equals(operator.role()) ? operatorId : operator.userId();
+        return ApiResponse.ok(adminDashboardService.auditLogs(action, visibleOperatorId, size));
     }
 
     @GetMapping("/ai-config")
@@ -65,35 +90,38 @@ public class AdminController {
     @PutMapping("/events/{id}/review")
     public ApiResponse<AdminEventResponse> review(
             @PathVariable Long id,
-            @RequestHeader(value = "X-User-Id", required = false) Long operatorId,
+            @RequestHeader(value = "Authorization", required = false) String authorization,
             @Valid @RequestBody ReviewEventRequest request
     ) {
-        return ApiResponse.ok(adminDashboardService.review(id, operatorId, request.status(), request.comment()));
+        return ApiResponse.ok(adminDashboardService.review(id,
+                auditTokenService.requireOperatorOrAdmin(authorization).userId(), request.status(), request.comment()));
     }
 
     @PutMapping("/events/{id}")
     public ApiResponse<AdminEventResponse> updateEvent(
             @PathVariable Long id,
+            @RequestHeader(value = "Authorization", required = false) String authorization,
             @Valid @RequestBody UpdateEventRequest request
     ) {
+        auditTokenService.requireOperatorOrAdmin(authorization);
         return ApiResponse.ok(adminDashboardService.updateEvent(id, request.title(), request.summary(), request.eventType()));
     }
 
     @DeleteMapping("/events/{id}")
     public ApiResponse<Void> deleteEvent(
             @PathVariable Long id,
-            @RequestHeader(value = "X-User-Id", required = false) Long operatorId
+            @RequestHeader(value = "Authorization", required = false) String authorization
     ) {
-        adminDashboardService.deleteEvent(id, operatorId);
+        adminDashboardService.deleteEvent(id, auditTokenService.requireOperatorOrAdmin(authorization).userId());
         return ApiResponse.ok(null);
     }
 
     @PostMapping("/events/batch-delete")
     public ApiResponse<Void> batchDeleteEvents(
             @RequestBody BatchDeleteRequest request,
-            @RequestHeader(value = "X-User-Id", required = false) Long operatorId
+            @RequestHeader(value = "Authorization", required = false) String authorization
     ) {
-        adminDashboardService.batchDeleteEvents(request.ids(), operatorId);
+        adminDashboardService.batchDeleteEvents(request.ids(), auditTokenService.requireOperatorOrAdmin(authorization).userId());
         return ApiResponse.ok(null);
     }
 }

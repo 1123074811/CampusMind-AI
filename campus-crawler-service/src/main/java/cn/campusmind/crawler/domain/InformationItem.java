@@ -99,6 +99,12 @@ public class InformationItem {
 
     public LocalDateTime getAiProcessedAt() { return aiProcessedAt; }
 
+    public LocalDateTime getPublishTime() { return publishTime; }
+
+    public String getAiEventType() { return aiEventType; }
+
+    public String getAiSummary() { return aiSummary; }
+
     public void setId(Long id) {
         this.id = id;
     }

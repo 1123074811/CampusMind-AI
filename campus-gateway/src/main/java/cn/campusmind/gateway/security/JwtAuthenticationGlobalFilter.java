@@ -17,6 +17,7 @@ import reactor.core.publisher.Mono;
 
 import javax.crypto.SecretKey;
 import java.nio.charset.StandardCharsets;
+import java.util.Set;
 
 /**
  * 全局 JWT 鉴权过滤器。
@@ -44,6 +45,7 @@ public class JwtAuthenticationGlobalFilter implements GlobalFilter, Ordered {
     public static final int ORDER = -100;
 
     private static final String BEARER_PREFIX = "Bearer ";
+    private static final Set<String> ROLES = Set.of("ADMIN", "OPERATOR", "STUDENT");
 
     private final GatewayAuthProperties authProperties;
     private final GatewaySecurityProperties securityProperties;
@@ -80,13 +82,22 @@ public class JwtAuthenticationGlobalFilter implements GlobalFilter, Ordered {
                     .getPayload();
             String userId = claims.getSubject();
             Long.parseLong(userId);
+            String role = claims.get("role", String.class);
+            if (!ROLES.contains(role)) {
+                throw new GatewayAuthenticationException("访问令牌角色无效");
+            }
+            requireRouteRole(path, role);
             ServerHttpRequest authenticatedRequest = request.mutate()
                     .headers(headers -> {
                         headers.remove("X-User-Id");
+                        headers.remove("X-User-Role");
                         headers.set("X-User-Id", userId);
+                        headers.set("X-User-Role", role);
                     })
                     .build();
             return chain.filter(exchange.mutate().request(authenticatedRequest).build());
+        } catch (GatewayAccessDeniedException | GatewayAuthenticationException ex) {
+            return Mono.error(ex);
         } catch (RuntimeException ex) {
             return Mono.error(new GatewayAuthenticationException("访问令牌无效或已过期"));
         }
@@ -107,5 +118,14 @@ public class JwtAuthenticationGlobalFilter implements GlobalFilter, Ordered {
             }
         }
         return false;
+    }
+
+    private static void requireRouteRole(String path, String role) {
+        if (path.startsWith("/api/v1/users/admin") && !"ADMIN".equals(role)) {
+            throw new GatewayAccessDeniedException("仅管理员可管理用户");
+        }
+        if (path.startsWith("/api/admin/") && !"ADMIN".equals(role) && !"OPERATOR".equals(role)) {
+            throw new GatewayAccessDeniedException("仅管理员或运营可访问后台");
+        }
     }
 }

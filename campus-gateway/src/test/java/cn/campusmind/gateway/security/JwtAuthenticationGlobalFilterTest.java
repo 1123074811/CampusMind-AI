@@ -162,7 +162,22 @@ class JwtAuthenticationGlobalFilterTest {
                 .verifyComplete();
 
         verify(chain, times(1)).filter(argThat(forwarded -> "1".equals(
-                forwarded.getRequest().getHeaders().getFirst("X-User-Id"))));
+                forwarded.getRequest().getHeaders().getFirst("X-User-Id"))
+                && "STUDENT".equals(forwarded.getRequest().getHeaders().getFirst("X-User-Role"))));
+    }
+
+    @Test
+    void studentCannotAccessAdminRoute() {
+        ServerWebExchange exchange = MockServerWebExchange.from(
+                MockServerHttpRequest.get("/api/admin/dashboard")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + validToken())
+                        .build());
+        GatewayFilterChain chain = mock(GatewayFilterChain.class);
+
+        StepVerifier.create(filter.filter(exchange, chain))
+                .expectError(GatewayAccessDeniedException.class)
+                .verify();
+        verify(chain, never()).filter(any());
     }
 
     private String validToken() {

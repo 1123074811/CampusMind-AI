@@ -33,8 +33,9 @@ public class EventController {
     @GetMapping("/{id}")
     public ApiResponse<EventDetailResponse> detail(
             @PathVariable Long id,
-            @RequestHeader(value = "X-User-Id", required = false) Long userId) {
-        return ApiResponse.ok(eventQueryService.getById(id, userId));
+            @RequestHeader(value = "X-User-Id", required = false) Long userId,
+            @RequestHeader(value = "X-User-Role", required = false) String role) {
+        return ApiResponse.ok(eventQueryService.getById(id, userId, role));
     }
 
     @GetMapping("/search")
@@ -45,10 +46,11 @@ public class EventController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime startFrom,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime startTo,
             @RequestHeader(value = "X-User-Id", required = false) Long userId,
+            @RequestHeader(value = "X-User-Role", required = false) String role,
             @RequestParam(defaultValue = "1") long page,
             @RequestParam(defaultValue = "20") long size
     ) {
-        return ApiResponse.ok(eventQueryService.search(eventType, status, keyword, startFrom, startTo, userId, page, size));
+        return ApiResponse.ok(eventQueryService.search(eventType, status, keyword, startFrom, startTo, userId, role, page, size));
     }
 
     /**

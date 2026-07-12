@@ -28,4 +28,18 @@ public class CrawlerScheduler {
     public void processPendingAiCards() {
         crawlerService.processPendingAiCards(20);
     }
+
+    /**
+     * 服务启动后一次性回填向量库：将已有 AI_SUCCESS 事件推送到向量库。
+     * fixedDelay 设置极大值避免重复执行。
+     */
+    @Scheduled(initialDelayString = "${campus.ai.vector-backfill-delay-ms:20000}",
+            fixedDelayString = "${campus.ai.vector-backfill-interval-ms:315360000000}")
+    public void backfillVectorStore() {
+        int pushed = crawlerService.backfillVectorStore(200);
+        if (pushed > 0) {
+            org.slf4j.LoggerFactory.getLogger(CrawlerScheduler.class)
+                    .info("向量库回填完成，推送 {} 条事件", pushed);
+        }
+    }
 }

@@ -44,13 +44,18 @@ public class EventCommandService {
             throw new BusinessException("EVENT_VISIBILITY_INVALID", "雨课堂事件必须为私有事件", HttpStatus.BAD_REQUEST);
         }
 
-        // 查找已有事件
+        // 1. 先按 dedupKey 查找已有事件
         CampusEvent existing = null;
         if (StringUtils.hasText(dedupKey)) {
             existing = campusEventMapper.selectOne(
                     new LambdaQueryWrapper<CampusEvent>()
                             .eq(CampusEvent::getDedupKey, dedupKey)
                             .last("LIMIT 1"));
+        }
+
+        // 2. dedupKey 未命中时，按 contentHash 查找已有事件（信息融合）
+        if (existing == null && StringUtils.hasText(req.contentHash())) {
+            existing = findEventByContentHash(req.contentHash());
         }
 
         Long eventId;
@@ -87,6 +92,20 @@ public class EventCommandService {
         eventSourceRefMapper.insert(ref);
 
         return eventId;
+    }
+
+    /**
+     * 通过 contentHash 查找已有事件（信息融合：同一内容来自不同来源时复用事件）。
+     */
+    private CampusEvent findEventByContentHash(String contentHash) {
+        EventSourceRef ref = eventSourceRefMapper.selectOne(
+                new LambdaQueryWrapper<EventSourceRef>()
+                        .eq(EventSourceRef::getContentHash, contentHash)
+                        .last("LIMIT 1"));
+        if (ref == null || ref.getEventId() == null) {
+            return null;
+        }
+        return campusEventMapper.selectById(ref.getEventId());
     }
 
     private LocalDateTime parseDateTime(String value) {

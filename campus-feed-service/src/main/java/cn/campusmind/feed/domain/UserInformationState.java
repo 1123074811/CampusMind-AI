@@ -1,6 +1,7 @@
 package cn.campusmind.feed.domain;
 
 import com.baomidou.mybatisplus.annotation.IdType;
+import com.baomidou.mybatisplus.annotation.FieldStrategy;
 import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
@@ -19,17 +20,14 @@ public class UserInformationState {
     @TableField("item_id")
     private Long itemId;
 
-    @TableField("read_status")
-    private String readStatus;
-
     @TableField("first_seen_at")
     private LocalDateTime firstSeenAt;
 
-    @TableField("read_at")
+    @TableField(value = "read_at", updateStrategy = FieldStrategy.ALWAYS)
     private LocalDateTime readAt;
 
-    @TableField("archived_at")
-    private LocalDateTime archivedAt;
+    @TableField(value = "favorited_at", updateStrategy = FieldStrategy.ALWAYS)
+    private LocalDateTime favoritedAt;
 
     public Long getId() {
         return id;
@@ -43,16 +41,12 @@ public class UserInformationState {
         return userId;
     }
 
-    public String getReadStatus() {
-        return readStatus;
-    }
-
     public LocalDateTime getReadAt() {
         return readAt;
     }
 
-    public LocalDateTime getArchivedAt() {
-        return archivedAt;
+    public LocalDateTime getFavoritedAt() {
+        return favoritedAt;
     }
 
     public void setId(Long id) {
@@ -67,10 +61,6 @@ public class UserInformationState {
         this.itemId = itemId;
     }
 
-    public void setReadStatus(String readStatus) {
-        this.readStatus = readStatus;
-    }
-
     public void setFirstSeenAt(LocalDateTime firstSeenAt) {
         this.firstSeenAt = firstSeenAt;
     }
@@ -79,7 +69,7 @@ public class UserInformationState {
         this.readAt = readAt;
     }
 
-    public void setArchivedAt(LocalDateTime archivedAt) {
-        this.archivedAt = archivedAt;
+    public void setFavoritedAt(LocalDateTime favoritedAt) {
+        this.favoritedAt = favoritedAt;
     }
 }

@@ -102,13 +102,6 @@ public class InformationService {
         );
     }
 
-    private static final Map<String, Long> SOURCE_NAME_TO_ID = Map.of(
-            "用户文本提交", 9405L,
-            "用户文件上传", 9406L,
-            "雨课堂导入", 9403L,
-            "用户截图 OCR", 9404L
-    );
-
     /**
      * 幂等创建信息条目（按 contentHash 去重），供 import-service 内部调用。
      */
@@ -123,7 +116,13 @@ public class InformationService {
         }
         LocalDateTime now = LocalDateTime.now();
         InformationItem item = new InformationItem();
-        item.setSourceId(SOURCE_NAME_TO_ID.getOrDefault(request.sourceName(), 0L));
+        DataSource source = dataSourceMapper.selectOne(new LambdaQueryWrapper<DataSource>()
+                .eq(DataSource::getName, request.sourceName())
+                .last("LIMIT 1"));
+        if (source == null) {
+            throw new BusinessException("DATA_SOURCE_NOT_FOUND", "数据源不存在", HttpStatus.BAD_REQUEST);
+        }
+        item.setSourceId(source.getId());
         item.setTitle(request.title());
         item.setDetailContent(request.detailContent());
         item.setSourceName(request.sourceName());
@@ -159,15 +158,20 @@ public class InformationService {
         UserInformationState state = existing == null ? new UserInformationState() : existing;
         state.setUserId(userId);
         state.setItemId(itemId);
-        state.setReadStatus(normalizedReadStatus);
         if (existing == null) {
             state.setFirstSeenAt(now);
         }
-        if ("READ".equals(normalizedReadStatus)) {
-            state.setReadAt(now);
-        }
         if ("FAVORITED".equals(normalizedReadStatus)) {
-            state.setArchivedAt(now);
+            if (state.getReadAt() == null) {
+                state.setReadAt(now);
+            }
+            state.setFavoritedAt(now);
+        } else if ("READ".equals(normalizedReadStatus)) {
+            state.setReadAt(now);
+            state.setFavoritedAt(null);
+        } else if ("NEW".equals(normalizedReadStatus)) {
+            state.setReadAt(null);
+            state.setFavoritedAt(null);
         }
         if (existing == null) {
             userInformationStateMapper.insert(state);
@@ -186,7 +190,7 @@ public class InformationService {
                         .eq(UserInformationState::getUserId, userId)
                         .in(UserInformationState::getItemId, itemIds))
                 .stream()
-                .collect(Collectors.toMap(UserInformationState::getItemId, UserInformationState::getReadStatus,
+                .collect(Collectors.toMap(UserInformationState::getItemId, InformationService::readStatus,
                         (first, second) -> first));
     }
 
@@ -198,7 +202,14 @@ public class InformationService {
                 .eq(UserInformationState::getUserId, userId)
                 .eq(UserInformationState::getItemId, itemId)
                 .last("LIMIT 1"));
-        return state == null ? "NEW" : state.getReadStatus();
+        return state == null ? "NEW" : readStatus(state);
+    }
+
+    private static String readStatus(UserInformationState state) {
+        if (state.getFavoritedAt() != null) {
+            return "FAVORITED";
+        }
+        return state.getReadAt() != null ? "READ" : "NEW";
     }
 
     private String normalizeReadStatus(String status) {
@@ -259,10 +270,10 @@ public class InformationService {
         }
         long readCount = userInformationStateMapper.selectCount(new LambdaQueryWrapper<UserInformationState>()
                 .eq(UserInformationState::getUserId, userId)
-                .eq(UserInformationState::getReadStatus, "READ"));
+                .isNotNull(UserInformationState::getReadAt));
         long favoriteCount = userInformationStateMapper.selectCount(new LambdaQueryWrapper<UserInformationState>()
                 .eq(UserInformationState::getUserId, userId)
-                .eq(UserInformationState::getReadStatus, "FAVORITED"));
+                .isNotNull(UserInformationState::getFavoritedAt));
         long subscriptionCount = userSourceSubscriptionMapper.selectCount(new LambdaQueryWrapper<UserSourceSubscription>()
                 .eq(UserSourceSubscription::getUserId, userId)
                 .eq(UserSourceSubscription::getEnabled, 1));
@@ -280,8 +291,8 @@ public class InformationService {
         List<UserInformationState> states = userInformationStateMapper.selectList(
                 new LambdaQueryWrapper<UserInformationState>()
                         .eq(UserInformationState::getUserId, userId)
-                        .eq(UserInformationState::getReadStatus, "FAVORITED")
-                        .orderByDesc(UserInformationState::getArchivedAt)
+                        .isNotNull(UserInformationState::getFavoritedAt)
+                        .orderByDesc(UserInformationState::getFavoritedAt)
                         .last("LIMIT " + safeSize));
         if (states.isEmpty()) {
             return new InformationFeedResponse(List.of(), null, false);
@@ -309,7 +320,7 @@ public class InformationService {
         List<UserInformationState> states = userInformationStateMapper.selectList(
                 new LambdaQueryWrapper<UserInformationState>()
                         .eq(UserInformationState::getUserId, userId)
-                        .eq(UserInformationState::getReadStatus, "READ")
+                        .isNotNull(UserInformationState::getReadAt)
                         .orderByDesc(UserInformationState::getReadAt)
                         .last("LIMIT " + safeSize));
         if (states.isEmpty()) {
@@ -319,10 +330,9 @@ public class InformationService {
         Map<Long, InformationItem> items = informationItemMapper.selectBatchIds(itemIds)
                 .stream().collect(Collectors.toMap(InformationItem::getId, i -> i));
         List<InformationFeedItemResponse> responses = states.stream()
-                .map(s -> items.get(s.getItemId()))
-                .filter(Objects::nonNull)
-                .filter(this::isVisible)
-                .map(item -> toFeedItem(item, "READ"))
+                .filter(state -> items.containsKey(state.getItemId()))
+                .filter(state -> isVisible(items.get(state.getItemId())))
+                .map(state -> toFeedItem(items.get(state.getItemId()), readStatus(state)))
                 .toList();
         return new InformationFeedResponse(responses, null, false);
     }

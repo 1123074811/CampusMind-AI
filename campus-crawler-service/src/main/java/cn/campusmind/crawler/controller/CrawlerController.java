@@ -55,4 +55,11 @@ public class CrawlerController {
     ) {
         return ApiResponse.ok(crawlerService.publishExistingItems(size));
     }
+
+    @PostMapping("/vector/backfill")
+    public ApiResponse<Integer> backfillVectorStore(
+            @RequestParam(defaultValue = "200") Integer size
+    ) {
+        return ApiResponse.ok(crawlerService.backfillVectorStore(size));
+    }
 }
