@@ -38,13 +38,16 @@ public final class DecisionRules {
     }
 
     private static String detectIntent(String text, String lower, List<String> eventTypes, boolean usePersonalProfile) {
+        if (isCasualChat(text, lower)) {
+            return "CASUAL_CHAT";
+        }
         if (containsAny(text, "怎么导入", "如何导入", "cookie", "json")) {
             return "IMPORT_HELP";
         }
         if (containsAny(text, "什么意思", "解释", "说明一下")) {
             return "QA_EXPLAIN";
         }
-        if (usePersonalProfile || containsAny(text, "我", "我的", "本周有哪些作业", "我的课表")) {
+        if (usePersonalProfile || containsAny(text, "我的", "本周有哪些作业", "我的课表")) {
             return "PERSONAL_SCHEDULE";
         }
         if (lower.contains("ai") || containsAny(text, "相关", "类似", "有没有")) {
@@ -54,6 +57,15 @@ public final class DecisionRules {
             return "FEED_QUERY";
         }
         return "SEMANTIC_SEARCH";
+    }
+
+    private static boolean isCasualChat(String text, String lower) {
+        if (text.length() > 20) return false;
+        return containsAny(text,
+                "你好", "您好", "hello", "hi", "嗨", "哈喽",
+                "谢谢", "感谢", "好的", "嗯", "哦", "了解",
+                "再见", "拜拜", "在吗", "在不在",
+                "你是谁", "你能做什么", "你叫什么");
     }
 
     private static List<String> detectEventTypes(String text, String lower) {

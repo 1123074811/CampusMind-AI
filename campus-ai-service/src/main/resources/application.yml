@@ -20,12 +20,19 @@ spring:
     model:
       chat: ${SPRING_AI_CHAT_MODEL:none}
       embedding: ${SPRING_AI_EMBEDDING_MODEL:none}
+    openai:
+      base-url: ${OPENAI_BASE_URL:https://api.deepseek.com}
+      api-key: ${OPENAI_API_KEY:}
+      chat:
+        options:
+          model: ${OPENAI_CHAT_MODEL:deepseek-chat}
+          temperature: ${OPENAI_TEMPERATURE:0.2}
 
 campus:
   ai:
     # rule=规则版Agent+内存向量库(默认,零外部依赖)；llm=Spring AI ChatModel+PGVector(需激活 llm profile)
     mode: ${CAMPUS_AI_MODE:rule}
-    model-version: ${CAMPUS_AI_MODEL_VERSION:rule-v1}
+    model-version: ${CAMPUS_AI_MODEL_VERSION:${OPENAI_CHAT_MODEL:rule-v1}}
     prompt-version: ${CAMPUS_AI_PROMPT_VERSION:rule-v1}
 
 management:

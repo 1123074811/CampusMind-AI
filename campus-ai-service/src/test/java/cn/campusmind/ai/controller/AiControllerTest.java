@@ -10,6 +10,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.hasItem;
 import static org.hamcrest.Matchers.hasSize;
+import static org.hamcrest.Matchers.nullValue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -62,6 +63,33 @@ class AiControllerTest {
                 .andExpect(jsonPath("$.data.registrationDeadline").value("2026年7月15日 18:00"))
                 .andExpect(jsonPath("$.data.requiredMaterials[0]").value("报名表"))
                 .andExpect(jsonPath("$.data.registrationUrl").value("https://example.edu/apply"));
+    }
+
+    @Test
+    void cognitionDoesNotTreatGenericDeadlineAsHomeworkOrRegistration() throws Exception {
+        mockMvc.perform(post("/api/v1/ai/cognition/extract")
+                        .contentType("application/json")
+                        .content("""
+                                {
+                                  "sourceType": "PUBLIC_WEB",
+                                  "plainText": "新疆大学党委2026年交叉巡察进驻动员会召开\\n6月3日下午，动员会在友好校区学术报告厅召开。"
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.eventType").value("ACTIVITY"))
+                .andExpect(jsonPath("$.data.registrationStartTime").value(nullValue()))
+                .andExpect(jsonPath("$.data.registrationDeadline").value(nullValue()));
+
+        mockMvc.perform(post("/api/v1/ai/cognition/extract")
+                        .contentType("application/json")
+                        .content("""
+                                {
+                                  "sourceType": "PUBLIC_WEB",
+                                  "plainText": "新疆大学2026年面向社会公开招聘事业编制工作人员考核成绩及后续工作安排公告\\n资格审查通过人员按要求参加后续考核。"
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.eventType").value("NOTICE"));
     }
 
     @Test

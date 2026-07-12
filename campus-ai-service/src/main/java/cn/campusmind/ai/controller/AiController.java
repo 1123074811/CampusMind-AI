@@ -1,12 +1,14 @@
 package cn.campusmind.ai.controller;
 
 import cn.campusmind.ai.application.AiApplicationService;
+import cn.campusmind.ai.config.RuntimeAiConfig;
 import cn.campusmind.ai.domain.CampusEventCandidate;
 import cn.campusmind.ai.domain.SearchPlan;
 import cn.campusmind.ai.domain.VectorText;
 import cn.campusmind.common.web.ApiResponse;
 import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -16,9 +18,11 @@ import org.springframework.web.bind.annotation.RestController;
 public class AiController {
 
     private final AiApplicationService aiApplicationService;
+    private final RuntimeAiConfig runtimeAiConfig;
 
-    public AiController(AiApplicationService aiApplicationService) {
+    public AiController(AiApplicationService aiApplicationService, RuntimeAiConfig runtimeAiConfig) {
         this.aiApplicationService = aiApplicationService;
+        this.runtimeAiConfig = runtimeAiConfig;
     }
 
     @PostMapping("/cognition/extract")
@@ -54,4 +58,12 @@ public class AiController {
         boolean usePersonalProfile = Boolean.TRUE.equals(request.usePersonalProfile());
         return ApiResponse.ok(aiApplicationService.chat(request.sessionId(), request.message(), usePersonalProfile));
     }
+
+    @PutMapping("/runtime-config")
+    public ApiResponse<String> reloadConfig(@RequestBody RuntimeConfigRequest request) {
+        var mode = runtimeAiConfig.reload(request.mode(), request.baseUrl(), request.model(), request.apiKey());
+        return ApiResponse.ok(mode.name().toLowerCase());
+    }
+
+    public record RuntimeConfigRequest(String mode, String baseUrl, String model, String apiKey) {}
 }

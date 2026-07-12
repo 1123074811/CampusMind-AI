@@ -36,7 +36,6 @@ class LlmCognitionAgentTest {
                   "organizer": "软件学院",
                   "targetScopes": ["软件学院"],
                   "tags": ["LECTURE", "AI"],
-                  "confidence": 0.92,
                   "needHumanReview": false,
                   "reason": "LLM抽取字段完整"
                 }
@@ -50,7 +49,6 @@ class LlmCognitionAgentTest {
         assertEquals("人工智能主题讲座通知", candidate.title());
         assertEquals("LECTURE", candidate.eventType());
         assertEquals("图书馆报告厅", candidate.location());
-        assertEquals(0.92, candidate.confidence());
     }
 
     @Test

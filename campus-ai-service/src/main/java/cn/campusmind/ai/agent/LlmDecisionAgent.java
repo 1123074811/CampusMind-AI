@@ -31,7 +31,7 @@ public class LlmDecisionAgent implements DecisionAgent {
 
     private static final String SYSTEM_PROMPT = """
             你是校园事件检索的意图识别助手。根据用户查询识别意图并生成检索计划。
-            intent 取值：FEED_QUERY(按条件查信息流)、SEMANTIC_SEARCH(语义检索相关事件)、
+            intent 取值：CASUAL_CHAT(问候/闲聊/感谢/告别)、FEED_QUERY(按条件查信息流)、SEMANTIC_SEARCH(语义检索相关事件)、
             PERSONAL_SCHEDULE(个人日程/我的作业课表)、QA_EXPLAIN(解释说明类问答)、IMPORT_HELP(导入帮助)。
             eventTypes 事件类型列表(EXAM/HOMEWORK/COURSE/LECTURE/COMPETITION/ACTIVITY/SERVICE/NOTICE/OTHER)；
             timeRange 取值 TODAY/TOMORROW/THIS_WEEK/RECENT/ANY；useVectorSearch 是否需向量检索；

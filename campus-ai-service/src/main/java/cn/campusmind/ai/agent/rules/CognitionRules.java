@@ -50,18 +50,18 @@ public final class CognitionRules {
         List<String> tags = detectTags(normalizedText, eventType);
         List<String> keyDates = extractKeyDates(normalizedText);
         List<String> actions = detectActions(normalizedText);
-        String registrationStart = matchFirst(REGISTRATION_START_PATTERN, normalizedText);
-        String registrationDeadline = matchFirst(REGISTRATION_DEADLINE_PATTERN, normalizedText);
-        String duration = matchFirst(DURATION_PATTERN, normalizedText);
-        List<String> materials = splitList(matchFirst(MATERIALS_PATTERN, normalizedText));
-        String registrationUrl = matchUrl(normalizedText);
-        String participationMethod = matchFirst(PARTICIPATION_PATTERN, normalizedText);
-        String teamRequirement = matchFirst(TEAM_PATTERN, normalizedText);
+        boolean registrationEvent = "COMPETITION".equals(eventType) || "ACTIVITY".equals(eventType);
+        String registrationStart = registrationEvent ? matchFirst(REGISTRATION_START_PATTERN, normalizedText) : null;
+        String registrationDeadline = registrationEvent ? matchFirst(REGISTRATION_DEADLINE_PATTERN, normalizedText) : null;
+        String duration = registrationEvent ? matchFirst(DURATION_PATTERN, normalizedText) : null;
+        List<String> materials = registrationEvent ? splitList(matchFirst(MATERIALS_PATTERN, normalizedText)) : List.of();
+        String registrationUrl = registrationEvent ? matchUrl(normalizedText) : null;
+        String participationMethod = registrationEvent ? matchFirst(PARTICIPATION_PATTERN, normalizedText) : null;
+        String teamRequirement = registrationEvent ? matchFirst(TEAM_PATTERN, normalizedText) : null;
         List<String> attachments = splitList(matchFirst(ATTACHMENT_PATTERN, normalizedText));
         boolean competitionIncomplete = "COMPETITION".equals(eventType)
                 && (registrationDeadline == null || registrationUrl == null);
         boolean needReview = startTime == null || title.length() < 6 || normalizedText.length() < 20 || competitionIncomplete;
-        double confidence = calculateConfidence(startTime, location, organizer, tags, needReview);
         String summary = summarize(title, startTime, location, scopes);
         String reason = needReview ? "关键字段或内容完整性不足，需要人工复核" : "规则抽取字段较完整，可生成精简卡片";
 
@@ -75,7 +75,6 @@ public final class CognitionRules {
                 organizer,
                 scopes,
                 tags,
-                confidence,
                 needReview,
                 reason,
                 null,
@@ -138,14 +137,22 @@ public final class CognitionRules {
         if (containsAny(text, "竞赛", "比赛", "大赛")) {
             return "COMPETITION";
         }
-        if (containsAny(text, "作业", "提交", "截止", "雨课堂")) {
+        if (containsAny(text, "作业", "课程作业", "课后作业")
+                || (text.contains("雨课堂") && containsAny(text, "提交", "截止"))) {
             return "HOMEWORK";
         }
         if (containsAny(text, "课程", "上课", "调课", "停课")) {
             return "COURSE";
         }
-        if (containsAny(text, "讲座", "报告", "论坛", "沙龙") || lower.contains("ai")) {
+        if (containsAny(text, "讲座", "专题报告", "论坛", "沙龙")
+                || (text.contains("学术报告") && !text.contains("学术报告厅")) || lower.contains("ai")) {
             return "LECTURE";
+        }
+        if (containsAny(text, "招聘", "招募", "录用", "拟聘", "考核")) {
+            return "NOTICE";
+        }
+        if (containsAny(text, "会议", "动员会", "座谈会", "仪式")) {
+            return "ACTIVITY";
         }
         if (containsAny(text, "活动", "报名", "社团")) {
             return "ACTIVITY";
@@ -216,26 +223,6 @@ public final class CognitionRules {
             tags.add("报名");
         }
         return tags.stream().distinct().toList();
-    }
-
-    private static double calculateConfidence(String startTime, String location, String organizer, List<String> tags, boolean needReview) {
-        double score = 0.45;
-        if (startTime != null) {
-            score += 0.2;
-        }
-        if (location != null) {
-            score += 0.15;
-        }
-        if (organizer != null) {
-            score += 0.1;
-        }
-        if (!tags.isEmpty()) {
-            score += 0.05;
-        }
-        if (needReview) {
-            score -= 0.1;
-        }
-        return Math.max(0.1, Math.min(0.95, Math.round(score * 100.0) / 100.0));
     }
 
     private static String summarize(String title, String startTime, String location, List<String> scopes) {
