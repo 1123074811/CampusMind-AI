@@ -6,9 +6,11 @@ import org.mybatis.spring.annotation.MapperScan;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.scheduling.annotation.EnableScheduling;
 
 @SpringBootApplication(scanBasePackages = "cn.campusmind")
 @EnableConfigurationProperties({ImportProperties.class, AuthProperties.class})
+@EnableScheduling
 @MapperScan("cn.campusmind.importing.infrastructure.mapper")
 public class CampusImportApplication {
 

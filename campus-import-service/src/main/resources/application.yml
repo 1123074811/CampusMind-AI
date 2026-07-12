@@ -16,6 +16,7 @@ spring:
   data:
     mongodb:
       uri: ${IMPORT_MONGO_URI}
+      auto-index-creation: true
     redis:
       host: ${IMPORT_REDIS_HOST:localhost}
       port: ${IMPORT_REDIS_PORT:6379}
@@ -34,12 +35,15 @@ campus:
     rain-cookie-ttl-minutes: 10
     rain-cookie-enabled: ${IMPORT_RAIN_COOKIE_ENABLED:false}
     max-rain-json-bytes: 2097152
+    raw-document-retention-days: 7
     max-text-length: 20000
     max-image-bytes: 5242880
     max-file-bytes: 10485760
     ai-connect-timeout-seconds: 5
     ai-read-timeout-seconds: 30
     rate-limit-per-minute: 10
+    tessdata-path: ${TESSDATA_PATH:C:/Program Files/Tesseract-OCR/tessdata}
+    ocr-language: ${OCR_LANGUAGE:chi_sim+eng}
 
 management:
   endpoints:

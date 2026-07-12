@@ -57,6 +57,10 @@ public class RainClassroomParser {
         if (topLevelList.isArray()) {
             return topLevelList;
         }
+        JsonNode exportedItems = root.path("items");
+        if (exportedItems.isArray()) {
+            return exportedItems;
+        }
         return null;
     }
 

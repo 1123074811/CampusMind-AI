@@ -25,9 +25,14 @@ campus:
     event-base-url: http://localhost:8083
     feed-base-url: http://localhost:8084
     rain-cookie-ttl-minutes: 10
+    rain-cookie-enabled: false
+    max-rain-json-bytes: 2097152
+    raw-document-retention-days: 7
     max-text-length: 20000
     max-image-bytes: 5242880
     max-file-bytes: 10485760
     ai-connect-timeout-seconds: 5
     ai-read-timeout-seconds: 30
     rate-limit-per-minute: 10
+    tessdata-path: test-tessdata
+    ocr-language: chi_sim+eng

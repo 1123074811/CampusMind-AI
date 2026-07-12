@@ -25,17 +25,23 @@ import java.util.Set;
 @Component
 public class FileTextExtractor {
 
-    private static final Set<String> SUPPORTED_EXTENSIONS = Set.of("pdf", "docx", "txt", "xlsx");
+    private static final Set<String> SUPPORTED_EXTENSIONS = Set.of("pdf", "docx", "txt", "xlsx",
+            "png", "jpg", "jpeg", "bmp", "tiff", "tif");
     private static final Set<String> SUPPORTED_CONTENT_TYPES = Set.of(
             "application/pdf",
             "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
             "text/plain",
-            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            "image/png", "image/jpeg", "image/bmp", "image/tiff"
     );
+    private static final Set<String> IMAGE_EXTENSIONS = Set.of("png", "jpg", "jpeg", "bmp", "tiff", "tif");
 
-    /**
-     * 判断文件类型是否支持。
-     */
+    private final OcrTextExtractor ocrTextExtractor;
+
+    public FileTextExtractor(OcrTextExtractor ocrTextExtractor) {
+        this.ocrTextExtractor = ocrTextExtractor;
+    }
+
     public boolean isSupported(String fileName) {
         String ext = getExtension(fileName);
         return SUPPORTED_EXTENSIONS.contains(ext.toLowerCase());
@@ -43,6 +49,7 @@ public class FileTextExtractor {
 
     /**
      * 从上传文件中提取纯文本。
+     * 支持 PDF、DOCX、TXT、XLSX 和图片文件（通过 OCR 提取）。
      *
      * @param file 上传文件
      * @return 提取的纯文本
@@ -57,7 +64,7 @@ public class FileTextExtractor {
         String ext = getExtension(fileName).toLowerCase();
         if (!SUPPORTED_EXTENSIONS.contains(ext)) {
             throw new BusinessException("FILE_TYPE_UNSUPPORTED",
-                    "不支持的文件类型：" + ext + "，仅支持 PDF、DOCX、TXT、XLSX",
+                    "不支持的文件类型：" + ext + "，仅支持 PDF、DOCX、TXT、XLSX 和图片文件",
                     HttpStatus.BAD_REQUEST);
         }
 
@@ -67,8 +74,13 @@ public class FileTextExtractor {
                 case "docx" -> extractFromDocx(file);
                 case "txt" -> extractFromTxt(file);
                 case "xlsx" -> extractFromXlsx(file);
-                default -> throw new BusinessException("FILE_TYPE_UNSUPPORTED",
-                        "不支持的文件类型：" + ext, HttpStatus.BAD_REQUEST);
+                default -> {
+                    if (IMAGE_EXTENSIONS.contains(ext)) {
+                        yield ocrTextExtractor.extractText(file.getBytes());
+                    }
+                    throw new BusinessException("FILE_TYPE_UNSUPPORTED",
+                            "不支持的文件类型：" + ext, HttpStatus.BAD_REQUEST);
+                }
             };
         } catch (BusinessException ex) {
             throw ex;

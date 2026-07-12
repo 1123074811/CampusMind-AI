@@ -11,6 +11,7 @@ import cn.campusmind.importing.domain.RawDocument;
 import cn.campusmind.importing.infrastructure.mapper.ImportTaskMapper;
 import cn.campusmind.importing.config.ImportProperties;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -43,6 +44,7 @@ public class ImportService {
     private final RainClassroomParser rainClassroomParser;
     private final RainCookieStore rainCookieStore;
     private final FileTextExtractor fileTextExtractor;
+    private final OcrTextExtractor ocrTextExtractor;
     private final ObjectMapper objectMapper;
     private final ImportProperties properties;
     private final StringRedisTemplate redisTemplate;
@@ -55,6 +57,7 @@ public class ImportService {
                          RainClassroomParser rainClassroomParser,
                          RainCookieStore rainCookieStore,
                          FileTextExtractor fileTextExtractor,
+                         OcrTextExtractor ocrTextExtractor,
                          ObjectMapper objectMapper,
                          ImportProperties properties,
                          StringRedisTemplate redisTemplate) {
@@ -66,6 +69,7 @@ public class ImportService {
         this.rainClassroomParser = rainClassroomParser;
         this.rainCookieStore = rainCookieStore;
         this.fileTextExtractor = fileTextExtractor;
+        this.ocrTextExtractor = ocrTextExtractor;
         this.objectMapper = objectMapper;
         this.properties = properties;
         this.redisTemplate = redisTemplate;
@@ -98,6 +102,7 @@ public class ImportService {
 
     @Transactional(rollbackFor = Exception.class)
     public ImportTaskResponse submitImageImport(CurrentUser user, ImageImportRequest request) {
+        checkRateLimit(user.userId());
         String base64 = request.imageBase64();
         if (!StringUtils.hasText(base64)) {
             throw new BusinessException("IMAGE_REQUIRED", "图片数据不能为空", HttpStatus.BAD_REQUEST);
@@ -111,21 +116,44 @@ public class ImportService {
         if (bytes.length > properties.maxImageBytes()) {
             throw new BusinessException("IMAGE_TOO_LARGE", "图片大小超过限制", HttpStatus.BAD_REQUEST);
         }
-        String contentHash = sha256(base64);
-        Map<String, Object> ocrMeta = new LinkedHashMap<>();
-        ocrMeta.put("engine", "pending");
-        ocrMeta.put("imageName", request.imageName());
-        ocrMeta.put("note", "OCR引擎待接入，识别后将自动生成事件");
-        RawDocument doc = rawDocumentService.save(buildRawDocument("USER_IMAGE", user.userId(), null, null, contentHash, ocrMeta));
-        ImportTask task = createTask(user.userId(), "USER_IMAGE", doc.getId());
-        Map<String, Object> summary = new LinkedHashMap<>();
-        summary.put("ocrStatus", "PENDING");
-        summary.put("bytes", bytes.length);
-        task.setTaskStatus("PENDING");
-        task.setResultSummary(toJson(summary));
-        task.setFinishedAt(LocalDateTime.now());
-        importTaskMapper.updateById(task);
-        return response(task, "图片已接收，OCR识别后将自动生成事件");
+
+        // 先创建任务记录
+        ImportTask task = createTask(user.userId(), "USER_IMAGE", null);
+
+        try {
+            // 1. OCR 提取文字
+            String ocrText = ocrTextExtractor.extractText(bytes);
+            if (!StringUtils.hasText(ocrText)) {
+                throw new BusinessException("OCR_EMPTY", "图片中未识别到文字内容", HttpStatus.UNPROCESSABLE_ENTITY);
+            }
+            if (ocrText.length() > properties.maxTextLength()) {
+                ocrText = ocrText.substring(0, properties.maxTextLength());
+            }
+
+            // 2. 保存 RawDocument（含 OCR 元数据）
+            String contentHash = sha256(ocrText);
+            Map<String, Object> ocrMeta = new LinkedHashMap<>();
+            ocrMeta.put("engine", "tess4j");
+            ocrMeta.put("language", properties.ocrLanguage());
+            ocrMeta.put("imageName", request.imageName());
+            ocrMeta.put("imageBytes", bytes.length);
+            RawDocument doc = rawDocumentService.save(buildRawDocument("USER_IMAGE", user.userId(), null, ocrText, contentHash, ocrMeta));
+            task.setRawDocId(doc.getId());
+            importTaskMapper.updateById(task);
+
+            // 3. 调用认知服务生成事件
+            CognitionResult candidate = cognitionClient.extract("USER_IMAGE", ocrText);
+            Long eventId = persistEvent(user, candidate, "USER_IMAGE", contentHash, doc.getId(), null, true, ocrText);
+            persistInformationItem(candidate, "用户图片OCR", ocrText, contentHash);
+            succeedTask(task, eventId, candidate);
+            return response(task, "图片OCR识别完成，已生成AI预测事件");
+        } catch (BusinessException ex) {
+            failTask(task, ex.getMessage());
+            throw ex;
+        } catch (Exception ex) {
+            failTask(task, ex.getMessage());
+            return response(task, "图片导入失败：" + safeMessage(ex));
+        }
     }
 
     @Transactional(rollbackFor = Exception.class)
@@ -137,7 +165,7 @@ public class ImportService {
         String originalFilename = file.getOriginalFilename();
         if (!fileTextExtractor.isSupported(originalFilename)) {
             throw new BusinessException("FILE_TYPE_UNSUPPORTED",
-                    "不支持的文件类型，仅支持 PDF、DOCX、TXT、XLSX",
+                    "不支持的文件类型，仅支持 PDF、DOCX、TXT、XLSX 和图片文件",
                     HttpStatus.BAD_REQUEST);
         }
         long size = file.getSize();
@@ -182,6 +210,25 @@ public class ImportService {
                 .orderByDesc(ImportTask::getCreatedAt)
                 .last("LIMIT " + size + " OFFSET " + (page * size));
         return importTaskMapper.selectList(wrapper);
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public ImportTaskResponse deleteRawDocument(CurrentUser user, Long taskId) {
+        ImportTask task = importTaskMapper.selectOne(new LambdaQueryWrapper<ImportTask>()
+                .eq(ImportTask::getId, taskId)
+                .eq(ImportTask::getUserId, user.userId())
+                .last("LIMIT 1"));
+        if (task == null) {
+            throw new BusinessException("IMPORT_TASK_NOT_FOUND", "导入任务不存在", HttpStatus.NOT_FOUND);
+        }
+        if (!StringUtils.hasText(task.getRawDocId())) {
+            return response(task, "原始数据已删除");
+        }
+        rawDocumentService.deleteOwned(task.getRawDocId(), user.userId());
+        importTaskMapper.update(null, new LambdaUpdateWrapper<ImportTask>()
+                .eq(ImportTask::getId, task.getId())
+                .set(ImportTask::getRawDocId, null));
+        return response(task, "原始数据已删除，私有事件仍保留");
     }
 
     private static String getExtension(String fileName) {

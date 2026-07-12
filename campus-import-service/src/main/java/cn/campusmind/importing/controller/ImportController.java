@@ -7,6 +7,7 @@ import cn.campusmind.importing.application.ImportService;
 import cn.campusmind.importing.domain.ImportTask;
 import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
@@ -90,5 +91,13 @@ public class ImportController {
             return m;
         }).toList();
         return ApiResponse.ok(result);
+    }
+
+    @DeleteMapping("/tasks/{taskId}/raw")
+    public ApiResponse<ImportTaskResponse> deleteRawDocument(
+            @RequestHeader(value = "Authorization", required = false) String authorization,
+            @org.springframework.web.bind.annotation.PathVariable Long taskId) {
+        CurrentUser user = authTokenService.parseBearerToken(authorization);
+        return ApiResponse.ok(importService.deleteRawDocument(user, taskId));
     }
 }

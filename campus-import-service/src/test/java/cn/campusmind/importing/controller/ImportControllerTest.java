@@ -40,6 +40,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.http.HttpHeaders.AUTHORIZATION;
 import static org.springframework.http.MediaType.APPLICATION_JSON;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -226,6 +227,40 @@ class ImportControllerTest {
     }
 
     @Test
+    void rainJsonImportAcceptsExporterFormat() throws Exception {
+        when(cognitionClient.extract(eq("RAIN_CLASSROOM"), anyString())).thenReturn(candidate());
+        String rawJson = "{\"schemaVersion\":1,\"provider\":\"RAIN_CLASSROOM\",\"items\":[{\"providerItemId\":\"42\",\"dataType\":\"HOMEWORK\",\"courseName\":\"软件工程\",\"title\":\"作业一\",\"content\":\"提交实验报告\",\"deadline\":\"2026-07-18 23:59\",\"teacherName\":\"张老师\"}]}";
+        String body = "{\"dataType\":\"HOMEWORK\",\"rawJson\":" + jsonEscape(rawJson) + "}";
+
+        mockMvc.perform(post("/api/v1/import/rain/json")
+                        .header(AUTHORIZATION, bearerToken(1L, "alice", "STUDENT"))
+                        .contentType(APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("SUCCESS"));
+    }
+
+    @Test
+    void deleteRawDocumentOnlyDeletesTheCallingUsersDocument() throws Exception {
+        try (Connection connection = dataSource.getConnection();
+             Statement statement = connection.createStatement()) {
+            statement.execute("""
+                    INSERT INTO import_task (user_id, import_type, task_status, raw_doc_id, created_at)
+                    VALUES (1, 'RAIN_JSON', 'SUCCESS', 'raw-delete', CURRENT_TIMESTAMP)
+                    """);
+        }
+        long taskId = maxTaskId();
+
+        mockMvc.perform(delete("/api/v1/import/tasks/{taskId}/raw", taskId)
+                        .header(AUTHORIZATION, bearerToken(1L, "alice", "STUDENT")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.message").value("原始数据已删除，私有事件仍保留"));
+
+        verify(rawDocumentService).deleteOwned("raw-delete", 1L);
+        assertEquals(1, countRows("import_task", "id=" + taskId + " AND raw_doc_id IS NULL"));
+    }
+
+    @Test
     void rainCookieImportIsDisabledByDefault() throws Exception {
         mockMvc.perform(post("/api/v1/import/rain/cookie")
                         .header(AUTHORIZATION, bearerToken(1L, "alice", "STUDENT"))
@@ -282,6 +317,15 @@ class ImportControllerTest {
              ResultSet rs = statement.executeQuery(sql)) {
             rs.next();
             return rs.getInt(1);
+        }
+    }
+
+    private long maxTaskId() throws Exception {
+        try (Connection connection = dataSource.getConnection();
+             Statement statement = connection.createStatement();
+             ResultSet rs = statement.executeQuery("SELECT MAX(id) FROM import_task")) {
+            rs.next();
+            return rs.getLong(1);
         }
     }
 

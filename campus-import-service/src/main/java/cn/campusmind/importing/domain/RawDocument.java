@@ -1,8 +1,10 @@
 package cn.campusmind.importing.domain;
 
 import org.springframework.data.annotation.Id;
+import org.springframework.data.mongodb.core.index.Indexed;
 import org.springframework.data.mongodb.core.mapping.Document;
 
+import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.Map;
 
@@ -17,6 +19,14 @@ public class RawDocument {
     private Long ownerUserId;
 
     private String privacyLevel;
+
+    @Indexed(name = "raw_document_expires", expireAfter = "0s")
+    private Instant expiresAt;
+
+    /**
+     * 显式保留期限标记，与 expiresAt 对齐，用于脱敏后的保留期管理。
+     */
+    private Instant retentionUntil;
 
     private String sourceUrl;
 
@@ -64,6 +74,22 @@ public class RawDocument {
 
     public void setPrivacyLevel(String privacyLevel) {
         this.privacyLevel = privacyLevel;
+    }
+
+    public Instant getExpiresAt() {
+        return expiresAt;
+    }
+
+    public void setExpiresAt(Instant expiresAt) {
+        this.expiresAt = expiresAt;
+    }
+
+    public Instant getRetentionUntil() {
+        return retentionUntil;
+    }
+
+    public void setRetentionUntil(Instant retentionUntil) {
+        this.retentionUntil = retentionUntil;
     }
 
     public String getSourceUrl() {
