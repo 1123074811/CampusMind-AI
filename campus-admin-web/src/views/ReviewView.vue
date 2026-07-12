@@ -13,11 +13,42 @@ defineEmits<{
   archive: [];
   unarchive: [];
   refresh: [];
+  edit: [id: number, data: { title?: string; summary?: string; eventType?: string }];
+  delete: [id: number];
 }>();
 
 const typeFilter = ref<'ALL' | EventType>('ALL');
 const searchText = ref('');
 const detailDialog = ref<HTMLDialogElement | null>(null);
+const editDialog = ref<HTMLDialogElement | null>(null);
+const editingEvent = ref<ReviewEvent | null>(null);
+const editTitle = ref('');
+const editSummary = ref('');
+const editEventType = ref('');
+
+function openEdit(event: ReviewEvent) {
+  editingEvent.value = event;
+  editTitle.value = event.title;
+  editSummary.value = event.summary;
+  editEventType.value = event.type;
+  editDialog.value?.showModal();
+}
+
+function submitEdit(emit: any) {
+  if (!editingEvent.value) return;
+  emit('edit', editingEvent.value.id, {
+    title: editTitle.value,
+    summary: editSummary.value,
+    eventType: editEventType.value
+  });
+  editDialog.value?.close();
+}
+
+function confirmDelete(emit: any, id: number, title: string) {
+  if (confirm(`确认删除事件「${title}」？`)) {
+    emit('delete', id);
+  }
+}
 
 const filteredEvents = computed(() => {
   const keyword = searchText.value.trim();
@@ -85,7 +116,10 @@ function openDetail() {
             <small>{{ item.source }} · {{ item.startTime }} · {{ item.location }}</small>
           </span>
           <StatusPill :status="item.status" />
-          <span class="confidence">{{ Math.round(item.confidence * 100) }}%</span>
+          <span class="confidence">
+            <button class="row-action-btn" type="button" title="编辑" @click.stop="openEdit(item)">✎</button>
+            <button class="row-action-btn danger" type="button" title="删除" @click.stop="confirmDelete($emit, item.id, item.title)">✕</button>
+          </span>
         </button>
       </div>
     </section>
@@ -146,6 +180,36 @@ function openDetail() {
         </dl>
         <p class="summary-text dialog-content">{{ selectedEvent.summary }}</p>
         <a v-if="selectedEvent.sourceUrl" class="source-url" :href="selectedEvent.sourceUrl" target="_blank" rel="noreferrer">打开原文</a>
+      </template>
+    </dialog>
+
+    <dialog ref="editDialog" class="event-dialog">
+      <template v-if="editingEvent">
+        <div class="dialog-head">
+          <div>
+            <p class="eyebrow">Edit Event</p>
+            <h3>编辑事件</h3>
+          </div>
+          <button type="button" class="ghost-button tiny" @click="editDialog?.close()">关闭</button>
+        </div>
+        <form class="settings-form" @submit.prevent="submitEdit($emit)">
+          <label><span>标题</span><input v-model="editTitle" type="text" required /></label>
+          <label><span>事件类型</span>
+            <select v-model="editEventType">
+              <option value="NOTICE">通知</option>
+              <option value="COURSE">课程</option>
+              <option value="EXAM">考试</option>
+              <option value="HOMEWORK">作业</option>
+              <option value="ACTIVITY">活动</option>
+              <option value="LECTURE">讲座</option>
+              <option value="COMPETITION">竞赛</option>
+              <option value="SERVICE">服务</option>
+              <option value="OTHER">其他</option>
+            </select>
+          </label>
+          <label><span>摘要</span><textarea v-model="editSummary" rows="4" style="width:100%;min-height:100px;margin:0;border:1px solid var(--line);border-radius:12px;background:#fff;padding:12px;"></textarea></label>
+          <button class="solid-button" type="submit">保存修改</button>
+        </form>
       </template>
     </dialog>
   </section>

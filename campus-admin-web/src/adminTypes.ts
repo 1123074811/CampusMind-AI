@@ -18,7 +18,6 @@ export interface ReviewEvent {
   sourceUrl: string;
   type: EventType;
   status: ReviewStatus;
-  confidence: number;
   location: string;
   startTime: string;
   endTime: string;
@@ -99,10 +98,16 @@ export interface CrawlItem {
 export interface DashboardMetrics {
   reviewCount: number;
   urgentCount: number;
-  avgConfidence: number;
   sourceSuccessRate: number;
   sourcesNeedAuth: number;
   vectorPending: number;
+}
+
+export interface PageMetric {
+  label: string;
+  value: string | number;
+  hint?: string;
+  accent?: 'green' | 'amber' | 'red' | 'default';
 }
 
 export interface ApiResponse<T> {
@@ -169,4 +174,12 @@ export interface AdminAuditLog {
 export interface AdminAuditLogListResponse {
   items: AdminAuditLog[];
   total: number;
+}
+
+export interface AiConfig {
+  mode: 'rule' | 'llm';
+  baseUrl: string;
+  model: string;
+  apiKeyConfigured: boolean;
+  restartRequired: boolean;
 }

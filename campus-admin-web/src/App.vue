@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
-import { fetchDashboard, reviewEvent } from './api/dashboard';
+import { fetchDashboard, reviewEvent, updateEvent, deleteEvent, batchDeleteEvents } from './api/dashboard';
 import {
   createAdminUser,
+  fetchAiConfig,
   fetchAdminLogs,
   fetchAdminUsers,
   resetAdminUserPassword,
+  updateAiConfig,
   updateAdminUserStatus
 } from './api/admin';
 import { clearSession, loadSession } from './api/auth';
@@ -13,7 +15,7 @@ import { crawlPublicSources, crawlSource, fetchCrawlItems } from './api/crawler'
 import AdminSidebar from './components/AdminSidebar.vue';
 import AdminTopbar from './components/AdminTopbar.vue';
 import MetricsBand from './components/MetricsBand.vue';
-import type { AdminAuditLog, AdminManagedUser, AdminSession, CrawlItem, CrawlTask, DashboardMetrics, DataSource, NavItem, NavKey, ReviewEvent } from './adminTypes';
+import type { AdminAuditLog, AdminManagedUser, AdminSession, AiConfig, CrawlItem, CrawlTask, DashboardMetrics, DataSource, NavItem, NavKey, PageMetric, ReviewEvent } from './adminTypes';
 import LoginView from './views/LoginView.vue';
 import ReviewView from './views/ReviewView.vue';
 import SourcesView from './views/SourcesView.vue';
@@ -31,6 +33,7 @@ const crawlTasks = ref<CrawlTask[]>([]);
 const crawlItems = ref<CrawlItem[]>([]);
 const adminUsers = ref<AdminManagedUser[]>([]);
 const auditLogs = ref<AdminAuditLog[]>([]);
+const aiConfig = ref<AiConfig | null>(null);
 const loading = ref(false);
 const crawlerRunning = ref(false);
 const crawlingSourceId = ref<number | null>(null);
@@ -39,21 +42,13 @@ const apiMessage = ref('等待连接后端');
 const dashboardMetrics = ref<DashboardMetrics>({
   reviewCount: 0,
   urgentCount: 0,
-  avgConfidence: 0,
   sourceSuccessRate: 0,
   sourcesNeedAuth: 0,
   vectorPending: 0
 });
 
-const urgentCount = computed(() => reviewEvents.value.filter((item) => item.confidence < 0.75 || item.status === 'CORRECTED').length);
+const urgentCount = computed(() => reviewEvents.value.filter((item) => item.status === 'CORRECTED').length);
 const reviewCount = computed(() => reviewEvents.value.filter((item) => item.status === 'AI_PUBLISHED' || item.status === 'CORRECTED').length);
-const avgConfidence = computed(() => {
-  if (reviewEvents.value.length === 0) {
-    return 0;
-  }
-  const sum = reviewEvents.value.reduce((total, item) => total + item.confidence, 0);
-  return Math.round((sum / reviewEvents.value.length) * 100);
-});
 
 const navItems = computed<NavItem[]>(() => [
   { key: 'review', label: '校园事件', count: reviewEvents.value.length },
@@ -85,11 +80,77 @@ const metrics = computed<DashboardMetrics>(() => {
   return {
     reviewCount: 0,
     urgentCount: 0,
-    avgConfidence: 0,
     sourceSuccessRate: 0,
     sourcesNeedAuth: 0,
     vectorPending: 0
   };
+});
+
+const pageMetrics = computed<PageMetric[]>(() => {
+  const events = reviewEvents.value;
+  switch (activeNav.value) {
+    case 'review': {
+      const published = events.filter((e) => e.status === 'AI_PUBLISHED').length;
+      const corrected = events.filter((e) => e.status === 'CORRECTED').length;
+      const offline = events.filter((e) => e.status === 'OFFLINE' || e.status === 'REJECTED').length;
+      return [
+        { label: '待审核', value: published, hint: 'AI 已提取，待人工确认', accent: published > 0 ? 'amber' : 'default' },
+        { label: '已修正', value: corrected, hint: '人工修正过' },
+        { label: '已发布', value: corrected, hint: '人工确认通过' },
+        { label: '已下线', value: offline, hint: `共 ${events.length} 条事件` }
+      ];
+    }
+    case 'sources': {
+      const sources = visibleDataSources.value;
+      const running = sources.filter((s) => s.status === 'RUNNING' || s.status === 'HEALTHY').length;
+      const paused = sources.filter((s) => s.status === 'PAUSED').length;
+      const needAuth = sources.filter((s) => s.status === 'NEEDS_AUTH').length;
+      return [
+        { label: '总数据源', value: sources.length, hint: '公开网页渠道' },
+        { label: '运行中', value: running, hint: '正常采集', accent: 'green' },
+        { label: '已暂停', value: paused, hint: '手动暂停', accent: paused > 0 ? 'amber' : 'default' },
+        { label: '需授权', value: needAuth, hint: '等待配置凭证', accent: needAuth > 0 ? 'red' : 'default' }
+      ];
+    }
+    case 'tasks': {
+      const tasks = visibleCrawlTasks.value;
+      const success = tasks.filter((t) => t.status === 'SUCCESS').length;
+      const running = tasks.filter((t) => t.status === 'RUNNING').length;
+      const failed = tasks.filter((t) => t.status === 'FAILED').length;
+      return [
+        { label: '总任务', value: tasks.length, hint: '可见采集任务' },
+        { label: '已完成', value: success, hint: tasks.length > 0 ? `成功率 ${Math.round((success / tasks.length) * 100)}%` : '暂无任务', accent: 'green' },
+        { label: '运行中', value: running, hint: crawlerRunning.value ? '爬虫执行中' : '空闲', accent: running > 0 ? 'amber' : 'default' },
+        { label: '已失败', value: failed, hint: failed > 0 ? '需检查日志' : '无异常', accent: failed > 0 ? 'red' : 'default' }
+      ];
+    }
+    case 'users': {
+      const users = adminUsers.value;
+      const active = users.filter((u) => u.status === 1).length;
+      const disabled = users.filter((u) => u.status === 0).length;
+      const admins = users.filter((u) => u.role === 'ADMIN').length;
+      return [
+        { label: '总用户', value: users.length, hint: '已注册用户' },
+        { label: '正常', value: active, hint: '已启用账号', accent: 'green' },
+        { label: '已禁用', value: disabled, hint: disabled > 0 ? '需要关注' : '无异常', accent: disabled > 0 ? 'amber' : 'default' },
+        { label: '管理员', value: admins, hint: 'ADMIN 角色' }
+      ];
+    }
+    case 'logs': {
+      const logs = auditLogs.value;
+      const today = new Date().toISOString().slice(0, 10);
+      const todayLogs = logs.filter((l) => l.createdAt?.startsWith(today)).length;
+      const reviewLogs = logs.filter((l) => l.action?.includes('REVIEW') || l.action?.includes('CORRECT') || l.action?.includes('OFFLINE')).length;
+      return [
+        { label: '总日志', value: logs.length, hint: '审计记录' },
+        { label: '今日新增', value: todayLogs, hint: today, accent: todayLogs > 0 ? 'green' : 'default' },
+        { label: '审核操作', value: reviewLogs, hint: '审核/修正/下线' },
+        { label: '其他操作', value: logs.length - reviewLogs, hint: '登录/采集/配置' }
+      ];
+    }
+    default:
+      return [];
+  }
 });
 
 function selectEvent(id: number) {
@@ -123,12 +184,22 @@ async function loadDashboard() {
     } catch (error) {
       auditLogs.value = [];
     }
+    try {
+      aiConfig.value = await fetchAiConfig(session.value);
+    } catch (error) {
+      aiConfig.value = null;
+    }
     selectedId.value = dashboard.events[0]?.id ?? selectedId.value;
     apiMode.value = 'live';
     apiMessage.value = '已连接后端数据库';
   } catch (error) {
     apiMode.value = 'fallback';
-    apiMessage.value = '后端未连接';
+    const message = error instanceof Error ? error.message : '后台接口异常';
+    apiMessage.value = message;
+    if (message.includes('登录已失效')) {
+      clearSession();
+      session.value = null;
+    }
     reviewEvents.value = [];
     dataSources.value = [];
     crawlTasks.value = [];
@@ -137,6 +208,26 @@ async function loadDashboard() {
     auditLogs.value = [];
   } finally {
     loading.value = false;
+  }
+}
+
+async function loadAiConfig() {
+  if (!session.value) return;
+  try {
+    aiConfig.value = await fetchAiConfig(session.value);
+    apiMessage.value = '智能体配置已刷新';
+  } catch (error) {
+    apiMessage.value = error instanceof Error ? error.message : '智能体配置加载失败';
+  }
+}
+
+async function saveAiConfig(payload: { mode: 'rule' | 'llm'; baseUrl: string; model: string; apiKey?: string }) {
+  if (!session.value) return;
+  try {
+    aiConfig.value = await updateAiConfig(session.value, payload);
+    apiMessage.value = '配置已保存并热加载，即时生效';
+  } catch (error) {
+    apiMessage.value = error instanceof Error ? error.message : '智能体配置保存失败';
   }
 }
 
@@ -204,7 +295,7 @@ async function reviewSelected(status: 'REVIEWED' | 'REJECTED' | 'CORRECTED' | 'O
       const updated = await reviewEvent(session.value, event.id, status, comment);
       Object.assign(event, updated);
       dashboardMetrics.value.reviewCount = reviewEvents.value.filter((item) => item.status === 'AI_PUBLISHED' || item.status === 'CORRECTED').length;
-      dashboardMetrics.value.urgentCount = reviewEvents.value.filter((item) => item.confidence < 0.75 || item.status === 'CORRECTED').length;
+      dashboardMetrics.value.urgentCount = reviewEvents.value.filter((item) => item.status === 'CORRECTED').length;
       return;
     } catch (error) {
       apiMessage.value = '事件状态写入失败，已保留当前页面状态';
@@ -221,6 +312,37 @@ function approveSelected() {
 
 function rejectSelected() {
   reviewSelected('OFFLINE', '管理员下线');
+}
+
+async function editEvent(id: number, data: { title?: string; summary?: string; eventType?: string }) {
+  const event = reviewEvents.value.find((item) => item.id === id);
+  if (!event) return;
+  if (apiMode.value === 'live') {
+    try {
+      const updated = await updateEvent(session.value, id, data);
+      Object.assign(event, updated);
+      apiMessage.value = '事件已更新';
+      return;
+    } catch (error) {
+      apiMessage.value = '事件更新失败';
+    }
+  }
+}
+
+async function deleteEventById(id: number) {
+  if (apiMode.value === 'live') {
+    try {
+      await deleteEvent(session.value, id);
+      reviewEvents.value = reviewEvents.value.filter((item) => item.id !== id);
+      if (selectedId.value === id) {
+        selectedId.value = reviewEvents.value[0]?.id ?? 0;
+      }
+      apiMessage.value = '事件已删除';
+      return;
+    } catch (error) {
+      apiMessage.value = '事件删除失败';
+    }
+  }
 }
 
 async function runCrawlerNow() {
@@ -312,6 +434,7 @@ function logout() {
   crawlItems.value = [];
   adminUsers.value = [];
   auditLogs.value = [];
+  aiConfig.value = null;
 }
 
 onMounted(() => {
@@ -338,7 +461,7 @@ onMounted(() => {
         @refresh="loadDashboard"
         @logout="logout"
       />
-      <MetricsBand :metrics="metrics" />
+      <MetricsBand v-if="activeNav !== 'agent'" :items="pageMetrics" />
 
       <ReviewView
         v-if="activeNav === 'review'"
@@ -348,11 +471,18 @@ onMounted(() => {
         @unarchive="approveSelected"
         @archive="rejectSelected"
         @refresh="loadDashboard"
+        @edit="editEvent"
+        @delete="deleteEventById"
       />
       <AgentView
         v-else-if="activeNav === 'agent'"
         :events="reviewEvents"
+        :ai-config="aiConfig"
+        :config-loading="loading"
+        :config-message="apiMessage"
         @refresh="loadDashboard"
+        @refresh-config="loadAiConfig"
+        @save-config="saveAiConfig"
       />
       <SourcesView
         v-else-if="activeNav === 'sources'"
@@ -422,6 +552,33 @@ textarea {
   font: inherit;
 }
 
+.settings-form {
+  display: grid;
+  gap: 18px;
+  padding: 20px;
+}
+
+.settings-form label {
+  display: grid;
+  gap: 8px;
+  font-weight: 800;
+}
+
+.settings-form label span {
+  color: var(--ink-muted);
+  font-size: 13px;
+}
+
+.settings-form input,
+.settings-form select {
+  min-height: 46px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #fff;
+  color: var(--ink);
+  padding: 0 12px;
+}
+
 button {
   cursor: pointer;
 }
@@ -460,13 +617,16 @@ h3 {
 }
 
 .sidebar {
-  min-height: 100vh;
+  position: sticky;
+  top: 0;
+  height: 100vh;
   padding: 24px 18px;
   background: var(--ink);
   color: #f7f0e2;
   display: grid;
   grid-template-rows: auto 1fr auto;
   gap: 32px;
+  overflow-y: auto;
 }
 
 .brand-block {
@@ -701,6 +861,10 @@ h3 {
   line-height: 1;
 }
 
+.metrics-band article.accent-green strong { color: var(--green); }
+.metrics-band article.accent-amber strong { color: var(--warning); }
+.metrics-band article.accent-red strong { color: var(--danger); }
+
 .main-grid,
 .split-workspace {
   display: grid;
@@ -829,8 +993,37 @@ h3 {
 }
 
 .confidence {
-  font-weight: 900;
-  text-align: right;
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.row-action-btn {
+  min-height: 30px;
+  min-width: 30px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.72);
+  color: var(--ink-muted);
+  font-size: 13px;
+  cursor: pointer;
+  display: inline-grid;
+  place-items: center;
+  padding: 0 8px;
+  transition: background 160ms ease, color 160ms ease, transform 160ms ease;
+}
+
+.row-action-btn:hover {
+  background: var(--ink);
+  color: #fffaf2;
+  transform: translateY(-1px);
+}
+
+.row-action-btn.danger:hover {
+  background: var(--danger);
+  border-color: var(--danger);
+  color: #fff;
 }
 
 .detail-panel,
@@ -1406,7 +1599,7 @@ textarea {
   }
 
   .confidence {
-    text-align: left;
+    justify-content: flex-start;
   }
 
   .filters input,
@@ -1688,7 +1881,7 @@ h3 {
 
 .event-row {
   min-height: 86px;
-  grid-template-columns: 92px minmax(0, 1fr) 92px 58px;
+  grid-template-columns: 92px minmax(0, 1fr) 92px auto;
   border-bottom-color: var(--line-soft);
   padding: 0 20px;
 }

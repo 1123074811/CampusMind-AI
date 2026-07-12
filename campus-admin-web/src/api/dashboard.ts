@@ -7,7 +7,10 @@ export async function fetchDashboard(session: AdminSession | null) {
     headers: authHeaders(session)
   });
   if (!response.ok) {
-    throw new Error(`HTTP ${response.status}`);
+    if (response.status === 401) {
+      throw new Error('登录已失效，请重新登录');
+    }
+    throw new Error(`后台接口异常（HTTP ${response.status}）`);
   }
 
   const payload = await response.json() as ApiResponse<DashboardResponse>;
@@ -39,4 +42,66 @@ export async function reviewEvent(session: AdminSession | null, id: number, stat
   }
 
   return payload.data;
+}
+
+export async function updateEvent(session: AdminSession | null, id: number, data: { title?: string; summary?: string; eventType?: string }) {
+  const response = await fetch(`/api/admin/events/${id}`, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+      ...authHeaders(session)
+    },
+    body: JSON.stringify(data)
+  });
+
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status}`);
+  }
+
+  const payload = await response.json() as ApiResponse<ReviewEvent>;
+  if (!payload.success) {
+    throw new Error(payload.message);
+  }
+
+  return payload.data;
+}
+
+export async function deleteEvent(session: AdminSession | null, id: number) {
+  const response = await fetch(`/api/admin/events/${id}`, {
+    method: 'DELETE',
+    headers: {
+      'X-User-Id': '9901',
+      ...authHeaders(session)
+    }
+  });
+
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status}`);
+  }
+
+  const payload = await response.json() as ApiResponse<void>;
+  if (!payload.success) {
+    throw new Error(payload.message);
+  }
+}
+
+export async function batchDeleteEvents(session: AdminSession | null, ids: number[]) {
+  const response = await fetch('/api/admin/events/batch-delete', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-User-Id': '9901',
+      ...authHeaders(session)
+    },
+    body: JSON.stringify({ ids })
+  });
+
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status}`);
+  }
+
+  const payload = await response.json() as ApiResponse<void>;
+  if (!payload.success) {
+    throw new Error(payload.message);
+  }
 }

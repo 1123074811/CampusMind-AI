@@ -2,6 +2,7 @@ import type {
   AdminAuditLogListResponse,
   AdminManagedUser,
   AdminSession,
+  AiConfig,
   AdminUserListResponse,
   ApiResponse
 } from '../adminTypes';
@@ -67,4 +68,20 @@ export async function fetchAdminLogs(session: AdminSession | null, action = 'ALL
     headers: authHeaders(session)
   });
   return readPayload<AdminAuditLogListResponse>(response);
+}
+
+export async function fetchAiConfig(session: AdminSession | null) {
+  const response = await fetch('/api/admin/ai-config', { headers: authHeaders(session) });
+  return readPayload<AiConfig>(response);
+}
+
+export async function updateAiConfig(session: AdminSession | null, payload: {
+  mode: 'rule' | 'llm'; baseUrl: string; model: string; apiKey?: string;
+}) {
+  const response = await fetch('/api/admin/ai-config', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...authHeaders(session) },
+    body: JSON.stringify(payload)
+  });
+  return readPayload<AiConfig>(response);
 }

@@ -80,7 +80,7 @@ function selectItem(id: number) {
             <h3>采集任务编排</h3>
           </div>
           <div class="task-actions">
-            <span class="schedule-badge">每日 06:30 自动采集</span>
+            <span class="schedule-badge">每小时自动采集</span>
             <button type="button" class="solid-button" :disabled="crawlerRunning" @click="$emit('runNow')">
               {{ crawlerRunning ? '采集中' : '立即采集' }}
             </button>
@@ -112,19 +112,6 @@ function selectItem(id: number) {
             <StatusPill :status="displayStatus(task.status)" />
           </li>
         </ol>
-      </section>
-
-      <section class="dispatch-grid compact" aria-label="调度入口">
-        <article>
-          <span>定时策略</span>
-          <strong>06:30</strong>
-          <small>每天自动爬取一次公开数据源</small>
-        </article>
-        <article>
-          <span>手动触发</span>
-          <strong>即时</strong>
-          <small>管理员可随时补跑爬虫任务</small>
-        </article>
       </section>
 
       <section class="task-console">
