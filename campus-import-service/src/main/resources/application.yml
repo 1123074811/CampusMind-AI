@@ -4,6 +4,11 @@ server:
 spring:
   application:
     name: campus-import-service
+  servlet:
+    multipart:
+      enabled: true
+      max-file-size: 10MB
+      max-request-size: 15MB
   datasource:
     url: ${IMPORT_DB_URL:jdbc:mysql://localhost:3306/campusmind?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai}
     username: ${IMPORT_DB_USERNAME}
@@ -24,9 +29,14 @@ campus:
       secret: ${AUTH_JWT_SECRET}
   import:
     ai-base-url: ${IMPORT_AI_BASE_URL:http://localhost:8089}
+    event-base-url: ${IMPORT_EVENT_BASE_URL:http://localhost:8083}
     rain-cookie-ttl-minutes: 10
     max-text-length: 20000
     max-image-bytes: 5242880
+    max-file-bytes: 10485760
+    ai-connect-timeout-seconds: 5
+    ai-read-timeout-seconds: 30
+    rate-limit-per-minute: 10
 
 management:
   endpoints:

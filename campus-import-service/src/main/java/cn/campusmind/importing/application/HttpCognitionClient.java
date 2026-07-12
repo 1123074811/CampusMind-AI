@@ -5,9 +5,11 @@ import cn.campusmind.common.web.ApiResponse;
 import cn.campusmind.importing.config.ImportProperties;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 
+import java.time.Duration;
 import java.util.Map;
 
 /**
@@ -24,8 +26,12 @@ public class HttpCognitionClient implements CognitionClient {
     private final RestClient restClient;
 
     public HttpCognitionClient(ImportProperties properties) {
+        SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
+        factory.setConnectTimeout(Duration.ofSeconds(properties.aiConnectTimeoutSeconds()));
+        factory.setReadTimeout(Duration.ofSeconds(properties.aiReadTimeoutSeconds()));
         this.restClient = RestClient.builder()
                 .baseUrl(properties.aiBaseUrl())
+                .requestFactory(factory)
                 .build();
     }
 

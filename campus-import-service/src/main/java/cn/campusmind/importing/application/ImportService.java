@@ -6,23 +6,21 @@ import cn.campusmind.importing.controller.ImportTaskResponse;
 import cn.campusmind.importing.controller.RainCookieImportRequest;
 import cn.campusmind.importing.controller.RainJsonImportRequest;
 import cn.campusmind.importing.controller.TextImportRequest;
-import cn.campusmind.importing.domain.CampusEvent;
-import cn.campusmind.importing.domain.EventSourceRef;
 import cn.campusmind.importing.domain.ImportTask;
 import cn.campusmind.importing.domain.RawDocument;
-import cn.campusmind.importing.infrastructure.mapper.CampusEventMapper;
-import cn.campusmind.importing.infrastructure.mapper.EventSourceRefMapper;
 import cn.campusmind.importing.infrastructure.mapper.ImportTaskMapper;
 import cn.campusmind.importing.config.ImportProperties;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
-import java.math.BigDecimal;
+import org.springframework.web.multipart.MultipartFile;
+
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
@@ -30,6 +28,7 @@ import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 
 @Service
 public class ImportService {
@@ -37,37 +36,41 @@ public class ImportService {
     private static final String[] DATE_PATTERNS = {"yyyy-MM-dd HH:mm:ss", "yyyy-MM-dd HH:mm", "yyyy-MM-dd HH"};
 
     private final ImportTaskMapper importTaskMapper;
-    private final CampusEventMapper campusEventMapper;
-    private final EventSourceRefMapper eventSourceRefMapper;
     private final RawDocumentService rawDocumentService;
     private final CognitionClient cognitionClient;
+    private final EventServiceClient eventServiceClient;
     private final RainClassroomParser rainClassroomParser;
     private final RainCookieStore rainCookieStore;
+    private final FileTextExtractor fileTextExtractor;
     private final ObjectMapper objectMapper;
     private final ImportProperties properties;
+    private final StringRedisTemplate redisTemplate;
 
     public ImportService(ImportTaskMapper importTaskMapper,
-                         CampusEventMapper campusEventMapper,
-                         EventSourceRefMapper eventSourceRefMapper,
                          RawDocumentService rawDocumentService,
                          CognitionClient cognitionClient,
+                         EventServiceClient eventServiceClient,
                          RainClassroomParser rainClassroomParser,
                          RainCookieStore rainCookieStore,
+                         FileTextExtractor fileTextExtractor,
                          ObjectMapper objectMapper,
-                         ImportProperties properties) {
+                         ImportProperties properties,
+                         StringRedisTemplate redisTemplate) {
         this.importTaskMapper = importTaskMapper;
-        this.campusEventMapper = campusEventMapper;
-        this.eventSourceRefMapper = eventSourceRefMapper;
         this.rawDocumentService = rawDocumentService;
         this.cognitionClient = cognitionClient;
+        this.eventServiceClient = eventServiceClient;
         this.rainClassroomParser = rainClassroomParser;
         this.rainCookieStore = rainCookieStore;
+        this.fileTextExtractor = fileTextExtractor;
         this.objectMapper = objectMapper;
         this.properties = properties;
+        this.redisTemplate = redisTemplate;
     }
 
     @Transactional(rollbackFor = Exception.class)
     public ImportTaskResponse submitTextImport(CurrentUser user, TextImportRequest request) {
+        checkRateLimit(user.userId());
         String text = request.text();
         if (!StringUtils.hasText(text)) {
             throw new BusinessException("TEXT_REQUIRED", "导入文本不能为空", HttpStatus.BAD_REQUEST);
@@ -122,7 +125,69 @@ public class ImportService {
     }
 
     @Transactional(rollbackFor = Exception.class)
+    public ImportTaskResponse submitFileImport(CurrentUser user, MultipartFile file) {
+        checkRateLimit(user.userId());
+        if (file == null || file.isEmpty()) {
+            throw new BusinessException("FILE_REQUIRED", "上传文件不能为空", HttpStatus.BAD_REQUEST);
+        }
+        String originalFilename = file.getOriginalFilename();
+        if (!fileTextExtractor.isSupported(originalFilename)) {
+            throw new BusinessException("FILE_TYPE_UNSUPPORTED",
+                    "不支持的文件类型，仅支持 PDF、DOCX、TXT、XLSX",
+                    HttpStatus.BAD_REQUEST);
+        }
+        long size = file.getSize();
+        if (size > properties.maxFileBytes()) {
+            throw new BusinessException("FILE_TOO_LARGE", "文件大小超过限制（最大10MB）", HttpStatus.BAD_REQUEST);
+        }
+        // 先创建任务记录，确保即使提取失败也有痕迹
+        ImportTask task = createTask(user.userId(), "USER_FILE", null);
+        try {
+            // 提取纯文本
+            String text = fileTextExtractor.extractText(file);
+            if (text.length() > properties.maxTextLength()) {
+                text = text.substring(0, properties.maxTextLength());
+            }
+            String contentHash = sha256(text);
+            Map<String, Object> fileMeta = new LinkedHashMap<>();
+            fileMeta.put("fileName", originalFilename);
+            fileMeta.put("fileSize", size);
+            fileMeta.put("extension", getExtension(originalFilename));
+            RawDocument doc = rawDocumentService.save(buildRawDocument("USER_FILE", null, text, contentHash, fileMeta));
+            task.setRawDocId(doc.getId());
+            importTaskMapper.updateById(task);
+
+            CognitionResult candidate = cognitionClient.extract("USER_FILE", text);
+            Long eventId = persistEvent(candidate, "USER_FILE", contentHash, doc.getId(), null);
+            succeedTask(task, eventId, candidate);
+            return response(task, "文件导入完成，已生成AI预测事件");
+        } catch (Exception ex) {
+            failTask(task, ex.getMessage());
+            return response(task, "文件导入失败：" + safeMessage(ex));
+        }
+    }
+
+    /**
+     * 分页查询用户导入任务列表。
+     */
+    public List<ImportTask> listUserTasks(Long userId, String status, int page, int size) {
+        LambdaQueryWrapper<ImportTask> wrapper = new LambdaQueryWrapper<ImportTask>()
+                .eq(ImportTask::getUserId, userId)
+                .eq(status != null && !status.isBlank(), ImportTask::getTaskStatus, status)
+                .orderByDesc(ImportTask::getCreatedAt)
+                .last("LIMIT " + size + " OFFSET " + (page * size));
+        return importTaskMapper.selectList(wrapper);
+    }
+
+    private static String getExtension(String fileName) {
+        if (fileName == null) return "";
+        int dot = fileName.lastIndexOf('.');
+        return dot >= 0 ? fileName.substring(dot + 1) : "";
+    }
+
+    @Transactional(rollbackFor = Exception.class)
     public ImportTaskResponse submitRainJsonImport(CurrentUser user, RainJsonImportRequest request) {
+        checkRateLimit(user.userId());
         String rawJson = request.rawJson();
         if (!StringUtils.hasText(rawJson)) {
             throw new BusinessException("RAIN_JSON_REQUIRED", "雨课堂JSON不能为空", HttpStatus.BAD_REQUEST);
@@ -172,6 +237,7 @@ public class ImportService {
 
     @Transactional(rollbackFor = Exception.class)
     public ImportTaskResponse submitRainCookieImport(CurrentUser user, RainCookieImportRequest request) {
+        checkRateLimit(user.userId());
         if (!Boolean.TRUE.equals(request.agreeOneTimeUse())) {
             throw new BusinessException("RAIN_COOKIE_CONSENT_REQUIRED", "必须同意一次性授权使用", HttpStatus.BAD_REQUEST);
         }
@@ -197,45 +263,22 @@ public class ImportService {
 
     private Long persistEvent(CognitionResult candidate, String sourceType, String contentHash, String rawDocId, String sourceUrl) {
         String dedupKey = computeDedupKey(candidate.title(), candidate.startTime(), sourceType);
-        CampusEvent existing = campusEventMapper.selectOne(
-                new LambdaQueryWrapper<CampusEvent>()
-                        .eq(CampusEvent::getDedupKey, dedupKey)
-                        .last("LIMIT 1"));
-        Long eventId;
-        if (existing != null) {
-            eventId = existing.getId();
-        } else {
-            CampusEvent event = buildEvent(candidate, sourceType, dedupKey);
-            campusEventMapper.insert(event);
-            eventId = event.getId();
-        }
-        EventSourceRef ref = new EventSourceRef();
-        ref.setEventId(eventId);
-        ref.setRawDocId(rawDocId);
-        ref.setSourceUrl(sourceUrl);
-        ref.setSourceTitle(candidate.title());
-        ref.setContentHash(contentHash);
-        eventSourceRefMapper.insert(ref);
-        return eventId;
-    }
-
-    private CampusEvent buildEvent(CognitionResult c, String sourceType, String dedupKey) {
-        CampusEvent e = new CampusEvent();
-        e.setTitle(StringUtils.hasText(c.title()) ? c.title() : "未命名事件");
-        e.setSummary(c.summary());
-        e.setEventType(StringUtils.hasText(c.eventType()) ? c.eventType() : "OTHER");
-        e.setSourceType(sourceType);
-        e.setStatus("AI_PUBLISHED");
-        e.setConfidence(BigDecimal.valueOf(c.confidence()));
-        e.setStartTime(parseDateTime(c.startTime()));
-        e.setEndTime(parseDateTime(c.endTime()));
-        e.setLocation(c.location());
-        e.setOrganizer(c.organizer());
-        e.setTargetScope(toJson(c.targetScopes()));
-        e.setTags(toJson(c.tags()));
-        e.setDedupKey(dedupKey);
-        e.setPublishedAt(LocalDateTime.now());
-        return e;
+        return eventServiceClient.createEvent(
+                candidate.title(),
+                candidate.summary(),
+                candidate.eventType(),
+                sourceType,
+                candidate.startTime(),
+                candidate.endTime(),
+                candidate.location(),
+                candidate.organizer(),
+                toJson(candidate.targetScopes()),
+                toJson(candidate.tags()),
+                dedupKey,
+                rawDocId,
+                sourceUrl,
+                contentHash
+        );
     }
 
     private RawDocument buildRawDocument(String sourceType, String sourceUrl, String plainText, String contentHash, Map<String, Object> ocrMeta) {
@@ -264,7 +307,6 @@ public class ImportService {
         Map<String, Object> summary = new LinkedHashMap<>();
         summary.put("eventId", eventId);
         summary.put("eventType", candidate.eventType());
-        summary.put("confidence", candidate.confidence());
         summary.put("needHumanReview", candidate.needHumanReview());
         task.setResultSummary(toJson(summary));
         task.setFinishedAt(LocalDateTime.now());
@@ -348,5 +390,22 @@ public class ImportService {
     private static String safeMessage(Exception ex) {
         String message = ex.getMessage();
         return message == null ? ex.getClass().getSimpleName() : message;
+    }
+
+    /**
+     * 基于 Redis 的滑动窗口速率限制：单用户每分钟最多 rateLimitPerMinute 次导入。
+     */
+    private void checkRateLimit(Long userId) {
+        String key = "import:rate:" + userId;
+        int limit = properties.rateLimitPerMinute();
+        Long count = redisTemplate.opsForValue().increment(key);
+        if (count != null && count == 1) {
+            redisTemplate.expire(key, 1, TimeUnit.MINUTES);
+        }
+        if (count != null && count > limit) {
+            throw new BusinessException("RATE_LIMIT_EXCEEDED",
+                    "导入操作过于频繁，每分钟最多 " + limit + " 次，请稍后再试",
+                    HttpStatus.TOO_MANY_REQUESTS);
+        }
     }
 }

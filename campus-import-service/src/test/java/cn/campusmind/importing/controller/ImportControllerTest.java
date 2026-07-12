@@ -2,6 +2,7 @@ package cn.campusmind.importing.controller;
 
 import cn.campusmind.importing.application.CognitionClient;
 import cn.campusmind.importing.application.CognitionResult;
+import cn.campusmind.importing.application.EventServiceClient;
 import cn.campusmind.importing.application.RainCookieStore;
 import cn.campusmind.importing.application.RawDocumentService;
 import cn.campusmind.importing.domain.RawDocument;
@@ -13,6 +14,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.data.redis.core.ValueOperations;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 
@@ -39,6 +42,8 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import java.math.BigDecimal;
+
 @SpringBootTest
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
@@ -61,8 +66,27 @@ class ImportControllerTest {
     @MockBean
     private RainCookieStore rainCookieStore;
 
+    @MockBean
+    private EventServiceClient eventServiceClient;
+
+    @MockBean
+    private StringRedisTemplate stringRedisTemplate;
+
     @BeforeEach
     void setUp() throws Exception {
+        // mock Redis 速率限制
+        ValueOperations<String, String> valueOps = org.mockito.Mockito.mock(ValueOperations.class);
+        org.mockito.Mockito.when(stringRedisTemplate.opsForValue()).thenReturn(valueOps);
+        org.mockito.Mockito.when(valueOps.increment(anyString())).thenReturn(1L);
+
+        // mock EventServiceClient
+        when(eventServiceClient.createEvent(
+                any(), any(), any(), any(),
+                any(), any(), any(),
+                any(), any(), any(), any(),
+                any(), any(), any(), any()
+        )).thenReturn(100L);
+
         try (Connection connection = dataSource.getConnection();
              Statement statement = connection.createStatement()) {
             statement.execute("""
@@ -86,7 +110,6 @@ class ImportControllerTest {
                       event_type VARCHAR(64) NOT NULL,
                       source_type VARCHAR(64) NOT NULL,
                       status VARCHAR(32) NOT NULL,
-                      confidence DECIMAL(5,4) NOT NULL,
                       start_time TIMESTAMP,
                       end_time TIMESTAMP,
                       location VARCHAR(255),
@@ -137,9 +160,13 @@ class ImportControllerTest {
                 .andExpect(jsonPath("$.data.taskId").exists())
                 .andExpect(jsonPath("$.data.message").value("文本导入完成，已生成AI预测事件"));
 
-        assertEquals(1, countRows("campus_event", "title='AI讲座通知'"), "应生成1条事件");
-        assertEquals(1, countRows("event_source_ref", null), "应生成1条来源引用");
         assertEquals(1, countRows("import_task", "task_status='SUCCESS'"), "任务应为SUCCESS");
+        verify(eventServiceClient, times(1)).createEvent(
+                any(), any(), any(), any(),
+                any(), any(), any(),
+                any(), any(), any(), any(),
+                any(), any(), any(), any()
+        );
     }
 
     @Test
@@ -156,7 +183,6 @@ class ImportControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.status").value("FAILED"));
 
-        assertEquals(0, countRows("campus_event", null), "失败时不应生成事件");
         assertEquals(1, countRows("import_task", "task_status='FAILED'"), "任务应为FAILED");
     }
 
@@ -174,8 +200,13 @@ class ImportControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.status").value("SUCCESS"));
 
-        assertEquals(1, countRows("campus_event", null), "应生成1条事件");
         assertEquals(1, countRows("import_task", "task_status='SUCCESS'"), "任务应为SUCCESS");
+        verify(eventServiceClient, times(1)).createEvent(
+                any(), any(), any(), any(),
+                any(), any(), any(),
+                any(), any(), any(), any(),
+                any(), any(), any(), any()
+        );
     }
 
     @Test
