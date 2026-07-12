@@ -13,7 +13,6 @@ class ImportPage extends StatefulWidget {
   @override
   State<ImportPage> createState() => _ImportPageState();
 }
-
 class _ImportPageState extends State<ImportPage>
     with SingleTickerProviderStateMixin {
   late final TabController _tabCtrl;
@@ -26,12 +25,8 @@ class _ImportPageState extends State<ImportPage>
   String? _pickedFilePath;
 
   // 雨课堂
-  int _rainSubTab = 0; // 0=JSON, 1=Cookie
   final _rainJsonCtrl = TextEditingController();
-  final _rainCookieCtrl = TextEditingController();
   String _rainDataType = 'HOMEWORK';
-  bool _cookieConsent = false;
-  final Set<String> _cookieScopes = {'COURSE', 'HOMEWORK', 'NOTICE'};
 
   // 状态
   bool _submitting = false;
@@ -48,7 +43,6 @@ class _ImportPageState extends State<ImportPage>
     _tabCtrl.dispose();
     _textCtrl.dispose();
     _rainJsonCtrl.dispose();
-    _rainCookieCtrl.dispose();
     super.dispose();
   }
 
@@ -65,7 +59,7 @@ class _ImportPageState extends State<ImportPage>
       final result = switch (_tabCtrl.index) {
         0 => await _submitText(),
         1 => await _submitFile(),
-        2 => _rainSubTab == 0 ? await _submitRainJson() : await _submitRainCookie(),
+        2 => await _submitRainJson(),
         _ => throw Exception('未知导入类型'),
       };
       if (!mounted) return;
@@ -105,14 +99,6 @@ class _ImportPageState extends State<ImportPage>
     final json = _rainJsonCtrl.text.trim();
     if (json.isEmpty) throw Exception('请粘贴雨课堂JSON数据');
     return widget.api.importRainJson(_rainDataType, json, widget.session);
-  }
-
-  Future<ImportResult> _submitRainCookie() async {
-    if (!_cookieConsent) throw Exception('请先同意一次性授权使用');
-    final cookie = _rainCookieCtrl.text.trim();
-    if (cookie.isEmpty) throw Exception('请粘贴Cookie');
-    return widget.api.importRainCookie(
-        cookie, _cookieScopes.toList(), widget.session);
   }
 
   void _showResultSnackBar(ImportResult result) {
@@ -364,32 +350,7 @@ class _ImportPageState extends State<ImportPage>
   // ─── 雨课堂 Tab ─────────────────────────────────
 
   Widget _buildRainTab() {
-    return Column(
-      children: [
-        // 子Tab
-        Padding(
-          padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
-          child: Row(
-            children: [
-              _RainSubTab(
-                label: 'JSON 导入',
-                active: _rainSubTab == 0,
-                onTap: () => setState(() => _rainSubTab = 0),
-              ),
-              const SizedBox(width: 10),
-              _RainSubTab(
-                label: 'Cookie 导入',
-                active: _rainSubTab == 1,
-                onTap: () => setState(() => _rainSubTab = 1),
-              ),
-            ],
-          ),
-        ),
-        Expanded(
-          child: _rainSubTab == 0 ? _buildRainJson() : _buildRainCookie(),
-        ),
-      ],
-    );
+    return _buildRainJson();
   }
 
   Widget _buildRainJson() {
@@ -446,102 +407,6 @@ class _ImportPageState extends State<ImportPage>
               hintStyle: TextStyle(fontSize: 13, color: AppTheme.muted),
               contentPadding: EdgeInsets.all(14),
             ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildRainCookie() {
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(20, 12, 20, 16),
-      children: [
-        const _SectionHint(
-          icon: Icons.cookie,
-          title: '粘贴雨课堂 Cookie',
-          desc: 'Cookie 仅临时保存 10 分钟，一次性使用后删除，不会保存您的登录凭据',
-        ),
-        const SizedBox(height: 14),
-        // 范围选择
-        Wrap(
-          spacing: 8,
-          children: ['COURSE', 'HOMEWORK', 'NOTICE'].map((scope) {
-            final active = _cookieScopes.contains(scope);
-            return GestureDetector(
-              onTap: () => setState(() {
-                if (active) {
-                  _cookieScopes.remove(scope);
-                } else {
-                  _cookieScopes.add(scope);
-                }
-              }),
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                decoration: BoxDecoration(
-                  color: active ? AppTheme.brandSoft : AppTheme.surface,
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: active ? AppTheme.brand : AppTheme.line),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(active ? Icons.check_circle : Icons.circle_outlined,
-                        size: 14,
-                        color: active ? AppTheme.brandInk : AppTheme.muted),
-                    const SizedBox(width: 4),
-                    Text(
-                      _scopeLabel(scope),
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        color: active ? AppTheme.brandInk : AppTheme.ink2,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            );
-          }).toList(),
-        ),
-        const SizedBox(height: 12),
-        Container(
-          decoration: BoxDecoration(
-            color: AppTheme.surface,
-            borderRadius: BorderRadius.circular(AppTheme.radiusSm),
-            border: Border.all(color: AppTheme.line),
-          ),
-          child: TextField(
-            controller: _rainCookieCtrl,
-            maxLines: 5,
-            style: const TextStyle(
-                fontSize: 13, color: AppTheme.ink, fontFamily: 'monospace', height: 1.5),
-            decoration: const InputDecoration(
-              border: InputBorder.none,
-              hintText: '粘贴 Cookie 值…',
-              hintStyle: TextStyle(fontSize: 13, color: AppTheme.muted),
-              contentPadding: EdgeInsets.all(14),
-            ),
-          ),
-        ),
-        const SizedBox(height: 14),
-        // 授权勾选
-        GestureDetector(
-          onTap: () => setState(() => _cookieConsent = !_cookieConsent),
-          child: Row(
-            children: [
-              Icon(
-                _cookieConsent ? Icons.check_box : Icons.check_box_outline_blank,
-                color: _cookieConsent ? AppTheme.brand : AppTheme.muted,
-                size: 22,
-              ),
-              const SizedBox(width: 8),
-              const Expanded(
-                child: Text(
-                  '我同意系统一次性使用此 Cookie 获取雨课堂数据，使用后自动删除',
-                  style: TextStyle(fontSize: 13, color: AppTheme.ink2, height: 1.5),
-                ),
-              ),
-            ],
           ),
         ),
       ],
@@ -659,14 +524,6 @@ class _ImportPageState extends State<ImportPage>
     };
   }
 
-  String _scopeLabel(String s) {
-    return switch (s) {
-      'COURSE' => '课程',
-      'HOMEWORK' => '作业',
-      'NOTICE' => '通知',
-      _ => s,
-    };
-  }
 }
 
 // ─── 子组件 ─────────────────────────────────
@@ -767,37 +624,6 @@ class _EmptyPlaceholder extends StatelessWidget {
               style: const TextStyle(
                   fontSize: 14, fontWeight: FontWeight.w600, color: AppTheme.muted)),
         ],
-      ),
-    );
-  }
-}
-
-class _RainSubTab extends StatelessWidget {
-  const _RainSubTab({required this.label, required this.active, required this.onTap});
-  final String label;
-  final bool active;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return Expanded(
-      child: GestureDetector(
-        onTap: onTap,
-        child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 10),
-          decoration: BoxDecoration(
-            color: active ? AppTheme.ink : AppTheme.surface,
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: active ? AppTheme.ink : AppTheme.line),
-          ),
-          alignment: Alignment.center,
-          child: Text(label,
-              style: TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-                color: active ? Colors.white : AppTheme.ink2,
-              )),
-        ),
       ),
     );
   }

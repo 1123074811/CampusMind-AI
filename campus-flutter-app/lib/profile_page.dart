@@ -1,10 +1,47 @@
 import 'package:flutter/material.dart';
 import 'app_theme.dart';
+import 'information_api.dart';
+import 'my_subscriptions_page.dart';
+import 'my_favorites_page.dart';
+import 'my_read_history_page.dart';
 
-class PrototypeProfilePage extends StatelessWidget {
-  const PrototypeProfilePage({super.key, required this.userName, required this.onLogout});
+class PrototypeProfilePage extends StatefulWidget {
+  const PrototypeProfilePage({
+    super.key,
+    required this.userName,
+    required this.onLogout,
+    required this.api,
+    required this.session,
+  });
   final String userName;
   final VoidCallback onLogout;
+  final CampusApi api;
+  final LoginSession session;
+
+  @override
+  State<PrototypeProfilePage> createState() => _PrototypeProfilePageState();
+}
+
+class _PrototypeProfilePageState extends State<PrototypeProfilePage> {
+  UserStats _stats = const UserStats(readCount: 0, favoriteCount: 0, subscriptionCount: 0);
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadStats();
+  }
+
+  Future<void> _loadStats() async {
+    try {
+      final stats = await widget.api.fetchStats(widget.session);
+      if (!mounted) return;
+      setState(() { _stats = stats; _loading = false; });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _loading = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -27,7 +64,7 @@ class PrototypeProfilePage extends StatelessWidget {
                   borderRadius: BorderRadius.circular(18),
                 ),
                 child: Center(
-                  child: Text(userName.isNotEmpty ? userName[0] : '我',
+                  child: Text(widget.userName.isNotEmpty ? widget.userName[0] : '我',
                     style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: Colors.white)),
                 ),
               ),
@@ -36,7 +73,7 @@ class PrototypeProfilePage extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(userName, style: const TextStyle(fontSize: 19, fontWeight: FontWeight.w800, color: Colors.white)),
+                    Text(widget.userName, style: const TextStyle(fontSize: 19, fontWeight: FontWeight.w800, color: Colors.white)),
                     const SizedBox(height: 3),
                     Text('计算机学院 · 学号 20231104', style: TextStyle(fontSize: 12, color: Colors.white.withValues(alpha: 0.9))),
                   ],
@@ -57,13 +94,18 @@ class PrototypeProfilePage extends StatelessWidget {
         // Stats
         Container(
           decoration: BoxDecoration(color: AppTheme.surface, borderRadius: BorderRadius.circular(AppTheme.radiusSm), border: Border.all(color: AppTheme.line)),
-          child: Row(
-            children: [
-              _StatBox(value: '128', label: '已读', showBorder: true),
-              _StatBox(value: '36', label: '收藏', showBorder: true),
-              _StatBox(value: '9', label: '关注源'),
-            ],
-          ),
+          child: _loading
+              ? const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 24),
+                  child: Center(child: SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2))),
+                )
+              : Row(
+                  children: [
+                    _StatBox(value: '${_stats.readCount}', label: '已读', showBorder: true),
+                    _StatBox(value: '${_stats.favoriteCount}', label: '收藏', showBorder: true),
+                    _StatBox(value: '${_stats.subscriptionCount}', label: '关注源'),
+                  ],
+                ),
         ),
         const SizedBox(height: 16),
         // AI Profile
@@ -126,16 +168,142 @@ class PrototypeProfilePage extends StatelessWidget {
           decoration: BoxDecoration(color: AppTheme.surface, borderRadius: BorderRadius.circular(AppTheme.radiusSm), border: Border.all(color: AppTheme.line)),
           child: Column(
             children: [
-              _MenuItem(icon: Icons.format_list_bulleted, label: '我的订阅'),
-              _MenuItem(icon: Icons.bookmark_outline, label: '收藏夹'),
-              _MenuItem(icon: Icons.access_time, label: '阅读历史'),
+              _MenuItem(
+                icon: Icons.format_list_bulleted,
+                label: '我的订阅',
+                onTap: () => Navigator.of(context).push(MaterialPageRoute(
+                  builder: (_) => MySubscriptionsPage(api: widget.api, session: widget.session),
+                )),
+              ),
+              _MenuItem(
+                icon: Icons.bookmark_outline,
+                label: '收藏夹',
+                onTap: () => Navigator.of(context).push(MaterialPageRoute(
+                  builder: (_) => MyFavoritesPage(api: widget.api, session: widget.session, onOpenDetail: _openDetail),
+                )),
+              ),
+              _MenuItem(
+                icon: Icons.access_time,
+                label: '阅读历史',
+                onTap: () => Navigator.of(context).push(MaterialPageRoute(
+                  builder: (_) => MyReadHistoryPage(api: widget.api, session: widget.session, onOpenDetail: _openDetail),
+                )),
+              ),
               _MenuItem(icon: Icons.notifications_outlined, label: '推送与提醒设置'),
               _MenuItem(icon: Icons.info_outline, label: '数据源偏好'),
-              _MenuItem(icon: Icons.logout, label: '退出登录', isLogout: true, onTap: onLogout),
+              _MenuItem(icon: Icons.logout, label: '退出登录', isLogout: true, onTap: widget.onLogout),
             ],
           ),
         ),
       ],
+    );
+  }
+
+  void _openDetail(InformationItem item) {
+    // 复用 detail 页面（通过 Navigator 打开）
+    Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => _SimpleDetailWrapper(item: item, api: widget.api, session: widget.session),
+    ));
+  }
+}
+
+/// 简易详情页包装（在 profile 子页面中复用）
+class _SimpleDetailWrapper extends StatefulWidget {
+  const _SimpleDetailWrapper({required this.item, required this.api, required this.session});
+  final InformationItem item;
+  final CampusApi api;
+  final LoginSession session;
+
+  @override
+  State<_SimpleDetailWrapper> createState() => _SimpleDetailWrapperState();
+}
+
+class _SimpleDetailWrapperState extends State<_SimpleDetailWrapper> {
+  late InformationItem _item = widget.item;
+  bool _fav = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _fav = _item.readStatus == 'FAVORITED';
+    _loadDetail();
+  }
+
+  Future<void> _loadDetail() async {
+    try {
+      var item = await widget.api.fetchInformationDetail(_item.id, widget.session);
+      if (item.readStatus == 'NEW') {
+        try { item = await widget.api.updateReadStatus(item.id, 'READ', widget.session); } catch (_) {}
+      }
+      if (!mounted) return;
+      setState(() => _item = item);
+    } catch (_) {}
+  }
+
+  Future<void> _toggleFav() async {
+    final newStatus = _fav ? 'READ' : 'FAVORITED';
+    try {
+      final item = await widget.api.updateReadStatus(_item.id, newStatus, widget.session);
+      if (!mounted) return;
+      setState(() { _item = item; _fav = !_fav; });
+    } catch (_) {
+      setState(() => _fav = !_fav);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: AppTheme.bg,
+      body: SafeArea(
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(20, 6, 20, 28),
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                GestureDetector(
+                  onTap: () => Navigator.of(context).pop(),
+                  child: Container(
+                    width: 36, height: 36,
+                    decoration: BoxDecoration(color: AppTheme.surface, borderRadius: BorderRadius.circular(11), border: Border.all(color: AppTheme.line)),
+                    child: const Icon(Icons.arrow_back_ios_new, size: 17, color: AppTheme.ink2),
+                  ),
+                ),
+                GestureDetector(
+                  onTap: _toggleFav,
+                  child: Container(
+                    width: 36, height: 36,
+                    decoration: BoxDecoration(
+                      color: _fav ? AppTheme.brandSoft : AppTheme.surface,
+                      borderRadius: BorderRadius.circular(11),
+                      border: Border.all(color: _fav ? AppTheme.brand : AppTheme.line),
+                    ),
+                    child: Icon(_fav ? Icons.bookmark : Icons.bookmark_outline, size: 17, color: _fav ? AppTheme.brand : AppTheme.ink2),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            Text(_item.title, style: const TextStyle(fontSize: 21, fontWeight: FontWeight.w800, color: AppTheme.ink, height: 1.35)),
+            const SizedBox(height: 12),
+            Row(children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(color: AppTheme.brandSoft, borderRadius: BorderRadius.circular(6)),
+                child: Text(_item.sourceName, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: AppTheme.brandInk)),
+              ),
+              const SizedBox(width: 8),
+              Text(_item.displayTime, style: const TextStyle(fontSize: 12, color: AppTheme.muted)),
+            ]),
+            const SizedBox(height: 16),
+            Text(
+              _item.detailContent.isNotEmpty ? _item.detailContent : _item.preview,
+              style: const TextStyle(fontSize: 13, color: AppTheme.ink2, height: 1.7),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

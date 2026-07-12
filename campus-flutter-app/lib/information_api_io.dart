@@ -5,7 +5,7 @@ import 'information_api_stub.dart';
 
 export 'information_api_stub.dart'
     show CampusApi, CampusUser, InformationItem, LoginSession, ImportResult, ImportTaskItem, SessionExpiredException,
-         AiChatResult, SearchResult, SearchResultItem, UserProfile;
+         AiChatResult, SearchResult, SearchResultItem, UserProfile, UserStats, SubscriptionItem;
 
 const _apiBase = String.fromEnvironment(
   'CAMPUSMIND_API_BASE',
@@ -265,6 +265,74 @@ class IoCampusApi implements CampusApi {
       session: session,
     );
     return UserProfile.fromJson(_data(root));
+  }
+
+  @override
+  Future<UserStats> fetchStats(LoginSession session) async {
+    final root = await _request(
+      'GET',
+      '/api/v1/information/stats',
+      session: session,
+    );
+    return UserStats.fromJson(_data(root));
+  }
+
+  @override
+  Future<List<InformationItem>> fetchFavorites(LoginSession session) async {
+    final root = await _request(
+      'GET',
+      '/api/v1/information/favorites?size=30',
+      session: session,
+    );
+    final data = _data(root);
+    final items = data['items'] as List<Object?>? ?? const [];
+    return items
+        .cast<Map<String, Object?>>()
+        .map(InformationItem.fromJson)
+        .toList();
+  }
+
+  @override
+  Future<List<InformationItem>> fetchReadHistory(LoginSession session) async {
+    final root = await _request(
+      'GET',
+      '/api/v1/information/read-history?size=30',
+      session: session,
+    );
+    final data = _data(root);
+    final items = data['items'] as List<Object?>? ?? const [];
+    return items
+        .cast<Map<String, Object?>>()
+        .map(InformationItem.fromJson)
+        .toList();
+  }
+
+  @override
+  Future<List<SubscriptionItem>> fetchSubscriptions(LoginSession session) async {
+    final root = await _request(
+      'GET',
+      '/api/v1/information/subscriptions',
+      session: session,
+    );
+    final list = root['data'];
+    if (list is List) {
+      return list
+          .cast<Map<String, Object?>>()
+          .map(SubscriptionItem.fromJson)
+          .toList();
+    }
+    return const [];
+  }
+
+  @override
+  Future<SubscriptionItem> updateSubscription(int sourceId, bool enabled, LoginSession session) async {
+    final root = await _request(
+      'PUT',
+      '/api/v1/information/subscriptions/$sourceId',
+      session: session,
+      body: {'enabled': enabled},
+    );
+    return SubscriptionItem.fromJson(_data(root));
   }
 }
 

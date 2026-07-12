@@ -169,6 +169,8 @@ class _CampusShellState extends State<CampusShell> {
       PrototypeProfilePage(
         userName: widget.session.user.username,
         onLogout: widget.onLogout,
+        api: widget.api,
+        session: widget.session,
       ),
     ];
 

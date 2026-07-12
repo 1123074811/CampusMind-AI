@@ -241,6 +241,21 @@ abstract class CampusApi {
 
   /// 获取当前用户信息
   Future<UserProfile> fetchMe(LoginSession session);
+
+  /// 获取用户统计
+  Future<UserStats> fetchStats(LoginSession session);
+
+  /// 获取收藏夹
+  Future<List<InformationItem>> fetchFavorites(LoginSession session);
+
+  /// 获取阅读历史
+  Future<List<InformationItem>> fetchReadHistory(LoginSession session);
+
+  /// 获取订阅列表
+  Future<List<SubscriptionItem>> fetchSubscriptions(LoginSession session);
+
+  /// 更新订阅状态
+  Future<SubscriptionItem> updateSubscription(int sourceId, bool enabled, LoginSession session);
 }
 
 class AiChatResult {
@@ -302,6 +317,48 @@ class UserProfile {
       nickname: json['nickname'] as String?,
       email: json['email'] as String?,
       role: json['role'] as String?,
+    );
+  }
+}
+
+/// 用户统计
+class UserStats {
+  const UserStats({required this.readCount, required this.favoriteCount, required this.subscriptionCount});
+  final int readCount;
+  final int favoriteCount;
+  final int subscriptionCount;
+  factory UserStats.fromJson(Map<String, Object?> json) {
+    return UserStats(
+      readCount: (json['readCount'] as num?)?.toInt() ?? 0,
+      favoriteCount: (json['favoriteCount'] as num?)?.toInt() ?? 0,
+      subscriptionCount: (json['subscriptionCount'] as num?)?.toInt() ?? 0,
+    );
+  }
+}
+
+/// 订阅项
+class SubscriptionItem {
+  const SubscriptionItem({
+    required this.sourceId,
+    required this.sourceName,
+    required this.sourceType,
+    required this.enabled,
+    this.subscribedAt,
+  });
+  final int sourceId;
+  final String sourceName;
+  final String sourceType;
+  final bool enabled;
+  final DateTime? subscribedAt;
+  factory SubscriptionItem.fromJson(Map<String, Object?> json) {
+    return SubscriptionItem(
+      sourceId: (json['sourceId'] as num?)?.toInt() ?? 0,
+      sourceName: json['sourceName'] as String? ?? '',
+      sourceType: json['sourceType'] as String? ?? '',
+      enabled: json['enabled'] as bool? ?? false,
+      subscribedAt: json['subscribedAt'] == null
+          ? null
+          : DateTime.tryParse(json['subscribedAt'] as String),
     );
   }
 }

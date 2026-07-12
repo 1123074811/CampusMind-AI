@@ -12,7 +12,7 @@ class PrototypeLoginPage extends StatefulWidget {
 }
 
 class _PrototypeLoginPageState extends State<PrototypeLoginPage> {
-  final _usernameCtrl = TextEditingController(text: '20231104');
+  final _usernameCtrl = TextEditingController(text: '123456');
   final _passwordCtrl = TextEditingController(text: '123456');
   bool _obscure = true;
   bool _agreed = false;
