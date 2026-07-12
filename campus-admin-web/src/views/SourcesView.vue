@@ -31,7 +31,8 @@ function sourceChannelLabel(channel: string) {
     PUBLIC_WEB: '公开网页',
     RAIN_CLASSROOM: '雨课堂',
     USER_TEXT: '用户文本',
-    USER_IMAGE: '用户截图'
+    USER_IMAGE: '用户截图',
+    USER_FILE: '用户文件'
   }[channel] ?? channel;
 }
 </script>

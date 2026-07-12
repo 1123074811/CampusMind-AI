@@ -62,7 +62,7 @@ const navItems = computed<NavItem[]>(() => [
 const validSourceIds = computed(() => new Set(visibleDataSources.value.map((source) => source.id)));
 
 const visibleDataSources = computed(() => {
-  return dataSources.value.filter((source) => source.channel === 'PUBLIC_WEB' && source.id >= 9411);
+  return dataSources.value;
 });
 
 const visibleCrawlTasks = computed(() => {
