@@ -84,7 +84,6 @@ public class SearchService {
                 event.getSourceType(),
                 event.getStatus(),
                 "AI_PUBLISHED".equals(event.getStatus()),
-                event.getConfidence() == null ? 0.0 : event.getConfidence().doubleValue(),
                 event.getStartTime(),
                 event.getEndTime(),
                 event.getLocation(),

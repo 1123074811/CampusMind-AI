@@ -81,7 +81,6 @@ public class EventQueryService {
                 event.getSourceType(),
                 event.getStatus(),
                 "AI_PUBLISHED".equals(event.getStatus()),
-                event.getConfidence(),
                 event.getStartTime(),
                 event.getEndTime(),
                 event.getLocation(),

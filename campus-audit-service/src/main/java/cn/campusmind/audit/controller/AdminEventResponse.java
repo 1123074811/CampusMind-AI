@@ -10,7 +10,6 @@ public record AdminEventResponse(
         String sourceUrl,
         String type,
         String status,
-        double confidence,
         String location,
         String startTime,
         String endTime,

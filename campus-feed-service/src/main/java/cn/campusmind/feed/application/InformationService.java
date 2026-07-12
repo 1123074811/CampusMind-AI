@@ -91,7 +91,6 @@ public class InformationService {
                 item.getAiStatus(),
                 item.getAiEventType(),
                 item.getAiSummary(),
-                item.getAiConfidence(),
                 item.getAiNeedReview(),
                 aiCard(item)
         );
@@ -178,7 +177,6 @@ public class InformationService {
                 item.getAiStatus(),
                 item.getAiEventType(),
                 item.getAiSummary(),
-                item.getAiConfidence(),
                 item.getAiNeedReview(),
                 aiCard(item)
         );

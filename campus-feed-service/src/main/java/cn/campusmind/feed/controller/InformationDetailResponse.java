@@ -20,7 +20,6 @@ public record InformationDetailResponse(
         String aiStatus,
         String eventType,
         String aiSummary,
-        Double aiConfidence,
         Boolean aiNeedReview,
         Map<String, Object> aiCard
 ) {

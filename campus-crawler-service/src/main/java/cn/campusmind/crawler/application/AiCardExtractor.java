@@ -52,12 +52,11 @@ class AiCardExtractor {
         return new Result(
                 data.path("eventType").asText("OTHER"),
                 data.path("summary").asText(""),
-                data.path("confidence").asDouble(0),
                 data.path("needHumanReview").asBoolean(false),
                 objectMapper.writeValueAsString(data)
         );
     }
 
-    record Result(String eventType, String summary, double confidence, boolean needHumanReview, String cardJson) {
+    record Result(String eventType, String summary, boolean needHumanReview, String cardJson) {
     }
 }

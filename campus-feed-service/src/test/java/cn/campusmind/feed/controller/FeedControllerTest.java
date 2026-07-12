@@ -40,7 +40,6 @@ class FeedControllerTest {
                       event_type VARCHAR(64) NOT NULL,
                       source_type VARCHAR(64) NOT NULL,
                       status VARCHAR(32) NOT NULL,
-                      confidence DECIMAL(5,4) NOT NULL,
                       start_time TIMESTAMP,
                       location VARCHAR(255),
                       tags VARCHAR(1024),
@@ -104,10 +103,10 @@ class FeedControllerTest {
         try (Connection connection = dataSource.getConnection();
              PreparedStatement statement = connection.prepareStatement("""
                      INSERT INTO campus_event (
-                       id, title, summary, event_type, source_type, status, confidence,
+                       id, title, summary, event_type, source_type, status,
                        start_time, location, tags, target_scope, published_at
-                     ) VALUES (?, ?, '摘要', ?, 'PUBLIC_WEB', ?, 0.9000,
-                       TIMESTAMP '2026-07-08 19:00:00', '图书馆报告厅', ?, '[\"软件学院\"]', ?)
+                     ) VALUES (?, ?, '摘要', ?, 'PUBLIC_WEB', ?,
+                       TIMESTAMP '2026-07-08 19:00:00', '图书馆报告厅', ?, '["软件学院"]', ?)
                      """)) {
             statement.setLong(1, id);
             statement.setString(2, title);

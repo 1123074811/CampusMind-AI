@@ -1,6 +1,5 @@
 package cn.campusmind.event.controller;
 
-import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -12,7 +11,6 @@ public record EventDetailResponse(
         String sourceType,
         String status,
         boolean aiPredicted,
-        BigDecimal confidence,
         LocalDateTime startTime,
         LocalDateTime endTime,
         String location,

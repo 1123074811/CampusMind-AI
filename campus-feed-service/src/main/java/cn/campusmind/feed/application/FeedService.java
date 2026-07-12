@@ -91,7 +91,6 @@ public class FeedService {
                 event.getEventType(),
                 event.getStatus(),
                 "AI_PUBLISHED".equals(event.getStatus()),
-                event.getConfidence(),
                 event.getStartTime(),
                 event.getLocation(),
                 tags,

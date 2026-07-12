@@ -60,9 +60,6 @@ public class InformationItem {
     @TableField("ai_card_json")
     private String aiCardJson;
 
-    @TableField("ai_confidence")
-    private Double aiConfidence;
-
     @TableField("ai_need_review")
     private Boolean aiNeedReview;
 
@@ -158,7 +155,6 @@ public class InformationItem {
     public void setAiEventType(String aiEventType) { this.aiEventType = aiEventType; }
     public void setAiSummary(String aiSummary) { this.aiSummary = aiSummary; }
     public void setAiCardJson(String aiCardJson) { this.aiCardJson = aiCardJson; }
-    public void setAiConfidence(Double aiConfidence) { this.aiConfidence = aiConfidence; }
     public void setAiNeedReview(Boolean aiNeedReview) { this.aiNeedReview = aiNeedReview; }
     public void setAiError(String aiError) { this.aiError = aiError; }
     public void setAiProcessedAt(LocalDateTime aiProcessedAt) { this.aiProcessedAt = aiProcessedAt; }

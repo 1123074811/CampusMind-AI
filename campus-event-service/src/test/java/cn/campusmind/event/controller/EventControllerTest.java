@@ -40,7 +40,6 @@ class EventControllerTest {
                       event_type VARCHAR(64) NOT NULL,
                       source_type VARCHAR(64) NOT NULL,
                       status VARCHAR(32) NOT NULL,
-                      confidence DECIMAL(5,4) NOT NULL,
                       start_time TIMESTAMP,
                       end_time TIMESTAMP,
                       location VARCHAR(255),
@@ -91,9 +90,9 @@ class EventControllerTest {
         try (Connection connection = dataSource.getConnection();
              PreparedStatement statement = connection.prepareStatement("""
                      INSERT INTO campus_event (
-                       id, title, summary, event_type, source_type, status, confidence,
+                       id, title, summary, event_type, source_type, status,
                        start_time, end_time, location, organizer, target_scope, tags, published_at
-                     ) VALUES (?, ?, ?, ?, 'PUBLIC_WEB', ?, 0.9100,
+                     ) VALUES (?, ?, ?, ?, 'PUBLIC_WEB', ?,
                        TIMESTAMP '2026-07-08 19:00:00', TIMESTAMP '2026-07-08 21:00:00',
                        '图书馆报告厅', '软件学院', '[\"软件学院\"]', '[\"AI\",\"讲座\"]',
                        TIMESTAMP '2026-07-07 10:00:00')

@@ -11,7 +11,6 @@ public record SearchItemResponse(
         String sourceType,
         String status,
         boolean aiPredicted,
-        double confidence,
         LocalDateTime startTime,
         LocalDateTime endTime,
         String location,

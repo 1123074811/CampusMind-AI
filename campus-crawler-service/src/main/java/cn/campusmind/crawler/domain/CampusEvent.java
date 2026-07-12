@@ -5,7 +5,6 @@ import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 
-import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 @TableName("campus_event")
@@ -20,7 +19,6 @@ public class CampusEvent {
     @TableField("source_type")
     private String sourceType;
     private String status;
-    private BigDecimal confidence;
     private String organizer;
     @TableField("start_time")
     private LocalDateTime startTime;
@@ -62,10 +60,6 @@ public class CampusEvent {
 
     public void setStatus(String status) {
         this.status = status;
-    }
-
-    public void setConfidence(BigDecimal confidence) {
-        this.confidence = confidence;
     }
 
     public void setOrganizer(String organizer) {

@@ -15,7 +15,6 @@ public record CognitionResult(
         String organizer,
         List<String> targetScopes,
         List<String> tags,
-        double confidence,
         boolean needHumanReview,
         String reason
 ) {

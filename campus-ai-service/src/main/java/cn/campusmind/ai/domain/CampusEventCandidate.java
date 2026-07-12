@@ -12,7 +12,6 @@ public record CampusEventCandidate(
         String organizer,
         List<String> targetScopes,
         List<String> tags,
-        double confidence,
         boolean needHumanReview,
         String reason,
         Long originalItemId,
@@ -36,12 +35,11 @@ public record CampusEventCandidate(
         requiredActions = requiredActions == null ? List.of() : List.copyOf(requiredActions);
         requiredMaterials = requiredMaterials == null ? List.of() : List.copyOf(requiredMaterials);
         attachments = attachments == null ? List.of() : List.copyOf(attachments);
-        confidence = Math.max(0, Math.min(1, confidence));
     }
 
     public CampusEventCandidate withOriginal(Long itemId, String url) {
         return new CampusEventCandidate(title, eventType, summary, startTime, endTime, location, organizer,
-                targetScopes, tags, confidence, needHumanReview, reason, itemId, url, keyDates,
+                targetScopes, tags, needHumanReview, reason, itemId, url, keyDates,
                 requiredActions, registrationStartTime, registrationDeadline, eventDuration,
                 requiredMaterials, registrationUrl, participationMethod, teamRequirement, attachments);
     }

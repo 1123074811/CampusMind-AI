@@ -12,7 +12,7 @@ class AiCardExtractorTest {
     void parsesWrappedCognitionResult() throws Exception {
         AiCardExtractor extractor = new AiCardExtractor(new ObjectMapper(), "http://localhost/unused");
         AiCardExtractor.Result result = extractor.parse("""
-                {"data":{"eventType":"COMPETITION","summary":"报名摘要","confidence":0.92,"needHumanReview":true}}
+                {"data":{"eventType":"COMPETITION","summary":"报名摘要","needHumanReview":true}}
                 """);
 
         assertEquals("COMPETITION", result.eventType());

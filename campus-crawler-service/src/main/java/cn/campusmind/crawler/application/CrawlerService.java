@@ -367,7 +367,6 @@ public class CrawlerService {
                 informationItem.setAiEventType("OTHER");
                 informationItem.setAiSummary("");
                 informationItem.setAiCardJson("{}");
-                informationItem.setAiConfidence(0.0);
                 informationItem.setAiNeedReview(false);
             }
             informationItemMapper.updateById(informationItem);
@@ -382,7 +381,6 @@ public class CrawlerService {
             item.setAiEventType(result.eventType());
             item.setAiSummary(result.summary());
             item.setAiCardJson(result.cardJson());
-            item.setAiConfidence(result.confidence());
             item.setAiNeedReview(result.needHumanReview());
             item.setAiError(null);
         } catch (Exception ex) {

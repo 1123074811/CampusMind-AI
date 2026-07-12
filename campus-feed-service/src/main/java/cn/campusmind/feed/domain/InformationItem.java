@@ -56,8 +56,6 @@ public class InformationItem {
     private String aiSummary;
     @TableField("ai_card_json")
     private String aiCardJson;
-    @TableField("ai_confidence")
-    private Double aiConfidence;
     @TableField("ai_need_review")
     private Boolean aiNeedReview;
 
@@ -119,7 +117,6 @@ public class InformationItem {
     public String getAiEventType() { return aiEventType; }
     public String getAiSummary() { return aiSummary; }
     public String getAiCardJson() { return aiCardJson; }
-    public Double getAiConfidence() { return aiConfidence; }
     public Boolean getAiNeedReview() { return aiNeedReview; }
 
     public LocalDateTime getCreatedAt() {

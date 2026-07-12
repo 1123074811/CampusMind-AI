@@ -53,7 +53,6 @@ class InformationControllerTest {
                       ai_event_type VARCHAR(32),
                       ai_summary CLOB,
                       ai_card_json CLOB,
-                      ai_confidence DECIMAL(5,4),
                       ai_need_review BOOLEAN DEFAULT FALSE,
                       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                       updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
