@@ -4,6 +4,7 @@ import 'information_api.dart';
 import 'my_subscriptions_page.dart';
 import 'my_favorites_page.dart';
 import 'my_read_history_page.dart';
+import 'my_imported_events_page.dart';
 
 class PrototypeProfilePage extends StatefulWidget {
   const PrototypeProfilePage({
@@ -173,6 +174,13 @@ class _PrototypeProfilePageState extends State<PrototypeProfilePage> {
                 label: '我的订阅',
                 onTap: () => Navigator.of(context).push(MaterialPageRoute(
                   builder: (_) => MySubscriptionsPage(api: widget.api, session: widget.session),
+                )),
+              ),
+              _MenuItem(
+                icon: Icons.school_outlined,
+                label: '我的雨课堂导入',
+                onTap: () => Navigator.of(context).push(MaterialPageRoute(
+                  builder: (_) => MyImportedEventsPage(api: widget.api, session: widget.session),
                 )),
               ),
               _MenuItem(

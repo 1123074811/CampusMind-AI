@@ -4,7 +4,7 @@ import 'dart:io';
 import 'information_api_stub.dart';
 
 export 'information_api_stub.dart'
-    show CampusApi, CampusUser, InformationItem, LoginSession, ImportResult, ImportTaskItem, SessionExpiredException,
+    show CampusApi, CampusUser, InformationItem, LoginSession, ImportResult, ImportTaskItem, ImportedEventItem, SessionExpiredException,
          AiChatResult, SearchResult, SearchResultItem, UserProfile, UserStats, SubscriptionItem;
 
 const _apiBase = String.fromEnvironment(
@@ -237,12 +237,27 @@ class IoCampusApi implements CampusApi {
   }
 
   @override
+  Future<List<ImportedEventItem>> fetchRainEvents(LoginSession session) async {
+    final root = await _request('GET', '/api/v1/events/search?page=1&size=100', session: session);
+    final data = _data(root);
+    final list = data['items'] as List<Object?>? ?? const [];
+    return list.cast<Map<String, Object?>>()
+        .map(ImportedEventItem.fromJson)
+        .where((item) => item.sourceType == 'RAIN_CLASSROOM')
+        .toList();
+  }
+
+  @override
   Future<AiChatResult> aiChat(String sessionId, String message, LoginSession session) async {
     final root = await _request(
       'POST',
       '/api/v1/ai/chat',
       session: session,
-      body: {'sessionId': sessionId, 'message': message, 'usePersonalProfile': true},
+      body: {
+        'sessionId': sessionId,
+        'message': message,
+        'usePersonalProfile': _isPersonalQuery(message),
+      },
     );
     return AiChatResult.fromJson(_data(root));
   }
@@ -334,6 +349,12 @@ class IoCampusApi implements CampusApi {
     );
     return SubscriptionItem.fromJson(_data(root));
   }
+}
+
+/// 根据消息内容判断是否涉及个人日程/作业/课表等个性化查询。
+bool _isPersonalQuery(String message) {
+  const keywords = ['我的', '我本周', '我今天', '我明天', '我的课表', '我的作业', '我的考试', '我的日程'];
+  return keywords.any(message.contains);
 }
 
 Future<List<InformationItem>> fetchInformationFeed() {

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_markdown/flutter_markdown.dart';
 import 'app_theme.dart';
 import 'information_api.dart';
 
@@ -315,7 +316,22 @@ class _Bubble extends StatelessWidget {
                   ),
                   border: Border.all(color: AppTheme.line),
                 ),
-                child: Text(msg.text, style: const TextStyle(fontSize: 13, color: AppTheme.ink2, height: 1.55)),
+                child: MarkdownBody(
+                  data: msg.text,
+                  selectable: true,
+                  styleSheet: MarkdownStyleSheet(
+                    p: const TextStyle(fontSize: 13, color: AppTheme.ink2, height: 1.55),
+                    h3: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: AppTheme.ink, height: 1.6),
+                    strong: const TextStyle(fontWeight: FontWeight.w700, color: AppTheme.ink),
+                    code: TextStyle(fontSize: 11.5, color: AppTheme.brandInk, backgroundColor: AppTheme.brandSoft, fontFamily: 'monospace'),
+                    codeblockDecoration: BoxDecoration(color: AppTheme.surface2, borderRadius: BorderRadius.circular(8)),
+                    blockquoteDecoration: BoxDecoration(
+                      border: Border(left: BorderSide(color: AppTheme.brand, width: 3)),
+                    ),
+                    blockquotePadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    listBullet: const TextStyle(fontSize: 13, color: AppTheme.ink2),
+                  ),
+                ),
               ),
               const SizedBox(height: 6),
               // Citation

@@ -198,6 +198,30 @@ class ImportTaskItem {
   }
 }
 
+class ImportedEventItem {
+  const ImportedEventItem({
+    required this.id,
+    required this.title,
+    required this.summary,
+    required this.eventType,
+    required this.sourceType,
+  });
+
+  final int id;
+  final String title;
+  final String summary;
+  final String eventType;
+  final String sourceType;
+
+  factory ImportedEventItem.fromJson(Map<String, Object?> json) => ImportedEventItem(
+        id: (json['id'] as num?)?.toInt() ?? 0,
+        title: json['title'] as String? ?? '未命名课程信息',
+        summary: json['summary'] as String? ?? '',
+        eventType: json['eventType'] as String? ?? 'OTHER',
+        sourceType: json['sourceType'] as String? ?? '',
+      );
+}
+
 abstract class CampusApi {
   Future<LoginSession> login(String username, String password);
 
@@ -232,6 +256,9 @@ abstract class CampusApi {
 
   /// 查询导入任务列表
   Future<List<ImportTaskItem>> fetchImportTasks(LoginSession session);
+
+  /// 当前用户可见的雨课堂私有事件
+  Future<List<ImportedEventItem>> fetchRainEvents(LoginSession session);
 
   /// AI 对话
   Future<AiChatResult> aiChat(String sessionId, String message, LoginSession session);

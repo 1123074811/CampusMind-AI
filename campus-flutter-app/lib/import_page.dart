@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import 'app_theme.dart';
 import 'information_api.dart';
+import 'my_imported_events_page.dart';
 
 class ImportPage extends StatefulWidget {
   const ImportPage({super.key, required this.api, required this.session});
@@ -461,6 +462,13 @@ class _ImportPageState extends State<ImportPage>
                       ),
                     ),
                   ),
+                  if (_tabCtrl.index == 2 && _lastResult!.status == 'SUCCESS')
+                    TextButton(
+                      onPressed: () => Navigator.of(context).push(MaterialPageRoute(
+                        builder: (_) => MyImportedEventsPage(api: widget.api, session: widget.session),
+                      )),
+                      child: const Text('查看'),
+                    ),
                 ],
               ),
             ),
