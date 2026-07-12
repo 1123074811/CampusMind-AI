@@ -6,7 +6,10 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 public record ImportProperties(
         String aiBaseUrl,
         String eventBaseUrl,
+        String feedBaseUrl,
         int rainCookieTtlMinutes,
+        boolean rainCookieEnabled,
+        int maxRainJsonBytes,
         int maxTextLength,
         int maxImageBytes,
         int maxFileBytes,

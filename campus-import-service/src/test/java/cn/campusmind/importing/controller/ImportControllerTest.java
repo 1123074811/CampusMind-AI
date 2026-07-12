@@ -3,6 +3,7 @@ package cn.campusmind.importing.controller;
 import cn.campusmind.importing.application.CognitionClient;
 import cn.campusmind.importing.application.CognitionResult;
 import cn.campusmind.importing.application.EventServiceClient;
+import cn.campusmind.importing.application.InformationServiceClient;
 import cn.campusmind.importing.application.RainCookieStore;
 import cn.campusmind.importing.application.RawDocumentService;
 import cn.campusmind.importing.domain.RawDocument;
@@ -33,6 +34,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -70,6 +72,9 @@ class ImportControllerTest {
     private EventServiceClient eventServiceClient;
 
     @MockBean
+    private InformationServiceClient informationServiceClient;
+
+    @MockBean
     private StringRedisTemplate stringRedisTemplate;
 
     @BeforeEach
@@ -82,10 +87,15 @@ class ImportControllerTest {
         // mock EventServiceClient
         when(eventServiceClient.createEvent(
                 any(), any(), any(), any(),
-                any(), any(), any(),
+                any(), any(), any(), any(),
                 any(), any(), any(), any(),
                 any(), any(), any(), any()
         )).thenReturn(100L);
+
+        // mock InformationServiceClient
+        when(informationServiceClient.createItem(
+                any(), any(), any(), any(), any(), any()
+        )).thenReturn(200L);
 
         try (Connection connection = dataSource.getConnection();
              Statement statement = connection.createStatement()) {
@@ -163,9 +173,12 @@ class ImportControllerTest {
         assertEquals(1, countRows("import_task", "task_status='SUCCESS'"), "任务应为SUCCESS");
         verify(eventServiceClient, times(1)).createEvent(
                 any(), any(), any(), any(),
-                any(), any(), any(),
                 any(), any(), any(), any(),
+                any(), any(), eq("PUBLIC"), isNull(),
                 any(), any(), any(), any()
+        );
+        verify(informationServiceClient, times(1)).createItem(
+                any(), any(), any(), any(), any(), any()
         );
     }
 
@@ -203,33 +216,35 @@ class ImportControllerTest {
         assertEquals(1, countRows("import_task", "task_status='SUCCESS'"), "任务应为SUCCESS");
         verify(eventServiceClient, times(1)).createEvent(
                 any(), any(), any(), any(),
-                any(), any(), any(),
                 any(), any(), any(), any(),
+                any(), any(), eq("PRIVATE"), eq(1L),
                 any(), any(), any(), any()
+        );
+        verify(informationServiceClient, times(0)).createItem(
+                any(), any(), any(), any(), any(), any()
         );
     }
 
     @Test
-    void rainCookieImportStoresCookieTemporarilyAndStaysPending() throws Exception {
+    void rainCookieImportIsDisabledByDefault() throws Exception {
         mockMvc.perform(post("/api/v1/import/rain/cookie")
                         .header(AUTHORIZATION, bearerToken(1L, "alice", "STUDENT"))
                         .contentType(APPLICATION_JSON)
                         .content("{\"cookie\":\"session=abc123; path=/\",\"importScopes\":[\"COURSE\",\"HOMEWORK\"],\"agreeOneTimeUse\":true}"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.status").value("PENDING"));
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("RAIN_COOKIE_DISABLED"));
 
-        verify(rainCookieStore, times(1)).save(anyString(), eq("session=abc123; path=/"));
-        assertEquals(1, countRows("import_task", "import_type='RAIN_COOKIE' AND task_status='PENDING'"), "应创建PENDING任务");
+        verify(rainCookieStore, times(0)).save(anyString(), eq("session=abc123; path=/"));
     }
 
     @Test
-    void rainCookieImportRejectsWithoutOneTimeConsent() throws Exception {
+    void rainCookieImportRejectsWhenDisabledBeforeReadingCredentials() throws Exception {
         mockMvc.perform(post("/api/v1/import/rain/cookie")
                         .header(AUTHORIZATION, bearerToken(1L, "alice", "STUDENT"))
-                        .contentType(APPLICATION_JSON)
-                        .content("{\"cookie\":\"session=abc123\",\"agreeOneTimeUse\":false}"))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value("RAIN_COOKIE_CONSENT_REQUIRED"));
+                .contentType(APPLICATION_JSON)
+                .content("{\"cookie\":\"session=abc123\",\"agreeOneTimeUse\":false}"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("RAIN_COOKIE_DISABLED"));
     }
 
     @Test
@@ -257,7 +272,7 @@ class ImportControllerTest {
                 "2026-07-08 19:00", "2026-07-08 21:00",
                 "图书馆报告厅", "软件学院",
                 List.of("软件学院"), List.of("AI", "讲座"),
-                0.91, false, "抽取成功");
+                false, "抽取成功");
     }
 
     private int countRows(String table, String where) throws Exception {

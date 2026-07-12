@@ -39,6 +39,7 @@ public class ImportService {
     private final RawDocumentService rawDocumentService;
     private final CognitionClient cognitionClient;
     private final EventServiceClient eventServiceClient;
+    private final InformationServiceClient informationServiceClient;
     private final RainClassroomParser rainClassroomParser;
     private final RainCookieStore rainCookieStore;
     private final FileTextExtractor fileTextExtractor;
@@ -50,6 +51,7 @@ public class ImportService {
                          RawDocumentService rawDocumentService,
                          CognitionClient cognitionClient,
                          EventServiceClient eventServiceClient,
+                         InformationServiceClient informationServiceClient,
                          RainClassroomParser rainClassroomParser,
                          RainCookieStore rainCookieStore,
                          FileTextExtractor fileTextExtractor,
@@ -60,6 +62,7 @@ public class ImportService {
         this.rawDocumentService = rawDocumentService;
         this.cognitionClient = cognitionClient;
         this.eventServiceClient = eventServiceClient;
+        this.informationServiceClient = informationServiceClient;
         this.rainClassroomParser = rainClassroomParser;
         this.rainCookieStore = rainCookieStore;
         this.fileTextExtractor = fileTextExtractor;
@@ -79,11 +82,12 @@ public class ImportService {
             throw new BusinessException("TEXT_TOO_LONG", "文本超过最大长度限制", HttpStatus.BAD_REQUEST);
         }
         String contentHash = sha256(text);
-        RawDocument doc = rawDocumentService.save(buildRawDocument("USER_TEXT", null, text, contentHash, null));
+        RawDocument doc = rawDocumentService.save(buildRawDocument("USER_TEXT", user.userId(), null, text, contentHash, null));
         ImportTask task = createTask(user.userId(), "USER_TEXT", doc.getId());
         try {
             CognitionResult candidate = cognitionClient.extract("USER_TEXT", text);
-            Long eventId = persistEvent(candidate, "USER_TEXT", contentHash, doc.getId(), null);
+            Long eventId = persistEvent(user, candidate, "USER_TEXT", contentHash, doc.getId(), null, false, text);
+            persistInformationItem(candidate, "用户文本提交", text, contentHash);
             succeedTask(task, eventId, candidate);
             return response(task, "文本导入完成，已生成AI预测事件");
         } catch (Exception ex) {
@@ -112,7 +116,7 @@ public class ImportService {
         ocrMeta.put("engine", "pending");
         ocrMeta.put("imageName", request.imageName());
         ocrMeta.put("note", "OCR引擎待接入，识别后将自动生成事件");
-        RawDocument doc = rawDocumentService.save(buildRawDocument("USER_IMAGE", null, null, contentHash, ocrMeta));
+        RawDocument doc = rawDocumentService.save(buildRawDocument("USER_IMAGE", user.userId(), null, null, contentHash, ocrMeta));
         ImportTask task = createTask(user.userId(), "USER_IMAGE", doc.getId());
         Map<String, Object> summary = new LinkedHashMap<>();
         summary.put("ocrStatus", "PENDING");
@@ -153,12 +157,13 @@ public class ImportService {
             fileMeta.put("fileName", originalFilename);
             fileMeta.put("fileSize", size);
             fileMeta.put("extension", getExtension(originalFilename));
-            RawDocument doc = rawDocumentService.save(buildRawDocument("USER_FILE", null, text, contentHash, fileMeta));
+            RawDocument doc = rawDocumentService.save(buildRawDocument("USER_FILE", user.userId(), null, text, contentHash, fileMeta));
             task.setRawDocId(doc.getId());
             importTaskMapper.updateById(task);
 
             CognitionResult candidate = cognitionClient.extract("USER_FILE", text);
-            Long eventId = persistEvent(candidate, "USER_FILE", contentHash, doc.getId(), null);
+            Long eventId = persistEvent(user, candidate, "USER_FILE", contentHash, doc.getId(), null, false, text);
+            persistInformationItem(candidate, "用户文件上传", text, contentHash);
             succeedTask(task, eventId, candidate);
             return response(task, "文件导入完成，已生成AI预测事件");
         } catch (Exception ex) {
@@ -192,6 +197,9 @@ public class ImportService {
         if (!StringUtils.hasText(rawJson)) {
             throw new BusinessException("RAIN_JSON_REQUIRED", "雨课堂JSON不能为空", HttpStatus.BAD_REQUEST);
         }
+        if (rawJson.getBytes(java.nio.charset.StandardCharsets.UTF_8).length > properties.maxRainJsonBytes()) {
+            throw new BusinessException("RAIN_JSON_TOO_LARGE", "雨课堂JSON超过最大大小限制", HttpStatus.PAYLOAD_TOO_LARGE);
+        }
         List<RawRainItem> items;
         try {
             items = rainClassroomParser.parseJson(rawJson);
@@ -202,7 +210,7 @@ public class ImportService {
             throw new BusinessException("RAIN_JSON_EMPTY", "未解析到任何雨课堂数据", HttpStatus.BAD_REQUEST);
         }
         String contentHash = sha256(rawJson);
-        RawDocument doc = rawDocumentService.save(buildRawDocument("RAIN_CLASSROOM", null, rawJson, contentHash, null));
+        RawDocument doc = rawDocumentService.save(buildRawDocument("RAIN_CLASSROOM", user.userId(), null, rawJson, contentHash, null));
         ImportTask task = createTask(user.userId(), "RAIN_JSON", doc.getId());
         int success = 0;
         int fail = 0;
@@ -211,7 +219,7 @@ public class ImportService {
             String plainText = item.toPlainText();
             try {
                 CognitionResult candidate = cognitionClient.extract("RAIN_CLASSROOM", plainText);
-                Long eid = persistEvent(candidate, "RAIN_CLASSROOM", sha256(plainText), doc.getId(), null);
+                Long eid = persistEvent(user, candidate, "RAIN_CLASSROOM", sha256(plainText), doc.getId(), null, true, plainText);
                 eventIds.add(eid);
                 success++;
             } catch (Exception ex) {
@@ -238,6 +246,9 @@ public class ImportService {
     @Transactional(rollbackFor = Exception.class)
     public ImportTaskResponse submitRainCookieImport(CurrentUser user, RainCookieImportRequest request) {
         checkRateLimit(user.userId());
+        if (!properties.rainCookieEnabled()) {
+            throw new BusinessException("RAIN_COOKIE_DISABLED", "Cookie导入尚未获得授权，暂不开放", HttpStatus.FORBIDDEN);
+        }
         if (!Boolean.TRUE.equals(request.agreeOneTimeUse())) {
             throw new BusinessException("RAIN_COOKIE_CONSENT_REQUIRED", "必须同意一次性授权使用", HttpStatus.BAD_REQUEST);
         }
@@ -258,14 +269,18 @@ public class ImportService {
         task.setTaskStatus("PENDING");
         task.setResultSummary(toJson(summary));
         importTaskMapper.updateById(task);
+
         return response(task, "雨课堂Cookie已临时接收（一次性授权），任务已创建");
     }
 
-    private Long persistEvent(CognitionResult candidate, String sourceType, String contentHash, String rawDocId, String sourceUrl) {
-        String dedupKey = computeDedupKey(candidate.title(), candidate.startTime(), sourceType);
+    private Long persistEvent(CurrentUser user, CognitionResult candidate, String sourceType,
+                              String contentHash, String rawDocId, String sourceUrl,
+                              boolean privateEvent, String originalText) {
+        String dedupKey = computeDedupKey(candidate.title(), candidate.startTime(), sourceType,
+                privateEvent ? user.userId() : null);
         return eventServiceClient.createEvent(
                 candidate.title(),
-                candidate.summary(),
+                originalText,
                 candidate.eventType(),
                 sourceType,
                 candidate.startTime(),
@@ -274,6 +289,8 @@ public class ImportService {
                 candidate.organizer(),
                 toJson(candidate.targetScopes()),
                 toJson(candidate.tags()),
+                privateEvent ? "PRIVATE" : "PUBLIC",
+                privateEvent ? user.userId() : null,
                 dedupKey,
                 rawDocId,
                 sourceUrl,
@@ -281,9 +298,22 @@ public class ImportService {
         );
     }
 
-    private RawDocument buildRawDocument(String sourceType, String sourceUrl, String plainText, String contentHash, Map<String, Object> ocrMeta) {
+    private void persistInformationItem(CognitionResult candidate, String sourceName, String text, String contentHash) {
+        try {
+            String title = StringUtils.hasText(candidate.title()) ? candidate.title() : "未命名信息";
+            String content = StringUtils.hasText(candidate.summary()) ? candidate.summary() : text;
+            informationServiceClient.createItem(title, content, sourceName, null, null, contentHash);
+        } catch (Exception ex) {
+            // 信息条目创建失败不影响主流程
+        }
+    }
+
+    private RawDocument buildRawDocument(String sourceType, Long ownerUserId, String sourceUrl,
+                                         String plainText, String contentHash, Map<String, Object> ocrMeta) {
         RawDocument d = new RawDocument();
         d.setSourceType(sourceType);
+        d.setOwnerUserId(ownerUserId);
+        d.setPrivacyLevel("PRIVATE");
         d.setSourceUrl(sourceUrl);
         d.setPlainText(plainText);
         d.setContentHash(contentHash);
@@ -328,8 +358,9 @@ public class ImportService {
         return new ImportTaskResponse(task.getId(), task.getTaskStatus(), message);
     }
 
-    private String computeDedupKey(String title, String startTime, String sourceType) {
-        String normalized = normalizeTitle(title) + "|" + (startTime == null ? "" : startTime.trim()) + "|" + sourceType;
+    private String computeDedupKey(String title, String startTime, String sourceType, Long ownerUserId) {
+        String normalized = (ownerUserId == null ? "" : ownerUserId + "|")
+                + normalizeTitle(title) + "|" + (startTime == null ? "" : startTime.trim()) + "|" + sourceType;
         return sha256(normalized);
     }
 

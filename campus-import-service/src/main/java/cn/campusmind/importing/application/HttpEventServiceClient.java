@@ -39,6 +39,7 @@ public class HttpEventServiceClient implements EventServiceClient {
                             String startTime, String endTime,
                             String location, String organizer,
                             String targetScopeJson, String tagsJson,
+                            String visibility, Long ownerUserId,
                             String dedupKey, String rawDocId, String sourceUrl, String contentHash) {
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("title", title);
@@ -51,6 +52,7 @@ public class HttpEventServiceClient implements EventServiceClient {
         body.put("organizer", organizer);
         body.put("targetScopeJson", targetScopeJson);
         body.put("tagsJson", tagsJson);
+        body.put("visibility", visibility);
         body.put("dedupKey", dedupKey);
         body.put("rawDocId", rawDocId);
         body.put("sourceUrl", sourceUrl);
@@ -58,8 +60,12 @@ public class HttpEventServiceClient implements EventServiceClient {
 
         ApiResponse<Long> response;
         try {
-            response = restClient.post()
-                    .uri("/api/v1/events")
+            RestClient.RequestBodyUriSpec request = restClient.post();
+            var requestWithUri = request.uri("/api/v1/events");
+            if (ownerUserId != null) {
+                requestWithUri.header("X-User-Id", String.valueOf(ownerUserId));
+            }
+            response = requestWithUri
                     .body(body)
                     .retrieve()
                     .body(RESPONSE_TYPE);

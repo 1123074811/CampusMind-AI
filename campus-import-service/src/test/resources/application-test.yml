@@ -23,6 +23,7 @@ campus:
   import:
     ai-base-url: http://localhost:8089
     event-base-url: http://localhost:8083
+    feed-base-url: http://localhost:8084
     rain-cookie-ttl-minutes: 10
     max-text-length: 20000
     max-image-bytes: 5242880

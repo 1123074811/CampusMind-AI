@@ -14,6 +14,10 @@ public class RawDocument {
 
     private String sourceType;
 
+    private Long ownerUserId;
+
+    private String privacyLevel;
+
     private String sourceUrl;
 
     private String title;
@@ -44,6 +48,22 @@ public class RawDocument {
 
     public void setSourceType(String sourceType) {
         this.sourceType = sourceType;
+    }
+
+    public Long getOwnerUserId() {
+        return ownerUserId;
+    }
+
+    public void setOwnerUserId(Long ownerUserId) {
+        this.ownerUserId = ownerUserId;
+    }
+
+    public String getPrivacyLevel() {
+        return privacyLevel;
+    }
+
+    public void setPrivacyLevel(String privacyLevel) {
+        this.privacyLevel = privacyLevel;
     }
 
     public String getSourceUrl() {

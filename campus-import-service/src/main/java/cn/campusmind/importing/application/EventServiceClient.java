@@ -12,5 +12,6 @@ public interface EventServiceClient {
                      String startTime, String endTime,
                      String location, String organizer,
                      String targetScopeJson, String tagsJson,
+                     String visibility, Long ownerUserId,
                      String dedupKey, String rawDocId, String sourceUrl, String contentHash);
 }
