@@ -57,18 +57,34 @@ public class PgEventVectorStore implements EventVectorStore {
 
     @Override
     public List<VectorSearchHit> search(String query, int topK) {
+        return search(query, topK, null);
+    }
+
+    @Override
+    public List<VectorSearchHit> search(String query, int topK, Long userId) {
         int limit = topK <= 0 ? 10 : topK;
         try {
-            SearchRequest request = SearchRequest.builder()
+            SearchRequest.Builder requestBuilder = SearchRequest.builder()
                     .query(query)
-                    .topK(limit)
-                    .build();
+                    .topK(limit);
+            // 构建可见性过滤表达式
+            if (userId != null) {
+                requestBuilder.filterExpression(
+                        "visibility == 'PUBLIC' || ownerUserId == '" + userId + "'");
+            } else {
+                requestBuilder.filterExpression("visibility == 'PUBLIC'");
+            }
+            SearchRequest request = requestBuilder.build();
             List<Document> documents = vectorStore.similaritySearch(request);
             if (documents == null || documents.isEmpty()) {
                 return List.of();
             }
+            // PG 向量库的 filterExpression 不一定生效，双重过滤保障
             List<VectorSearchHit> hits = new ArrayList<>(documents.size());
             for (Document doc : documents) {
+                if (!isVisibleTo(doc.getMetadata(), userId)) {
+                    continue;
+                }
                 double score = extractScore(doc);
                 hits.add(new VectorSearchHit(doc.getId(), doc.getText(), score, doc.getMetadata()));
             }
@@ -77,6 +93,27 @@ public class PgEventVectorStore implements EventVectorStore {
             log.warn("PG 向量检索失败 query={}", query, ex);
             return List.of();
         }
+    }
+
+    /**
+     * 本地可见性双重过滤，防止 filterExpression 失效时泄露私有事件。
+     */
+    private static boolean isVisibleTo(Map<String, Object> metadata, Long userId) {
+        if (metadata == null) {
+            return true;
+        }
+        Object visibility = metadata.get("visibility");
+        if (visibility == null || "PUBLIC".equals(visibility.toString())) {
+            return true;
+        }
+        if ("PRIVATE".equals(visibility.toString())) {
+            Object ownerUserId = metadata.get("ownerUserId");
+            if (ownerUserId == null) {
+                return false;
+            }
+            return userId != null && userId.toString().equals(ownerUserId.toString());
+        }
+        return true;
     }
 
     private static double extractScore(Document doc) {

@@ -4,6 +4,8 @@ import { fetchDashboard, reviewEvent, updateEvent, deleteEvent, batchDeleteEvent
 import {
   createAdminUser,
   fetchAiConfig,
+  fetchAdminTables,
+  fetchAdminTableRows,
   fetchAdminLogs,
   fetchAdminUsers,
   resetAdminUserPassword,
@@ -23,6 +25,7 @@ import TasksView from './views/TasksView.vue';
 import UsersView from './views/UsersView.vue';
 import LogsView from './views/LogsView.vue';
 import AgentView from './views/AgentView.vue';
+import DatabaseView from './views/DatabaseView.vue';
 
 const session = ref<AdminSession | null>(loadSession());
 const activeNav = ref<NavKey>('review');
@@ -34,6 +37,10 @@ const crawlItems = ref<CrawlItem[]>([]);
 const adminUsers = ref<AdminManagedUser[]>([]);
 const auditLogs = ref<AdminAuditLog[]>([]);
 const aiConfig = ref<AiConfig | null>(null);
+const databaseTables = ref<Array<{ name: string; label: string; columns: string[] }>>([]);
+const databaseRows = ref<Array<Record<string, unknown>>>([]);
+const selectedTable = ref('campus_event');
+const databaseError = ref('');
 const loading = ref(false);
 const crawlerRunning = ref(false);
 const crawlingSourceId = ref<number | null>(null);
@@ -49,14 +56,18 @@ const dashboardMetrics = ref<DashboardMetrics>({
 
 const urgentCount = computed(() => reviewEvents.value.filter((item) => item.status === 'CORRECTED').length);
 const reviewCount = computed(() => reviewEvents.value.filter((item) => item.status === 'AI_PUBLISHED' || item.status === 'CORRECTED').length);
+const isAdmin = computed(() => session.value?.user.role === 'ADMIN');
 
 const navItems = computed<NavItem[]>(() => [
   { key: 'review', label: '校园事件', count: reviewEvents.value.length },
-  { key: 'agent', label: '智能体', count: reviewEvents.value.filter((item) => item.aiStatus !== 'SUCCESS').length },
   { key: 'sources', label: '数据源', count: visibleDataSources.value.length },
   { key: 'tasks', label: '采集任务', count: visibleCrawlTasks.value.length },
-  { key: 'users', label: '用户管理', count: adminUsers.value.length },
-  { key: 'logs', label: '日志管理', count: auditLogs.value.length }
+  { key: 'logs', label: '日志管理', count: auditLogs.value.length },
+  ...(isAdmin.value ? [
+    { key: 'agent' as const, label: '智能体', count: reviewEvents.value.filter((item) => item.aiStatus !== 'SUCCESS').length },
+    { key: 'users' as const, label: '用户管理', count: adminUsers.value.length },
+    { key: 'database' as const, label: '数据表管理', count: databaseTables.value.length }
+  ] : [])
 ]);
 
 const validSourceIds = computed(() => new Set(visibleDataSources.value.map((source) => source.id)));
@@ -174,20 +185,32 @@ async function loadDashboard() {
     } catch (error) {
       crawlItems.value = [];
     }
-    try {
-      adminUsers.value = (await fetchAdminUsers(session.value)).items;
-    } catch (error) {
-      adminUsers.value = [];
+    if (isAdmin.value) {
+      try {
+        adminUsers.value = (await fetchAdminUsers(session.value)).items;
+      } catch (error) {
+        adminUsers.value = [];
+      }
+      try {
+        databaseTables.value = await fetchAdminTables(session.value);
+        await loadTable(selectedTable.value);
+      } catch (error) {
+        databaseTables.value = [];
+        databaseRows.value = [];
+        databaseError.value = error instanceof Error ? error.message : '数据表加载失败';
+      }
     }
     try {
       auditLogs.value = (await fetchAdminLogs(session.value)).items;
     } catch (error) {
       auditLogs.value = [];
     }
-    try {
-      aiConfig.value = await fetchAiConfig(session.value);
-    } catch (error) {
-      aiConfig.value = null;
+    if (isAdmin.value) {
+      try {
+        aiConfig.value = await fetchAiConfig(session.value);
+      } catch (error) {
+        aiConfig.value = null;
+      }
     }
     selectedId.value = dashboard.events[0]?.id ?? selectedId.value;
     apiMode.value = 'live';
@@ -212,7 +235,7 @@ async function loadDashboard() {
 }
 
 async function loadAiConfig() {
-  if (!session.value) return;
+  if (!session.value || !isAdmin.value) return;
   try {
     aiConfig.value = await fetchAiConfig(session.value);
     apiMessage.value = '智能体配置已刷新';
@@ -222,7 +245,7 @@ async function loadAiConfig() {
 }
 
 async function saveAiConfig(payload: { mode: 'rule' | 'llm'; baseUrl: string; model: string; apiKey?: string }) {
-  if (!session.value) return;
+  if (!session.value || !isAdmin.value) return;
   try {
     aiConfig.value = await updateAiConfig(session.value, payload);
     apiMessage.value = '配置已保存并热加载，即时生效';
@@ -232,7 +255,7 @@ async function saveAiConfig(payload: { mode: 'rule' | 'llm'; baseUrl: string; mo
 }
 
 async function loadUsers() {
-  if (!session.value) {
+  if (!session.value || !isAdmin.value) {
     return;
   }
   try {
@@ -240,6 +263,18 @@ async function loadUsers() {
     apiMessage.value = '用户列表已刷新';
   } catch (error) {
     apiMessage.value = error instanceof Error ? error.message : '用户列表加载失败';
+  }
+}
+
+async function loadTable(table: string) {
+  if (!session.value || !isAdmin.value) return;
+  selectedTable.value = table;
+  try {
+    databaseRows.value = await fetchAdminTableRows(session.value, table);
+    databaseError.value = '';
+  } catch (error) {
+    databaseRows.value = [];
+    databaseError.value = error instanceof Error ? error.message : '数据表加载失败';
   }
 }
 
@@ -510,6 +545,14 @@ onMounted(() => {
         v-else-if="activeNav === 'logs'"
         :logs="auditLogs"
         @refresh="loadLogs"
+      />
+      <DatabaseView
+        v-else-if="activeNav === 'database'"
+        :tables="databaseTables"
+        :selected="selectedTable"
+        :rows="databaseRows"
+        :error="databaseError"
+        @select="loadTable"
       />
     </section>
   </main>

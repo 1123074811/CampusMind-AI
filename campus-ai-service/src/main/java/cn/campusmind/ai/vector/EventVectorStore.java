@@ -29,11 +29,24 @@ public interface EventVectorStore {
     String store(String docId, String text, Map<String, Object> metadata);
 
     /**
-     * 语义检索。
+     * 语义检索（不含用户可见性过滤）。
      *
      * @param query 查询文本
      * @param topK  召回数量
      * @return 按相关性降序的命中列表
      */
     List<VectorSearchHit> search(String query, int topK);
+
+    /**
+     * 语义检索（含用户可见性过滤）。
+     *
+     * <p>私有事件只返回 ownerUserId 与 userId 匹配的文档；
+     * userId 为 null 时只返回 PUBLIC 文档。
+     *
+     * @param query  查询文本
+     * @param topK   召回数量
+     * @param userId 当前用户 ID，可为 null（未登录）
+     * @return 按相关性降序的命中列表
+     */
+    List<VectorSearchHit> search(String query, int topK, Long userId);
 }

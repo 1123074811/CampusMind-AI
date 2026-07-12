@@ -45,12 +45,20 @@ public class InMemoryEventVectorStore implements EventVectorStore {
 
     @Override
     public synchronized List<VectorSearchHit> search(String query, int topK) {
+        return search(query, topK, null);
+    }
+
+    @Override
+    public synchronized List<VectorSearchHit> search(String query, int topK, Long userId) {
         Set<String> queryTokens = tokenize(query);
         if (queryTokens.isEmpty()) {
             return List.of();
         }
         List<VectorSearchHit> hits = new ArrayList<>();
         for (StoredDoc doc : docs) {
+            if (!isVisibleTo(doc.metadata, userId)) {
+                continue;
+            }
             Set<String> textTokens = tokenize(doc.text);
             double score = jaccard(queryTokens, textTokens);
             if (score > 0) {
@@ -60,6 +68,27 @@ public class InMemoryEventVectorStore implements EventVectorStore {
         hits.sort(Comparator.comparingDouble(VectorSearchHit::score).reversed());
         int limit = topK <= 0 ? 10 : topK;
         return hits.size() <= limit ? hits : new ArrayList<>(hits.subList(0, limit));
+    }
+
+    /**
+     * 可见性检查：PUBLIC 文档对所有人可见，PRIVATE 文档只对 owner 可见。
+     */
+    private static boolean isVisibleTo(Map<String, Object> metadata, Long userId) {
+        if (metadata == null) {
+            return true;
+        }
+        Object visibility = metadata.get("visibility");
+        if (visibility == null || "PUBLIC".equals(visibility.toString())) {
+            return true;
+        }
+        if ("PRIVATE".equals(visibility.toString())) {
+            Object ownerUserId = metadata.get("ownerUserId");
+            if (ownerUserId == null) {
+                return false;
+            }
+            return userId != null && userId.toString().equals(ownerUserId.toString());
+        }
+        return true;
     }
 
     private static Set<String> tokenize(String text) {

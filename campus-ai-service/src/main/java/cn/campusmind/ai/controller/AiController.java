@@ -10,6 +10,7 @@ import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -48,15 +49,19 @@ public class AiController {
     }
 
     @PostMapping("/vector/search")
-    public ApiResponse<VectorSearchResponse> vectorSearch(@Valid @RequestBody VectorSearchRequest request) {
+    public ApiResponse<VectorSearchResponse> vectorSearch(
+            @RequestHeader(value = "X-User-Id", required = false) Long userId,
+            @Valid @RequestBody VectorSearchRequest request) {
         int topK = request.topK() == null ? 10 : request.topK();
-        return ApiResponse.ok(aiApplicationService.searchVector(request.query(), topK));
+        return ApiResponse.ok(aiApplicationService.searchVector(request.query(), topK, userId));
     }
 
     @PostMapping("/chat")
-    public ApiResponse<ChatResponse> chat(@Valid @RequestBody ChatRequest request) {
+    public ApiResponse<ChatResponse> chat(
+            @RequestHeader(value = "X-User-Id", required = false) Long userId,
+            @Valid @RequestBody ChatRequest request) {
         boolean usePersonalProfile = Boolean.TRUE.equals(request.usePersonalProfile());
-        return ApiResponse.ok(aiApplicationService.chat(request.sessionId(), request.message(), usePersonalProfile));
+        return ApiResponse.ok(aiApplicationService.chat(request.sessionId(), request.message(), usePersonalProfile, userId));
     }
 
     @PutMapping("/runtime-config")

@@ -75,6 +75,16 @@ export async function fetchAiConfig(session: AdminSession | null) {
   return readPayload<AiConfig>(response);
 }
 
+export async function fetchAdminTables(session: AdminSession | null) {
+  const response = await fetch('/api/admin/tables', { headers: authHeaders(session) });
+  return readPayload<Array<{ name: string; label: string; columns: string[] }>>(response);
+}
+
+export async function fetchAdminTableRows(session: AdminSession | null, table: string) {
+  const response = await fetch(`/api/admin/tables/${encodeURIComponent(table)}?size=50`, { headers: authHeaders(session) });
+  return readPayload<Array<Record<string, unknown>>>(response);
+}
+
 export async function updateAiConfig(session: AdminSession | null, payload: {
   mode: 'rule' | 'llm'; baseUrl: string; model: string; apiKey?: string;
 }) {

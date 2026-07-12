@@ -1,4 +1,4 @@
-export type NavKey = 'review' | 'agent' | 'sources' | 'tasks' | 'users' | 'logs';
+export type NavKey = 'review' | 'agent' | 'sources' | 'tasks' | 'users' | 'logs' | 'database';
 
 export type ReviewStatus = 'AI_PUBLISHED' | 'CORRECTED' | 'REVIEWED' | 'REJECTED' | 'OFFLINE';
 export type EventType = 'NOTICE' | 'COURSE' | 'EXAM' | 'HOMEWORK' | 'ACTIVITY' | 'LECTURE' | 'COMPETITION' | 'SERVICE' | 'OTHER';

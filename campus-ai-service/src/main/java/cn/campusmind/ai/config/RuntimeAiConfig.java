@@ -6,12 +6,14 @@ import cn.campusmind.ai.agent.LlmCognitionAgent;
 import cn.campusmind.ai.agent.LlmDecisionAgent;
 import cn.campusmind.ai.agent.rules.CognitionRules;
 import cn.campusmind.ai.agent.rules.DecisionRules;
+import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.openai.OpenAiChatModel;
 import org.springframework.ai.openai.OpenAiChatOptions;
 import org.springframework.ai.openai.api.OpenAiApi;
+import org.springframework.core.env.Environment;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
@@ -26,15 +28,38 @@ public class RuntimeAiConfig {
     private static final Logger log = LoggerFactory.getLogger(RuntimeAiConfig.class);
 
     private final AiModeProperties properties;
+    private final Environment environment;
 
     private volatile AiModeProperties.Mode currentMode;
     private volatile ChatModel dynamicChatModel;
     private volatile CognitionAgent dynamicCognitionAgent;
     private volatile DecisionAgent dynamicDecisionAgent;
 
-    public RuntimeAiConfig(AiModeProperties properties) {
+    public RuntimeAiConfig(AiModeProperties properties, Environment environment) {
         this.properties = properties;
+        this.environment = environment;
         this.currentMode = properties.mode();
+    }
+
+    /**
+     * 启动时若配置为 LLM 模式，自动从环境变量初始化 ChatModel。
+     */
+    @PostConstruct
+    void init() {
+        if (this.currentMode == AiModeProperties.Mode.LLM) {
+            String baseUrl = environment.getProperty("spring.ai.openai.base-url", "https://api.deepseek.com");
+            String model = environment.getProperty("spring.ai.openai.chat.options.model", "deepseek-chat");
+            String apiKey = environment.getProperty("spring.ai.openai.api-key", "");
+            if (baseUrl != null && model != null && apiKey != null && !apiKey.isBlank()) {
+                log.info("启动时初始化 LLM 模式: model={}, baseUrl={}", model, baseUrl);
+                reload("llm", baseUrl, model, apiKey);
+            } else {
+                log.warn("LLM 模式已启用但缺少 baseUrl/model/apiKey，回退到规则模式");
+                this.currentMode = AiModeProperties.Mode.RULE;
+            }
+        } else {
+            log.info("AI 服务启动: 规则模式");
+        }
     }
 
     public AiModeProperties.Mode currentMode() {

@@ -19,6 +19,10 @@ import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -62,23 +66,30 @@ public class AiApplicationService {
         if (event.targetScopes() != null && !event.targetScopes().isEmpty()) {
             metadata.put("targetScopes", String.join(",", event.targetScopes()));
         }
+        // 写入可见性元数据，用于检索时过滤
+        String visibility = request.visibility() != null ? request.visibility() : "PUBLIC";
+        metadata.put("visibility", visibility);
+        if (request.ownerUserId() != null) {
+            metadata.put("ownerUserId", request.ownerUserId());
+        }
         String docId = eventVectorStore.store(request.docId(), vectorText.text(), metadata);
         return new VectorStoreResponse(docId, vectorText.text());
     }
 
-    public VectorSearchResponse searchVector(String query, int topK) {
-        List<VectorSearchHit> hits = eventVectorStore.search(query, topK);
+    public VectorSearchResponse searchVector(String query, int topK, Long userId) {
+        List<VectorSearchHit> hits = eventVectorStore.search(query, topK, userId);
         return new VectorSearchResponse(hits, hits.size());
     }
 
-    public ChatResponse chat(String sessionId, String message, boolean usePersonalProfile) {
+    public ChatResponse chat(String sessionId, String message, boolean usePersonalProfile, Long userId) {
         SearchPlan plan = planSearch(message, List.of(), usePersonalProfile);
         String answer = switch (plan.intent()) {
             case "CASUAL_CHAT" -> casualChatReply(message);
             case "IMPORT_HELP" -> "请在导入入口粘贴雨课堂 JSON 或一次性 Cookie，系统会在后台解析并生成待审核事件。";
-            case "PERSONAL_SCHEDULE" -> "我已按个人日程意图生成检索计划，后续会结合你的画像、课程和作业事件返回结果。";
-            case "QA_EXPLAIN", "SEMANTIC_SEARCH" -> ragAnswer(message, plan);
-            default -> "我已生成校园事件检索计划，可用于查询信息流、语义检索或个性化推荐。";
+            case "PERSONAL_SCHEDULE" -> ragAnswer(message, plan, userId);
+            case "FEED_QUERY" -> ragAnswer(message, plan, userId);
+            case "QA_EXPLAIN", "SEMANTIC_SEARCH" -> ragAnswer(message, plan, userId);
+            default -> ragAnswer(message, plan, userId);
         };
         String resolvedSessionId = sessionId == null || sessionId.isBlank() ? UUID.randomUUID().toString() : sessionId;
         return new ChatResponse(resolvedSessionId, answer, plan);
@@ -86,11 +97,11 @@ public class AiApplicationService {
 
     /**
      * 检索取向量库，把命中事件作为上下文拼出 RAG 答案。命中为空时回退到固定话术。
+     * 有 LLM 时将检索结果作为上下文交给 LLM 生成自然语言回复；无 LLM 时用规则格式化。
      */
-    private String ragAnswer(String message, SearchPlan plan) {
-        List<VectorSearchHit> hits = eventVectorStore.search(message, RAG_TOP_K);
+    private String ragAnswer(String message, SearchPlan plan, Long userId) {
+        List<VectorSearchHit> hits = eventVectorStore.search(message, RAG_TOP_K, userId);
         if (hits.isEmpty()) {
-            // 向量库无数据时，如果有 LLM 可用，直接用 LLM 回答
             ChatModel model = runtimeAiConfig.resolveChatModel();
             if (model != null) {
                 try {
@@ -99,15 +110,163 @@ public class AiApplicationService {
                     // LLM 调用失败，回退到固定话术
                 }
             }
-            return "QA_EXPLAIN".equals(plan.intent())
-                    ? "我已按问答解释意图生成检索计划，暂未在向量库召回相关事件，后续可结合原文进行说明。"
-                    : "我已按语义检索意图生成检索计划，暂未在向量库召回相关事件。";
+            return switch (plan.intent()) {
+                case "PERSONAL_SCHEDULE" ->
+                    "暂无你的个人日程数据。请先在\u300C导入\u300D入口导入雨课堂课表或作业数据，再来查询个人安排。";
+                case "FEED_QUERY" ->
+                    "当前信息流暂无匹配的重要通知。校园数据仍在持续抓眼中，请稍后再试。";
+                case "QA_EXPLAIN" ->
+                    "暂未找到与问题相关的校园事件，可尝试换个关键词，或先导入相关数据。";
+                default ->
+                    "暂未在向量库召回相关事件，可尝试更具体的关键词，或通过\u300C导入\u300D入口补充数据。";
+            };
         }
+    
+        // 有 LLM 时：将检索结果作为上下文，让 LLM 生成自然回复
+        ChatModel model = runtimeAiConfig.resolveChatModel();
+        if (model != null) {
+            try {
+                return ragWithLlm(model, message, hits);
+            } catch (Exception ignored) {
+                // 回退到规则格式化
+            }
+        }
+    
+        // 无 LLM 时：规则格式化回复
+        return formatRagResponse(message, plan, hits);
+    }
+    
+    /**
+     * 有 LLM 的 RAG：将检索到的事件作为上下文注入 Prompt，让 LLM 生成自然语言回复。
+     */
+    private static String todayStr() {
+        return LocalDate.now().format(DateTimeFormatter.ofPattern("yyyy年M月d日 EEEE", java.util.Locale.CHINA));
+    }
+
+    private String ragWithLlm(ChatModel model, String message, List<VectorSearchHit> hits) {
         String context = hits.stream()
-                .map(VectorSearchHit::text)
-                .map(text -> "- " + text.replace("\n", " "))
-                .collect(Collectors.joining("\n"));
-        return "已从向量库召回 " + hits.size() + " 条相关事件作为参考：\n" + context;
+                .map(h -> parseField(h.text(), "标题") + "\n" + h.text())
+                .collect(Collectors.joining("\n---\n"));
+        String systemPrompt = "你是 CampusMind 校园 AI 助手，负责帮助学生查询校园信息。\n"
+                + "当前日期：" + todayStr() + "。请始终基于真实日期回答，不要假设或猜测日期。\n"
+                + "以下是从校园信息库中检索到的相关内容，请基于这些内容回答用户的问题。\n"
+                + "要求：\n"
+                + "1. 使用自然、友好的语气，像一个贴心的学长/学姐在帮忙查资料\n"
+                + "2. 使用 Markdown 格式组织回复（标题加粗、列表、时间用行内代码等）\n"
+                + "3. 提取关键信息做摘要，不要照搬原文\n"
+                + "4. 如果检索内容与问题不太相关，如实告知并建议换个关键词\n"
+                + "5. 回复末尾可以给出建议或后续操作提示\n"
+                + "6. 涉及时间判断时，以当前日期为准，明确告知哪些是进行中、哪些即将开始、哪些已过期\n\n"
+                + "--- 检索到的校园信息 ---\n" + context;
+        Prompt prompt = new Prompt(
+                new SystemMessage(systemPrompt),
+                new UserMessage(message)
+        );
+        return model.call(prompt).getResult().getOutput().getText();
+    }
+    
+    /**
+     * 无 LLM 的规则格式化 RAG 回复：解析向量库文本，提取结构化字段，输出 Markdown 格式。
+     */
+    private String formatRagResponse(String message, SearchPlan plan, List<VectorSearchHit> hits) {
+        StringBuilder sb = new StringBuilder();
+        String intent = plan.intent();
+    
+        // AI 角色开场白
+        if ("FEED_QUERY".equals(intent)) {
+            sb.append("我帮你查了一下最新的校园信息，找到 **").append(hits.size()).append(" 条**相关通知：\n\n");
+        } else if ("PERSONAL_SCHEDULE".equals(intent)) {
+            sb.append("根据你的查询，我检索到以下相关安排：\n\n");
+        } else {
+            sb.append("根据你的问题，我从信息库中找到了 **").append(hits.size()).append(" 条**相关内容：\n\n");
+        }
+    
+        // 逐条展示事件
+        for (int i = 0; i < hits.size(); i++) {
+            Map<String, String> fields = parseFields(hits.get(i).text());
+            String title = fields.getOrDefault("标题", "未知标题");
+            String type = translateEventType(fields.getOrDefault("类型", "OTHER"));
+            String time = fields.get("时间");
+            String summary = fields.get("摘要");
+            String location = fields.get("地点");
+            String tags = fields.get("标签");
+            String content = fields.get("正文");
+    
+            sb.append("### ").append(i + 1).append(". ").append(title).append("\n\n");
+            sb.append("` ").append(type).append(" `");
+            if (time != null) {
+                sb.append("  ` ").append(time).append(" `");
+            }
+            if (location != null) {
+                sb.append("  📍 ").append(location);
+            }
+            sb.append("\n\n");
+    
+            if (summary != null && !summary.isBlank()) {
+                sb.append("> ").append(summary).append("\n\n");
+            }
+    
+            // 截取正文摘要（前 150 字）
+            if (content != null && content.length() > 20) {
+                String excerpt = content.length() > 150 ? content.substring(0, 150) + "…" : content;
+                sb.append(excerpt).append("\n\n");
+            }
+    
+            if (tags != null) {
+                sb.append("🏷️ ").append(tags).append("\n\n");
+            }
+    
+            sb.append("---\n\n");
+        }
+    
+        // 结尾提示
+        sb.append("如果需要了解某条通知的**完整详情**，可以在「发现」页面点击查看。");
+        return sb.toString();
+    }
+    
+    /**
+     * 解析向量库文本中的所有字段。
+     */
+    private static Map<String, String> parseFields(String text) {
+        Map<String, String> fields = new HashMap<>();
+        if (text == null || text.isBlank()) return fields;
+        for (String rawLine : text.split("\n")) {
+            String line = rawLine.trim();
+            int idx = line.indexOf("：");
+            if (idx > 0 && idx < line.length() - 1) {
+                fields.put(line.substring(0, idx), line.substring(idx + 1));
+            }
+        }
+        return fields;
+    }
+    
+    /**
+     * 解析单个字段值。
+     */
+    private static String parseField(String text, String label) {
+        if (text == null) return "";
+        for (String line : text.split("\n")) {
+            String trimmed = line.trim();
+            if (trimmed.startsWith(label + "：")) {
+                return trimmed.substring(label.length() + 1);
+            }
+        }
+        return "";
+    }
+    
+    private static final Map<String, String> EVENT_TYPE_LABELS = Map.ofEntries(
+            Map.entry("NOTICE", "📢 通知"),
+            Map.entry("LECTURE", "🎤 讲座"),
+            Map.entry("EXAM", "📝 考试"),
+            Map.entry("HOMEWORK", "📚 作业"),
+            Map.entry("COURSE", "📖 课程"),
+            Map.entry("COMPETITION", "🏆 竞赛"),
+            Map.entry("ACTIVITY", "🎯 活动"),
+            Map.entry("OTHER", "📋 其他")
+    );
+    
+    private static String translateEventType(String type) {
+        return EVENT_TYPE_LABELS.getOrDefault(type, "📋 " + type);
     }
 
     /**
@@ -137,6 +296,7 @@ public class AiApplicationService {
     private String callLlm(ChatModel model, String message) {
         Prompt prompt = new Prompt(
                 new SystemMessage("你是 CampusMind 校园 AI 助手，基于校园多源信息为学生提供智能问答服务。"
+                        + "当前日期：" + todayStr() + "。请基于真实日期回答，不要假设日期。"
                         + "请用友好、简洁、专业的语气回复。如果用户只是打招呼，请简短回应并介绍你能提供的帮助。"),
                 new UserMessage(message)
         );
