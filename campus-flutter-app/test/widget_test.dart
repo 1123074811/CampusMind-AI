@@ -4,6 +4,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:campus_flutter_app/information_api.dart';
 import 'package:campus_flutter_app/main.dart';
 
+// ImportResult/ImportTaskItem re-exported via information_api.dart
+
 void main() {
   testWidgets('renders login and information home flow', (tester) async {
     final api = _FakeCampusApi();
@@ -81,5 +83,54 @@ class _FakeCampusApi implements CampusApi {
   ) async {
     statusUpdates.add(readStatus);
     return _item.copyWith(readStatus: readStatus);
+  }
+
+  @override
+  Future<ImportResult> importText(String text, LoginSession session) async {
+    return const ImportResult(taskId: 1, status: 'SUCCESS', message: 'ok');
+  }
+
+  @override
+  Future<ImportResult> importImage(
+      String base64, String? name, LoginSession session) async {
+    return const ImportResult(taskId: 2, status: 'PENDING', message: 'ok');
+  }
+
+  @override
+  Future<ImportResult> importFile(
+      List<int> bytes, String fileName, LoginSession session) async {
+    return const ImportResult(taskId: 3, status: 'SUCCESS', message: 'ok');
+  }
+
+  @override
+  Future<ImportResult> importRainJson(
+      String dataType, String rawJson, LoginSession session) async {
+    return const ImportResult(taskId: 4, status: 'SUCCESS', message: 'ok');
+  }
+
+  @override
+  Future<ImportResult> importRainCookie(
+      String cookie, List<String> scopes, LoginSession session) async {
+    return const ImportResult(taskId: 5, status: 'PENDING', message: 'ok');
+  }
+
+  @override
+  Future<List<ImportTaskItem>> fetchImportTasks(LoginSession session) async {
+    return const [];
+  }
+
+  @override
+  Future<AiChatResult> aiChat(String sessionId, String message, LoginSession session) async {
+    return const AiChatResult(sessionId: 's1', answer: 'ok');
+  }
+
+  @override
+  Future<SearchResult> search(String query, LoginSession session) async {
+    return const SearchResult(items: [], total: 0);
+  }
+
+  @override
+  Future<UserProfile> fetchMe(LoginSession session) async {
+    return const UserProfile(id: 1, username: 'admin');
   }
 }
