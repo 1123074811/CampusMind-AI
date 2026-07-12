@@ -55,6 +55,11 @@ public class FeedService {
                 .notIn(CampusEvent::getStatus, List.of("REJECTED", "OFFLINE"))
                 .eq(StringUtils.hasText(eventType), CampusEvent::getEventType, eventType)
                 .lt(cursor != null, CampusEvent::getPublishedAt, cursor)
+                .and(wrapper -> wrapper.eq(CampusEvent::getVisibility, "PUBLIC")
+                        .or()
+                        .isNull(CampusEvent::getVisibility)
+                        .or(userId != null)
+                        .eq(userId != null, CampusEvent::getOwnerUserId, userId))
                 .orderByDesc(CampusEvent::getPublishedAt)
                 .orderByDesc(CampusEvent::getCreatedAt);
 

@@ -23,6 +23,11 @@ public class CampusEvent {
     @TableField("source_type")
     private String sourceType;
 
+    private String visibility;
+
+    @TableField("owner_user_id")
+    private Long ownerUserId;
+
     private String status;
 
     @TableField("start_time")
@@ -59,6 +64,14 @@ public class CampusEvent {
 
     public String getSourceType() {
         return sourceType;
+    }
+
+    public String getVisibility() {
+        return visibility;
+    }
+
+    public Long getOwnerUserId() {
+        return ownerUserId;
     }
 
     public String getStatus() {

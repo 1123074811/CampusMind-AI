@@ -60,6 +60,8 @@ class FeedControllerTest {
                     )
                     """);
             statement.execute("DELETE FROM campus_event");
+            statement.execute("ALTER TABLE campus_event ADD COLUMN IF NOT EXISTS visibility VARCHAR(16) DEFAULT 'PUBLIC'");
+            statement.execute("ALTER TABLE campus_event ADD COLUMN IF NOT EXISTS owner_user_id BIGINT");
             statement.execute("DELETE FROM user_profile");
         }
         insertProfile();
@@ -87,6 +89,26 @@ class FeedControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.items.length()").value(1))
                 .andExpect(jsonPath("$.data.items[0].eventType").value("EXAM"));
+    }
+
+    @Test
+    void feedOnlyReturnsPrivateEventsToTheirOwner() throws Exception {
+        try (Connection connection = dataSource.getConnection();
+             PreparedStatement statement = connection.prepareStatement("""
+                     INSERT INTO campus_event (
+                       id, title, summary, event_type, source_type, status, visibility, owner_user_id, published_at
+                     ) VALUES (4, '我的雨课堂作业', '仅本人可见', 'HOMEWORK', 'RAIN_CLASSROOM', 'AI_PUBLISHED', 'PRIVATE', 1,
+                       TIMESTAMP '2026-07-09 10:00:00')
+                     """)) {
+            statement.executeUpdate();
+        }
+
+        mockMvc.perform(get("/api/v1/feed").header("X-User-Id", "1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items.length()").value(3));
+        mockMvc.perform(get("/api/v1/feed").header("X-User-Id", "2"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items.length()").value(2));
     }
 
     private void insertProfile() throws Exception {

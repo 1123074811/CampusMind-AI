@@ -1,13 +1,15 @@
 package cn.campusmind.feed.application;
 
 import cn.campusmind.common.exception.BusinessException;
-import cn.campusmind.feed.controller.InformationDetailResponse;
-import cn.campusmind.feed.controller.InformationFeedItemResponse;
-import cn.campusmind.feed.controller.InformationFeedResponse;
+import cn.campusmind.feed.controller.*;
+import cn.campusmind.feed.domain.DataSource;
 import cn.campusmind.feed.domain.InformationItem;
 import cn.campusmind.feed.domain.UserInformationState;
+import cn.campusmind.feed.domain.UserSourceSubscription;
+import cn.campusmind.feed.infrastructure.mapper.DataSourceMapper;
 import cn.campusmind.feed.infrastructure.mapper.InformationItemMapper;
 import cn.campusmind.feed.infrastructure.mapper.UserInformationStateMapper;
+import cn.campusmind.feed.infrastructure.mapper.UserSourceSubscriptionMapper;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.fasterxml.jackson.core.type.TypeReference;
@@ -18,9 +20,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 import java.util.stream.Collectors;
 
 @Service
@@ -33,13 +33,19 @@ public class InformationService {
 
     private final InformationItemMapper informationItemMapper;
     private final UserInformationStateMapper userInformationStateMapper;
+    private final UserSourceSubscriptionMapper userSourceSubscriptionMapper;
+    private final DataSourceMapper dataSourceMapper;
     private final ObjectMapper objectMapper;
 
     public InformationService(InformationItemMapper informationItemMapper,
                               UserInformationStateMapper userInformationStateMapper,
+                              UserSourceSubscriptionMapper userSourceSubscriptionMapper,
+                              DataSourceMapper dataSourceMapper,
                               ObjectMapper objectMapper) {
         this.informationItemMapper = informationItemMapper;
         this.userInformationStateMapper = userInformationStateMapper;
+        this.userSourceSubscriptionMapper = userSourceSubscriptionMapper;
+        this.dataSourceMapper = dataSourceMapper;
         this.objectMapper = objectMapper;
     }
 
@@ -94,6 +100,42 @@ public class InformationService {
                 item.getAiNeedReview(),
                 aiCard(item)
         );
+    }
+
+    private static final Map<String, Long> SOURCE_NAME_TO_ID = Map.of(
+            "用户文本提交", 9405L,
+            "用户文件上传", 9406L,
+            "雨课堂导入", 9403L,
+            "用户截图 OCR", 9404L
+    );
+
+    /**
+     * 幂等创建信息条目（按 contentHash 去重），供 import-service 内部调用。
+     */
+    @Transactional
+    public Long createItem(CreateInformationItemRequest request) {
+        InformationItem existing = informationItemMapper.selectOne(
+                new LambdaQueryWrapper<InformationItem>()
+                        .eq(InformationItem::getContentHash, request.contentHash())
+                        .last("LIMIT 1"));
+        if (existing != null) {
+            return existing.getId();
+        }
+        LocalDateTime now = LocalDateTime.now();
+        InformationItem item = new InformationItem();
+        item.setSourceId(SOURCE_NAME_TO_ID.getOrDefault(request.sourceName(), 0L));
+        item.setTitle(request.title());
+        item.setDetailContent(request.detailContent());
+        item.setSourceName(request.sourceName());
+        item.setSourceUrl(request.sourceUrl() == null ? "" : request.sourceUrl());
+        item.setItemUrl(request.itemUrl() == null ? "campusmind://user-import" : request.itemUrl());
+        item.setContentHash(request.contentHash());
+        item.setFetchedAt(now);
+        item.setItemStatus("ACTIVE");
+        item.setParseStatus("DETAIL_SUCCESS");
+        item.setAiStatus("PENDING");
+        informationItemMapper.insert(item);
+        return item.getId();
     }
 
     @Transactional
@@ -207,4 +249,144 @@ public class InformationService {
                 ? normalized
                 : normalized.substring(0, PREVIEW_LENGTH);
     }
+
+    // ========== 新增接口：用户统计 ==========
+
+    @Transactional(readOnly = true)
+    public UserStatsResponse stats(Long userId) {
+        if (userId == null) {
+            return new UserStatsResponse(0, 0, 0);
+        }
+        long readCount = userInformationStateMapper.selectCount(new LambdaQueryWrapper<UserInformationState>()
+                .eq(UserInformationState::getUserId, userId)
+                .eq(UserInformationState::getReadStatus, "READ"));
+        long favoriteCount = userInformationStateMapper.selectCount(new LambdaQueryWrapper<UserInformationState>()
+                .eq(UserInformationState::getUserId, userId)
+                .eq(UserInformationState::getReadStatus, "FAVORITED"));
+        long subscriptionCount = userSourceSubscriptionMapper.selectCount(new LambdaQueryWrapper<UserSourceSubscription>()
+                .eq(UserSourceSubscription::getUserId, userId)
+                .eq(UserSourceSubscription::getEnabled, 1));
+        return new UserStatsResponse(readCount, favoriteCount, subscriptionCount);
+    }
+
+    // ========== 新增接口：收藏夹 ==========
+
+    @Transactional(readOnly = true)
+    public InformationFeedResponse favorites(Long userId, int size) {
+        if (userId == null) {
+            return new InformationFeedResponse(List.of(), null, false);
+        }
+        int safeSize = Math.min(Math.max(size, 1), 50);
+        List<UserInformationState> states = userInformationStateMapper.selectList(
+                new LambdaQueryWrapper<UserInformationState>()
+                        .eq(UserInformationState::getUserId, userId)
+                        .eq(UserInformationState::getReadStatus, "FAVORITED")
+                        .orderByDesc(UserInformationState::getArchivedAt)
+                        .last("LIMIT " + safeSize));
+        if (states.isEmpty()) {
+            return new InformationFeedResponse(List.of(), null, false);
+        }
+        List<Long> itemIds = states.stream().map(UserInformationState::getItemId).toList();
+        Map<Long, InformationItem> items = informationItemMapper.selectBatchIds(itemIds)
+                .stream().collect(Collectors.toMap(InformationItem::getId, i -> i));
+        List<InformationFeedItemResponse> responses = states.stream()
+                .map(s -> items.get(s.getItemId()))
+                .filter(Objects::nonNull)
+                .filter(this::isVisible)
+                .map(item -> toFeedItem(item, "FAVORITED"))
+                .toList();
+        return new InformationFeedResponse(responses, null, false);
+    }
+
+    // ========== 新增接口：阅读历史 ==========
+
+    @Transactional(readOnly = true)
+    public InformationFeedResponse readHistory(Long userId, int size) {
+        if (userId == null) {
+            return new InformationFeedResponse(List.of(), null, false);
+        }
+        int safeSize = Math.min(Math.max(size, 1), 50);
+        List<UserInformationState> states = userInformationStateMapper.selectList(
+                new LambdaQueryWrapper<UserInformationState>()
+                        .eq(UserInformationState::getUserId, userId)
+                        .eq(UserInformationState::getReadStatus, "READ")
+                        .orderByDesc(UserInformationState::getReadAt)
+                        .last("LIMIT " + safeSize));
+        if (states.isEmpty()) {
+            return new InformationFeedResponse(List.of(), null, false);
+        }
+        List<Long> itemIds = states.stream().map(UserInformationState::getItemId).toList();
+        Map<Long, InformationItem> items = informationItemMapper.selectBatchIds(itemIds)
+                .stream().collect(Collectors.toMap(InformationItem::getId, i -> i));
+        List<InformationFeedItemResponse> responses = states.stream()
+                .map(s -> items.get(s.getItemId()))
+                .filter(Objects::nonNull)
+                .filter(this::isVisible)
+                .map(item -> toFeedItem(item, "READ"))
+                .toList();
+        return new InformationFeedResponse(responses, null, false);
+    }
+
+    // ========== 新增接口：我的订阅 ==========
+
+    @Transactional(readOnly = true)
+    public List<SubscriptionResponse> subscriptions(Long userId) {
+        if (userId == null) {
+            return List.of();
+        }
+        List<UserSourceSubscription> subs = userSourceSubscriptionMapper.selectList(
+                new LambdaQueryWrapper<UserSourceSubscription>()
+                        .eq(UserSourceSubscription::getUserId, userId)
+                        .orderByDesc(UserSourceSubscription::getCreatedAt));
+        if (subs.isEmpty()) {
+            return List.of();
+        }
+        List<Long> sourceIds = subs.stream().map(UserSourceSubscription::getSourceId).toList();
+        Map<Long, DataSource> sources = dataSourceMapper.selectBatchIds(sourceIds)
+                .stream().collect(Collectors.toMap(DataSource::getId, s -> s));
+        return subs.stream()
+                .map(sub -> {
+                    DataSource ds = sources.get(sub.getSourceId());
+                    if (ds == null) return null;
+                    return new SubscriptionResponse(
+                            ds.getId(),
+                            ds.getName(),
+                            ds.getSourceType(),
+                            sub.getEnabled() == 1,
+                            sub.getCreatedAt());
+                })
+                .filter(Objects::nonNull)
+                .toList();
+    }
+
+    // ========== 新增接口：更新订阅状态 ==========
+
+    @Transactional
+    public SubscriptionResponse updateSubscription(Long userId, Long sourceId, boolean enabled) {
+        if (userId == null) {
+            throw new BusinessException("USER_REQUIRED", "需要用户身份", HttpStatus.UNAUTHORIZED);
+        }
+        DataSource ds = dataSourceMapper.selectById(sourceId);
+        if (ds == null) {
+            throw new BusinessException("SOURCE_NOT_FOUND", "数据源不存在", HttpStatus.NOT_FOUND);
+        }
+        UserSourceSubscription existing = userSourceSubscriptionMapper.selectOne(
+                new LambdaQueryWrapper<UserSourceSubscription>()
+                        .eq(UserSourceSubscription::getUserId, userId)
+                        .eq(UserSourceSubscription::getSourceId, sourceId)
+                        .last("LIMIT 1"));
+        if (existing == null) {
+            UserSourceSubscription sub = new UserSourceSubscription();
+            sub.setUserId(userId);
+            sub.setSourceId(sourceId);
+            sub.setEnabled(enabled ? 1 : 0);
+            sub.setCreatedAt(LocalDateTime.now());
+            userSourceSubscriptionMapper.insert(sub);
+        } else {
+            existing.setEnabled(enabled ? 1 : 0);
+            userSourceSubscriptionMapper.updateById(existing);
+        }
+        return new SubscriptionResponse(ds.getId(), ds.getName(), ds.getSourceType(), enabled, null);
+    }
+
 }

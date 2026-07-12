@@ -126,4 +126,20 @@ public class InformationItem {
     public LocalDateTime getUpdatedAt() {
         return updatedAt;
     }
+
+    public void setTitle(String title) { this.title = title; }
+    public void setSourceId(Long sourceId) { this.sourceId = sourceId; }
+    public void setSourceName(String sourceName) { this.sourceName = sourceName; }
+    public void setSourceUrl(String sourceUrl) { this.sourceUrl = sourceUrl; }
+    public void setItemUrl(String itemUrl) { this.itemUrl = itemUrl; }
+    public void setDetailContent(String detailContent) { this.detailContent = detailContent; }
+    public void setContentHash(String contentHash) { this.contentHash = contentHash; }
+    public void setFetchedAt(LocalDateTime fetchedAt) { this.fetchedAt = fetchedAt; }
+    public void setItemStatus(String itemStatus) { this.itemStatus = itemStatus; }
+    public void setParseStatus(String parseStatus) { this.parseStatus = parseStatus; }
+    public void setAiStatus(String aiStatus) { this.aiStatus = aiStatus; }
+    public void setAiSummary(String aiSummary) { this.aiSummary = aiSummary; }
+    public void setAiEventType(String aiEventType) { this.aiEventType = aiEventType; }
+    public void setAiCardJson(String aiCardJson) { this.aiCardJson = aiCardJson; }
+    public void setAiNeedReview(Boolean aiNeedReview) { this.aiNeedReview = aiNeedReview; }
 }

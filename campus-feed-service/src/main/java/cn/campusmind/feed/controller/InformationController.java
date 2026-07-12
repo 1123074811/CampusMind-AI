@@ -2,17 +2,12 @@ package cn.campusmind.feed.controller;
 
 import cn.campusmind.common.web.ApiResponse;
 import cn.campusmind.feed.application.InformationService;
+import jakarta.validation.Valid;
 import org.springframework.format.annotation.DateTimeFormat;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.PutMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestHeader;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 @RestController
 @RequestMapping("/api/v1/information")
@@ -48,5 +43,49 @@ public class InformationController {
             @RequestBody ReadStatusRequest request
     ) {
         return ApiResponse.ok(informationService.updateReadStatus(userId, id, request.readStatus()));
+    }
+
+    @PostMapping
+    public ApiResponse<Long> createItem(@Valid @RequestBody CreateInformationItemRequest request) {
+        return ApiResponse.ok(informationService.createItem(request));
+    }
+
+    @GetMapping("/stats")
+    public ApiResponse<UserStatsResponse> stats(
+            @RequestHeader(value = "X-User-Id", required = false) Long userId
+    ) {
+        return ApiResponse.ok(informationService.stats(userId));
+    }
+
+    @GetMapping("/favorites")
+    public ApiResponse<InformationFeedResponse> favorites(
+            @RequestHeader(value = "X-User-Id", required = false) Long userId,
+            @RequestParam(defaultValue = "30") int size
+    ) {
+        return ApiResponse.ok(informationService.favorites(userId, size));
+    }
+
+    @GetMapping("/read-history")
+    public ApiResponse<InformationFeedResponse> readHistory(
+            @RequestHeader(value = "X-User-Id", required = false) Long userId,
+            @RequestParam(defaultValue = "30") int size
+    ) {
+        return ApiResponse.ok(informationService.readHistory(userId, size));
+    }
+
+    @GetMapping("/subscriptions")
+    public ApiResponse<List<SubscriptionResponse>> subscriptions(
+            @RequestHeader(value = "X-User-Id", required = false) Long userId
+    ) {
+        return ApiResponse.ok(informationService.subscriptions(userId));
+    }
+
+    @PutMapping("/subscriptions/{sourceId}")
+    public ApiResponse<SubscriptionResponse> updateSubscription(
+            @RequestHeader(value = "X-User-Id", required = false) Long userId,
+            @PathVariable Long sourceId,
+            @RequestBody SubscriptionUpdateRequest request
+    ) {
+        return ApiResponse.ok(informationService.updateSubscription(userId, sourceId, request.enabled()));
     }
 }

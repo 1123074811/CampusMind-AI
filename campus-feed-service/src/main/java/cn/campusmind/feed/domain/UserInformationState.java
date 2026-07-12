@@ -47,6 +47,14 @@ public class UserInformationState {
         return readStatus;
     }
 
+    public LocalDateTime getReadAt() {
+        return readAt;
+    }
+
+    public LocalDateTime getArchivedAt() {
+        return archivedAt;
+    }
+
     public void setId(Long id) {
         this.id = id;
     }
