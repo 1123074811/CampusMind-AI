@@ -323,7 +323,8 @@ FLUSH PRIVILEGES;
         "$ProjectRoot\infra\mysql\init\004_web_crawl_item.sql",
         "$ProjectRoot\infra\mysql\init\005_web_crawl_item_detail.sql",
         "$ProjectRoot\infra\mysql\init\006_information_item.sql",
-        "$ProjectRoot\infra\mysql\init\007_information_ai_card.sql"
+        "$ProjectRoot\infra\mysql\init\007_information_ai_card.sql",
+        "$ProjectRoot\infra\mysql\init\007_user_subscription.sql"
     )
     foreach ($script in $schemaScripts) {
         if ((Split-Path $script -Leaf) -eq "007_information_ai_card.sql") {
@@ -344,42 +345,30 @@ FLUSH PRIVILEGES;
             exit 1
         }
     }
-    $sourceCount = Get-MySqlScalar `
-        -Sql "SELECT COUNT(*) FROM data_source" `
+    $legacyInformationState = Get-MySqlScalar `
+        -Sql "SELECT COUNT(*) FROM information_schema.columns WHERE table_schema='$($env:MYSQL_DATABASE)' AND table_name='user_information_state' AND column_name='read_status'" `
         -Username $LocalDbUsername `
         -Password $LocalDbPassword `
         -Database $env:MYSQL_DATABASE
-    if ($sourceCount -eq 0) {
-        foreach ($script in @(
-            "$ProjectRoot\infra\mysql\init\002_admin_seed.sql",
-            "$ProjectRoot\infra\mysql\init\003_public_sources.sql"
-        )) {
-            Write-Host "      Applying $(Split-Path $script -Leaf)..." -ForegroundColor Yellow
-            $exitCode = Invoke-MySqlScript -ScriptPath $script
-            if ($exitCode -ne 0) {
-                Write-Host "[ERROR] Failed to apply seed script: $script" -ForegroundColor Red
-                exit 1
-            }
+    if ($legacyInformationState -gt 0) {
+        Write-Host "      Applying enterprise persistence migration..." -ForegroundColor Yellow
+        $exitCode = Invoke-MySqlScript -ScriptPath "$ProjectRoot\infra\mysql\migrations\002_enterprise_persistence.sql"
+        if ($exitCode -ne 0) {
+            Write-Host "[ERROR] Failed to migrate user persistence schema" -ForegroundColor Red
+            exit 1
         }
-    } else {
-        Write-Host "      Existing data sources found, skip destructive seed data" -ForegroundColor DarkGray
     }
-
-    # Ensure user-import data sources always exist (9405=USER_TEXT, 9406=USER_FILE)
-    $userSourceCount = Get-MySqlScalar `
-        -Sql "SELECT COUNT(*) FROM data_source WHERE id IN (9405, 9406)" `
-        -Username $LocalDbUsername `
-        -Password $LocalDbPassword `
-        -Database $env:MYSQL_DATABASE
-    if ($userSourceCount -lt 2) {
-        Write-Host "      Ensuring user-import data sources (9405, 9406)..." -ForegroundColor Yellow
-        $ensureSql = @"
-INSERT IGNORE INTO data_source (id, name, source_type, base_url, robots_url, crawl_interval_seconds, parser_type, selector_config, enabled, last_crawled_at)
-VALUES
-  (9405, '用户文本提交', 'USER_TEXT', 'campusmind://user-text-import', NULL, 10, 'USER_PASTE', JSON_OBJECT('mode', 'manual_text'), 1, '2026-07-07 18:05:00'),
-  (9406, '用户文件上传', 'USER_FILE', 'campusmind://user-file-import', NULL, 10, 'USER_UPLOAD', JSON_OBJECT('mode', 'file_upload'), 1, '2026-07-07 17:50:00');
-"@
-        Invoke-MySqlCommand -Sql $ensureSql -Username $LocalDbUsername -Password $LocalDbPassword -Database $env:MYSQL_DATABASE | Out-Null
+    foreach ($script in @(
+        "$ProjectRoot\infra\mysql\init\002_admin_seed.sql",
+        "$ProjectRoot\infra\mysql\init\003_public_sources.sql",
+        "$ProjectRoot\infra\mysql\init\008_enterprise_constraints.sql"
+    )) {
+        Write-Host "      Applying $(Split-Path $script -Leaf)..." -ForegroundColor Yellow
+        $exitCode = Invoke-MySqlScript -ScriptPath $script
+        if ($exitCode -ne 0) {
+            Write-Host "[ERROR] Failed to apply MySQL script: $script" -ForegroundColor Red
+            exit 1
+        }
     }
     Write-Host "      [OK]  MySQL schema ready" -ForegroundColor Green
 }

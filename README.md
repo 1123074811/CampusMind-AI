@@ -220,7 +220,8 @@ flutter test
 | `POST` | `/api/v1/import/text` | 导入文本 |
 | `POST` | `/api/v1/import/image` | 导入图片信息 |
 | `POST` | `/api/v1/import/rain/json` | 导入雨课堂 JSON |
-| `POST` | `/api/v1/import/rain/cookie` | 保存雨课堂 Cookie |
+| `DELETE` | `/api/v1/import/tasks/{taskId}/raw` | 删除本人导入任务的原始数据，保留私有事件 |
+| `POST` | `/api/v1/import/rain/cookie` | 一次性 Cookie 导入（默认关闭，须取得书面授权后启用） |
 | `GET` | `/api/v1/search` | 事件搜索 |
 | `GET` | `/api/admin/dashboard` | 管理后台仪表盘 |
 | `PUT` | `/api/admin/events/{id}/review` | 审核事件 |

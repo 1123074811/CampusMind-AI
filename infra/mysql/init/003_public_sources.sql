@@ -2,28 +2,11 @@ SET NAMES utf8mb4;
 
 USE campusmind;
 
-DELETE FROM crawl_task WHERE source_id BETWEEN 9411 AND 9417;
-DELETE FROM web_crawl_item WHERE source_id BETWEEN 9411 AND 9417;
-DELETE FROM information_item WHERE source_id BETWEEN 9411 AND 9417;
-
-DELETE FROM data_source
-WHERE id BETWEEN 9411 AND 9417
-   OR base_url IN (
-    'https://www.xju.edu.cn/xwzx/tzgg.htm',
-    'https://www.xju.edu.cn/xwzx/xyjw.htm',
-    'https://www.xju.edu.cn/xwzx/xdtt.htm',
-    'https://ss.xju.edu.cn/xsgz/tzgg.htm',
-    'https://ss.xju.edu.cn/zsjy.htm',
-    'https://ss.xju.edu.cn/cxcy/tzgg.htm',
-    'https://ss.xju.edu.cn/jwjx.htm'
-   );
-
 INSERT INTO data_source (
-  id, name, source_type, base_url, robots_url, crawl_interval_seconds,
+  name, source_type, base_url, robots_url, crawl_interval_seconds,
   parser_type, selector_config, enabled, last_crawled_at
 ) VALUES
   (
-    9411,
     '新疆大学通知公告',
     'PUBLIC_WEB',
     'https://www.xju.edu.cn/xwzx/tzgg.htm',
@@ -52,7 +35,6 @@ INSERT INTO data_source (
     NULL
   ),
   (
-    9412,
     '新疆大学校园经纬',
     'PUBLIC_WEB',
     'https://www.xju.edu.cn/xwzx/xyjw.htm',
@@ -81,7 +63,6 @@ INSERT INTO data_source (
     NULL
   ),
   (
-    9413,
     '新疆大学新大头条',
     'PUBLIC_WEB',
     'https://www.xju.edu.cn/xwzx/xdtt.htm',
@@ -110,7 +91,6 @@ INSERT INTO data_source (
     NULL
   ),
   (
-    9414,
     '软件学院学生工作通知公告',
     'PUBLIC_WEB',
     'https://ss.xju.edu.cn/xsgz/tzgg.htm',
@@ -136,7 +116,6 @@ INSERT INTO data_source (
     NULL
   ),
   (
-    9415,
     '软件学院招生就业',
     'PUBLIC_WEB',
     'https://ss.xju.edu.cn/zsjy.htm',
@@ -162,7 +141,6 @@ INSERT INTO data_source (
     NULL
   ),
   (
-    9416,
     '软件学院创新创业通知公告',
     'PUBLIC_WEB',
     'https://ss.xju.edu.cn/cxcy/tzgg.htm',
@@ -188,7 +166,6 @@ INSERT INTO data_source (
     NULL
   ),
   (
-    9417,
     '软件学院教务教学',
     'PUBLIC_WEB',
     'https://ss.xju.edu.cn/jwjx.htm',
@@ -212,4 +189,13 @@ INSERT INTO data_source (
     ),
     1,
     NULL
-  );
+  )
+AS seed
+ON DUPLICATE KEY UPDATE
+  name = seed.name,
+  source_type = seed.source_type,
+  robots_url = seed.robots_url,
+  crawl_interval_seconds = seed.crawl_interval_seconds,
+  parser_type = seed.parser_type,
+  selector_config = seed.selector_config,
+  enabled = seed.enabled;

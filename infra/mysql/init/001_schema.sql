@@ -30,7 +30,8 @@ CREATE TABLE IF NOT EXISTS user_profile (
   course_codes JSON NULL COMMENT '课程标识列表',
   updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   UNIQUE KEY uk_profile_user (user_id),
-  KEY idx_profile_college_major_grade (college, major, grade)
+  KEY idx_profile_college_major_grade (college, major, grade),
+  CONSTRAINT fk_user_profile_user FOREIGN KEY (user_id) REFERENCES user (id)
 ) COMMENT='用户画像表';
 
 CREATE TABLE IF NOT EXISTS campus_event (
@@ -57,7 +58,8 @@ CREATE TABLE IF NOT EXISTS campus_event (
   KEY idx_event_status_created (status, created_at),
   KEY idx_event_source_type (source_type),
   KEY idx_event_owner_visibility (owner_user_id, visibility, start_time),
-  UNIQUE KEY uk_event_dedup_key (dedup_key)
+  UNIQUE KEY uk_event_dedup_key (dedup_key),
+  CONSTRAINT fk_campus_event_owner FOREIGN KEY (owner_user_id) REFERENCES user (id) ON DELETE CASCADE
 ) COMMENT='校园事件主表';
 
 CREATE TABLE IF NOT EXISTS event_source_ref (
@@ -70,7 +72,8 @@ CREATE TABLE IF NOT EXISTS event_source_ref (
   content_hash CHAR(64) NOT NULL,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   KEY idx_ref_event (event_id),
-  KEY idx_ref_hash (content_hash)
+  KEY idx_ref_hash (content_hash),
+  CONSTRAINT fk_event_source_ref_event FOREIGN KEY (event_id) REFERENCES campus_event (id)
 ) COMMENT='事件来源引用表';
 
 CREATE TABLE IF NOT EXISTS event_audit_log (
@@ -83,7 +86,9 @@ CREATE TABLE IF NOT EXISTS event_audit_log (
   comment VARCHAR(512) NULL,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   KEY idx_audit_event_time (event_id, created_at),
-  KEY idx_audit_operator (operator_id)
+  KEY idx_audit_operator (operator_id),
+  CONSTRAINT fk_event_audit_log_event FOREIGN KEY (event_id) REFERENCES campus_event (id),
+  CONSTRAINT fk_event_audit_log_operator FOREIGN KEY (operator_id) REFERENCES user (id)
 ) COMMENT='事件审核日志表';
 
 CREATE TABLE IF NOT EXISTS data_source (
@@ -115,7 +120,8 @@ CREATE TABLE IF NOT EXISTS crawl_task (
   started_at DATETIME NULL,
   finished_at DATETIME NULL,
   KEY idx_task_source_status (source_id, task_status),
-  KEY idx_task_started (started_at)
+  KEY idx_task_started (started_at),
+  CONSTRAINT fk_crawl_task_source FOREIGN KEY (source_id) REFERENCES data_source (id)
 ) COMMENT='采集任务表';
 
 CREATE TABLE IF NOT EXISTS import_task (
@@ -129,5 +135,6 @@ CREATE TABLE IF NOT EXISTS import_task (
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   finished_at DATETIME NULL,
   KEY idx_import_user_time (user_id, created_at),
-  KEY idx_import_status (task_status)
+  KEY idx_import_status (task_status),
+  CONSTRAINT fk_import_task_user FOREIGN KEY (user_id) REFERENCES user (id)
 ) COMMENT='用户导入任务表';

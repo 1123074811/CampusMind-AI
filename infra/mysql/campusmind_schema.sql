@@ -44,6 +44,8 @@ CREATE TABLE IF NOT EXISTS campus_event (
   summary TEXT NULL COMMENT 'AI摘要或人工摘要',
   event_type VARCHAR(64) NOT NULL COMMENT 'NOTICE/COURSE/EXAM/HOMEWORK/ACTIVITY/LECTURE/COMPETITION/SERVICE',
   source_type VARCHAR(64) NOT NULL COMMENT 'PUBLIC_WEB/RAIN_CLASSROOM/USER_TEXT/USER_IMAGE',
+  visibility VARCHAR(16) NOT NULL DEFAULT 'PUBLIC' COMMENT 'PUBLIC/PRIVATE',
+  owner_user_id BIGINT NULL COMMENT 'PRIVATE事件所属用户',
   status VARCHAR(32) NOT NULL DEFAULT 'AI_PUBLISHED' COMMENT 'AI_PUBLISHED/REVIEWED/CORRECTED/REJECTED/OFFLINE',
   start_time DATETIME NULL,
   end_time DATETIME NULL,
@@ -59,7 +61,9 @@ CREATE TABLE IF NOT EXISTS campus_event (
   KEY idx_event_type_time (event_type, start_time),
   KEY idx_event_status_created (status, created_at),
   KEY idx_event_source_type (source_type),
-  UNIQUE KEY uk_event_dedup_key (dedup_key)
+  KEY idx_event_owner_visibility (owner_user_id, visibility, start_time),
+  UNIQUE KEY uk_event_dedup_key (dedup_key),
+  CONSTRAINT fk_campus_event_owner FOREIGN KEY (owner_user_id) REFERENCES user (id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='校园事件主表';
 
 CREATE TABLE IF NOT EXISTS event_source_ref (
@@ -78,8 +82,8 @@ CREATE TABLE IF NOT EXISTS event_source_ref (
 
 CREATE TABLE IF NOT EXISTS event_audit_log (
   id BIGINT PRIMARY KEY AUTO_INCREMENT,
-  event_id BIGINT NOT NULL,
-  operator_id BIGINT NOT NULL,
+  event_id BIGINT NULL,
+  operator_id BIGINT NULL,
   action VARCHAR(64) NOT NULL COMMENT 'REVIEW/CORRECT/MERGE/REJECT/OFFLINE',
   before_snapshot JSON NULL,
   after_snapshot JSON NULL,
@@ -108,6 +112,9 @@ CREATE TABLE IF NOT EXISTS data_source (
   UNIQUE KEY uk_source_base_url (base_url(255))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='公开网页数据源表';
 
+ALTER TABLE event_source_ref
+  ADD CONSTRAINT fk_event_source_ref_source FOREIGN KEY (source_id) REFERENCES data_source (id) ON DELETE SET NULL;
+
 CREATE TABLE IF NOT EXISTS crawl_task (
   id BIGINT PRIMARY KEY AUTO_INCREMENT,
   source_id BIGINT NOT NULL,
@@ -123,6 +130,79 @@ CREATE TABLE IF NOT EXISTS crawl_task (
   KEY idx_task_started (started_at),
   CONSTRAINT fk_crawl_task_source FOREIGN KEY (source_id) REFERENCES data_source (id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='采集任务表';
+
+CREATE TABLE IF NOT EXISTS web_crawl_item (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  task_id BIGINT NOT NULL COMMENT '采集任务ID',
+  source_id BIGINT NOT NULL COMMENT '公开网页数据源ID',
+  source_name VARCHAR(128) NOT NULL COMMENT '数据源名称',
+  source_url VARCHAR(1024) NOT NULL COMMENT '列表页URL',
+  item_url VARCHAR(1024) NOT NULL COMMENT '详情页URL',
+  title VARCHAR(512) NOT NULL COMMENT '列表页解析标题',
+  detail_title VARCHAR(512) NULL COMMENT '详情页标题',
+  date_text VARCHAR(64) NULL COMMENT '列表页日期文本',
+  summary TEXT NULL COMMENT '列表页摘要',
+  detail_content MEDIUMTEXT NULL COMMENT '详情页正文文本',
+  content_hash CHAR(64) NOT NULL,
+  parser_version VARCHAR(64) NULL,
+  detail_http_status INT NULL,
+  detail_fetched_at DATETIME NULL,
+  detail_content_hash CHAR(64) NULL,
+  parse_status VARCHAR(32) NOT NULL DEFAULT 'LIST_ONLY',
+  parse_error VARCHAR(1024) NULL,
+  fetched_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY uk_web_crawl_item_hash (content_hash),
+  KEY idx_web_crawl_item_source_time (source_id, fetched_at),
+  KEY idx_web_crawl_item_task (task_id),
+  CONSTRAINT fk_web_crawl_item_task FOREIGN KEY (task_id) REFERENCES crawl_task (id) ON DELETE CASCADE,
+  CONSTRAINT fk_web_crawl_item_source FOREIGN KEY (source_id) REFERENCES data_source (id) ON DELETE RESTRICT
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='公开网页采集结果表';
+
+CREATE TABLE IF NOT EXISTS information_item (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  source_id BIGINT NOT NULL,
+  source_name VARCHAR(128) NOT NULL,
+  source_url VARCHAR(1024) NOT NULL,
+  item_url VARCHAR(1024) NOT NULL,
+  title VARCHAR(512) NOT NULL,
+  publish_time DATETIME NULL,
+  fetched_at DATETIME NOT NULL,
+  detail_content MEDIUMTEXT NOT NULL,
+  content_hash CHAR(64) NOT NULL,
+  item_status VARCHAR(32) NOT NULL DEFAULT 'ACTIVE',
+  parse_status VARCHAR(32) NOT NULL,
+  parse_error VARCHAR(1024) NULL,
+  ai_status VARCHAR(32) NOT NULL DEFAULT 'PENDING',
+  ai_event_type VARCHAR(32) NULL,
+  ai_summary TEXT NULL,
+  ai_card_json JSON NULL,
+  ai_confidence DECIMAL(5,4) NULL,
+  ai_need_review TINYINT(1) NOT NULL DEFAULT 0,
+  ai_error VARCHAR(1024) NULL,
+  ai_processed_at DATETIME NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY uk_information_item_url_title (item_url(512), title(191)),
+  KEY idx_information_item_time (publish_time, fetched_at),
+  KEY idx_information_item_source (source_id, fetched_at),
+  KEY idx_information_item_status (item_status),
+  KEY idx_information_item_ai_status (ai_status, fetched_at),
+  CONSTRAINT fk_information_item_source FOREIGN KEY (source_id) REFERENCES data_source (id) ON DELETE RESTRICT
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='信息集中站信息条目表';
+
+CREATE TABLE IF NOT EXISTS user_information_state (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  user_id BIGINT NOT NULL,
+  item_id BIGINT NOT NULL,
+  first_seen_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  read_at DATETIME NULL,
+  favorited_at DATETIME NULL,
+  UNIQUE KEY uk_user_item_state (user_id, item_id),
+  KEY idx_user_read_history (user_id, read_at),
+  KEY idx_user_favorites (user_id, favorited_at),
+  CONSTRAINT fk_user_information_state_user FOREIGN KEY (user_id) REFERENCES user (id) ON DELETE CASCADE,
+  CONSTRAINT fk_user_information_state_item FOREIGN KEY (item_id) REFERENCES information_item (id) ON DELETE RESTRICT
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='用户信息条目阅读与收藏状态表';
 
 CREATE TABLE IF NOT EXISTS import_task (
   id BIGINT PRIMARY KEY AUTO_INCREMENT,
@@ -145,6 +225,9 @@ CREATE TABLE IF NOT EXISTS user_source_subscription (
   source_id BIGINT NOT NULL,
   enabled TINYINT NOT NULL DEFAULT 1 COMMENT '1启用 0禁用',
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   UNIQUE KEY uk_user_source_sub (user_id, source_id),
-  KEY idx_user_sub_user (user_id, enabled)
+  KEY idx_user_sub_user (user_id, enabled),
+  CONSTRAINT fk_user_source_subscription_user FOREIGN KEY (user_id) REFERENCES user (id) ON DELETE CASCADE,
+  CONSTRAINT fk_user_source_subscription_source FOREIGN KEY (source_id) REFERENCES data_source (id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='用户数据源订阅关系表';

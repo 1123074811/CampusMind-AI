@@ -20,6 +20,7 @@ CREATE TABLE IF NOT EXISTS information_item (
   ai_event_type VARCHAR(32) NULL COMMENT '智能体识别的信息类型',
   ai_summary TEXT NULL COMMENT '智能精简摘要',
   ai_card_json JSON NULL COMMENT '智能体结构化信息卡片',
+  ai_confidence DECIMAL(5,4) NULL COMMENT '智能提取置信度',
   ai_need_review TINYINT(1) NOT NULL DEFAULT 0 COMMENT '是否需要人工复核',
   ai_error VARCHAR(1024) NULL COMMENT '智能提取失败原因',
   ai_processed_at DATETIME NULL COMMENT '智能提取完成时间',
@@ -29,19 +30,20 @@ CREATE TABLE IF NOT EXISTS information_item (
   KEY idx_information_item_time (publish_time, fetched_at),
   KEY idx_information_item_source (source_id, fetched_at),
   KEY idx_information_item_status (item_status),
-  KEY idx_information_item_ai_status (ai_status, fetched_at)
+  KEY idx_information_item_ai_status (ai_status, fetched_at),
+  CONSTRAINT fk_information_item_source FOREIGN KEY (source_id) REFERENCES data_source (id) ON DELETE RESTRICT
 ) COMMENT='信息集中站信息条目表';
 
 CREATE TABLE IF NOT EXISTS user_information_state (
   id BIGINT PRIMARY KEY AUTO_INCREMENT,
   user_id BIGINT NOT NULL,
   item_id BIGINT NOT NULL,
-  read_status VARCHAR(32) NOT NULL DEFAULT 'NEW' COMMENT 'NEW/READ/FAVORITED',
   first_seen_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   read_at DATETIME NULL,
-  archived_at DATETIME NULL,
+  favorited_at DATETIME NULL,
   UNIQUE KEY uk_user_item_state (user_id, item_id),
-  KEY idx_user_read_status (user_id, read_status, first_seen_at)
-) COMMENT='用户信息条目阅读状态表';
-
-UPDATE user_information_state SET read_status = 'FAVORITED' WHERE read_status = 'ARCHIVED';
+  KEY idx_user_read_history (user_id, read_at),
+  KEY idx_user_favorites (user_id, favorited_at),
+  CONSTRAINT fk_user_information_state_user FOREIGN KEY (user_id) REFERENCES user (id) ON DELETE CASCADE,
+  CONSTRAINT fk_user_information_state_item FOREIGN KEY (item_id) REFERENCES information_item (id) ON DELETE RESTRICT
+) COMMENT='用户信息条目阅读与收藏状态表';

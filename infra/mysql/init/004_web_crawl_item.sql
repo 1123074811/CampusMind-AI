@@ -24,5 +24,7 @@ CREATE TABLE IF NOT EXISTS web_crawl_item (
   fetched_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   UNIQUE KEY uk_web_crawl_item_hash (content_hash),
   KEY idx_web_crawl_item_source_time (source_id, fetched_at),
-  KEY idx_web_crawl_item_task (task_id)
+  KEY idx_web_crawl_item_task (task_id),
+  CONSTRAINT fk_web_crawl_item_task FOREIGN KEY (task_id) REFERENCES crawl_task (id) ON DELETE CASCADE,
+  CONSTRAINT fk_web_crawl_item_source FOREIGN KEY (source_id) REFERENCES data_source (id) ON DELETE RESTRICT
 ) COMMENT='公开网页列表采集结果表';
