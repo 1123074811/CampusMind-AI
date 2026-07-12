@@ -364,6 +364,23 @@ FLUSH PRIVILEGES;
     } else {
         Write-Host "      Existing data sources found, skip destructive seed data" -ForegroundColor DarkGray
     }
+
+    # Ensure user-import data sources always exist (9405=USER_TEXT, 9406=USER_FILE)
+    $userSourceCount = Get-MySqlScalar `
+        -Sql "SELECT COUNT(*) FROM data_source WHERE id IN (9405, 9406)" `
+        -Username $LocalDbUsername `
+        -Password $LocalDbPassword `
+        -Database $env:MYSQL_DATABASE
+    if ($userSourceCount -lt 2) {
+        Write-Host "      Ensuring user-import data sources (9405, 9406)..." -ForegroundColor Yellow
+        $ensureSql = @"
+INSERT IGNORE INTO data_source (id, name, source_type, base_url, robots_url, crawl_interval_seconds, parser_type, selector_config, enabled, last_crawled_at)
+VALUES
+  (9405, '用户文本提交', 'USER_TEXT', 'campusmind://user-text-import', NULL, 10, 'USER_PASTE', JSON_OBJECT('mode', 'manual_text'), 1, '2026-07-07 18:05:00'),
+  (9406, '用户文件上传', 'USER_FILE', 'campusmind://user-file-import', NULL, 10, 'USER_UPLOAD', JSON_OBJECT('mode', 'file_upload'), 1, '2026-07-07 17:50:00');
+"@
+        Invoke-MySqlCommand -Sql $ensureSql -Username $LocalDbUsername -Password $LocalDbPassword -Database $env:MYSQL_DATABASE | Out-Null
+    }
     Write-Host "      [OK]  MySQL schema ready" -ForegroundColor Green
 }
 
