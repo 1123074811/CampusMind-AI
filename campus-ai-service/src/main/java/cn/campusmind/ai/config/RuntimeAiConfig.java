@@ -31,6 +31,7 @@ public class RuntimeAiConfig {
     private final Environment environment;
 
     private volatile AiModeProperties.Mode currentMode;
+    private volatile String currentModelVersion;
     private volatile ChatModel dynamicChatModel;
     private volatile CognitionAgent dynamicCognitionAgent;
     private volatile DecisionAgent dynamicDecisionAgent;
@@ -39,6 +40,7 @@ public class RuntimeAiConfig {
         this.properties = properties;
         this.environment = environment;
         this.currentMode = properties.mode();
+        this.currentModelVersion = properties.modelVersion();
     }
 
     /**
@@ -56,6 +58,7 @@ public class RuntimeAiConfig {
             } else {
                 log.warn("LLM 模式已启用但缺少 baseUrl/model/apiKey，回退到规则模式");
                 this.currentMode = AiModeProperties.Mode.RULE;
+                this.currentModelVersion = "rule-v1";
             }
         } else {
             log.info("AI 服务启动: 规则模式");
@@ -64,6 +67,14 @@ public class RuntimeAiConfig {
 
     public AiModeProperties.Mode currentMode() {
         return currentMode;
+    }
+
+    public String currentModelVersion() {
+        return currentModelVersion;
+    }
+
+    public String promptVersion() {
+        return properties.promptVersion();
     }
 
     /**
@@ -118,6 +129,7 @@ public class RuntimeAiConfig {
                         .build();
                 this.dynamicCognitionAgent = new LlmCognitionAgent(dynamicChatModel, properties);
                 this.dynamicDecisionAgent = new LlmDecisionAgent(dynamicChatModel, properties);
+                this.currentModelVersion = model;
                 log.info("AI 配置热加载成功: mode=llm, model={}, baseUrl={}", model, baseUrl);
             } catch (Exception ex) {
                 log.error("AI 配置热加载失败，回退到规则模式", ex);
@@ -125,12 +137,14 @@ public class RuntimeAiConfig {
                 this.dynamicChatModel = null;
                 this.dynamicCognitionAgent = null;
                 this.dynamicDecisionAgent = null;
+                this.currentModelVersion = "rule-v1";
                 return AiModeProperties.Mode.RULE;
             }
         } else {
             this.dynamicChatModel = null;
             this.dynamicCognitionAgent = null;
             this.dynamicDecisionAgent = null;
+            this.currentModelVersion = "rule-v1";
             log.info("AI 配置热加载成功: mode=rule");
         }
         return this.currentMode;

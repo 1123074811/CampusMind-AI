@@ -18,6 +18,9 @@ spring:
 campus:
   ai:
     extract-url: ${CAMPUS_AI_EXTRACT_URL:http://localhost:8089/api/v1/ai/cognition/extract}
+    # 默认拒绝规则抽取结果，避免把原文或规则产物伪装成 AI 智能摘要。
+    require-llm: ${CAMPUS_AI_REQUIRE_LLM:true}
+    prompt-version: ${CAMPUS_AI_PROMPT_VERSION:llm-v1}
     backfill-initial-delay-ms: ${CAMPUS_AI_BACKFILL_INITIAL_DELAY_MS:10000}
     backfill-delay-ms: ${CAMPUS_AI_BACKFILL_DELAY_MS:60000}
   crawler:

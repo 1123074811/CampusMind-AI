@@ -65,4 +65,16 @@ class InMemoryEventVectorStoreTest {
         assertEquals("校园事件文本", store.search("校园事件", 10).get(0).text());
         assertTrue(docId != null && !docId.isBlank());
     }
+
+    @Test
+    void shouldUpsertByBusinessDocId() {
+        InMemoryEventVectorStore store = new InMemoryEventVectorStore();
+        store.store("info-1", "旧的考试通知", Map.of());
+        store.store("info-1", "新的竞赛通知", Map.of());
+
+        assertTrue(store.search("考试", 10).isEmpty());
+        List<VectorSearchHit> hits = store.search("竞赛", 10);
+        assertEquals(1, hits.size());
+        assertEquals("info-1", hits.get(0).docId());
+    }
 }

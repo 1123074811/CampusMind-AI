@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.http.ResponseEntity;
 
 @RestController
 @RequestMapping("/api/v1/ai")
@@ -27,9 +28,14 @@ public class AiController {
     }
 
     @PostMapping("/cognition/extract")
-    public ApiResponse<CampusEventCandidate> extract(@Valid @RequestBody CognitionExtractRequest request) {
-        return ApiResponse.ok(aiApplicationService.extractEvent(
-                request.sourceType(), request.plainText(), request.originalItemId(), request.originalUrl()));
+    public ResponseEntity<ApiResponse<CampusEventCandidate>> extract(@Valid @RequestBody CognitionExtractRequest request) {
+        return ResponseEntity.ok()
+                .header("X-Campus-Ai-Mode", runtimeAiConfig.currentMode().name())
+                .header("X-Campus-Ai-Model-Version", runtimeAiConfig.currentModelVersion())
+                .header("X-Campus-Ai-Prompt-Version", runtimeAiConfig.promptVersion())
+                .body(ApiResponse.ok(aiApplicationService.extractEvent(
+                        request.sourceType(), request.plainText(), request.originalItemId(), request.originalUrl(),
+                        Boolean.TRUE.equals(request.requireLlm()))));
     }
 
     @PostMapping("/decision/plan")

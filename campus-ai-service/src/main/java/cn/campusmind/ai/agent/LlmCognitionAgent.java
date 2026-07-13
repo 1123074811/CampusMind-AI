@@ -1,6 +1,5 @@
 package cn.campusmind.ai.agent;
 
-import cn.campusmind.ai.agent.rules.CognitionRules;
 import cn.campusmind.ai.config.AiModeProperties;
 import cn.campusmind.ai.domain.CampusEventCandidate;
 import org.slf4j.Logger;
@@ -19,8 +18,7 @@ import org.springframework.stereotype.Service;
  *
  * <p>当 {@code campus.ai.mode=llm} 时启用。用大模型对非结构化文本做结构化事件抽取，
  * 通过 {@link BeanOutputConverter} 约束输出为 {@link CampusEventCandidate}。
- * 模型调用异常或输出无法解析时，降级到 {@link CognitionRules} 规则抽取，
- * 保证导入流程不被 LLM 故障阻断。
+ * 模型调用异常或输出无法解析时抛出异常；是否降级由应用层根据调用场景决定。
  *
  * <p>符合设计文档要求：Agent 输出必须结构化，并记录 prompt 版本与模型版本。
  */
@@ -72,10 +70,10 @@ public class LlmCognitionAgent implements CognitionAgent {
                         properties.modelVersion(), properties.promptVersion(), sourceType);
                 return candidate;
             }
-            log.warn("LLM 输出无法解析为 CampusEventCandidate，降级规则抽取。raw={}", content);
+            throw new IllegalStateException("LLM 输出无法解析为 CampusEventCandidate");
         } catch (RuntimeException ex) {
-            log.warn("LLM 认知抽取异常，降级规则抽取。sourceType={}", sourceType, ex);
+            log.warn("LLM 认知抽取异常。sourceType={}", sourceType, ex);
+            throw ex;
         }
-        return CognitionRules.extract(sourceType, plainText);
     }
 }

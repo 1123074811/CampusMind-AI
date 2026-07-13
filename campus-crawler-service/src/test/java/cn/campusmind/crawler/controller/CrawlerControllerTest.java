@@ -137,6 +137,22 @@ class CrawlerControllerTest {
                     )
                     """);
             statement.execute("""
+                    CREATE TABLE IF NOT EXISTS ai_processing_record (
+                      id BIGINT AUTO_INCREMENT PRIMARY KEY,
+                      information_item_id BIGINT NOT NULL,
+                      content_hash CHAR(64) NOT NULL,
+                      task_type VARCHAR(32) NOT NULL,
+                      trigger_type VARCHAR(32) NOT NULL,
+                      status VARCHAR(16) NOT NULL,
+                      provider VARCHAR(64), model_version VARCHAR(128), prompt_version VARCHAR(64) NOT NULL,
+                      input_digest CHAR(64) NOT NULL, output_json CLOB, error_message VARCHAR(1000),
+                      started_at TIMESTAMP, finished_at TIMESTAMP,
+                      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                      UNIQUE KEY uk_ai_processing_item_hash_prompt (information_item_id, content_hash, task_type, prompt_version)
+                    )
+                    """);
+            statement.execute("""
                     CREATE TABLE IF NOT EXISTS user_information_state (
                       id BIGINT AUTO_INCREMENT PRIMARY KEY,
                       user_id BIGINT NOT NULL,
@@ -174,6 +190,7 @@ class CrawlerControllerTest {
             statement.execute("DELETE FROM event_source_ref");
             statement.execute("DELETE FROM campus_event");
             statement.execute("DELETE FROM information_item");
+            statement.execute("DELETE FROM ai_processing_record");
             statement.execute("DELETE FROM user_information_state");
             statement.execute("DELETE FROM web_crawl_item");
             statement.execute("DELETE FROM crawl_task");
@@ -192,6 +209,10 @@ class CrawlerControllerTest {
                           </li>
                         </ul>
                         """));
+        Mockito.when(publicWebFetcher.fetch("https://www.xju.edu.cn/xwzx/tzgg.htm", "\"etag-1\"",
+                        "Tue, 07 Jul 2026 07:57:55 GMT"))
+                .thenReturn(new PublicWebFetcher.FetchResult(304, "\"etag-1\"",
+                        "Tue, 07 Jul 2026 07:57:55 GMT", ""));
         Mockito.when(publicWebFetcher.fetch("https://www.xju.edu.cn/info/1030/28464.htm"))
                 .thenReturn(new PublicWebFetcher.FetchResult(200, null, null, """
                         <div class="arc-tit"><h1>新疆大学2026年度拟新增本科专业公示</h1></div>
@@ -248,7 +269,8 @@ class CrawlerControllerTest {
         mockMvc.perform(post("/api/admin/crawler/sources/9411/crawl"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.status").value("SUCCESS"))
-                .andExpect(jsonPath("$.data.discoveredCount").value(1))
+                .andExpect(jsonPath("$.data.httpStatus").value(304))
+                .andExpect(jsonPath("$.data.discoveredCount").value(0))
                 .andExpect(jsonPath("$.data.persistedCount").value(0));
     }
 

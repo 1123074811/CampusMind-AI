@@ -39,6 +39,7 @@ public class InMemoryEventVectorStore implements EventVectorStore {
     @Override
     public synchronized String store(String docId, String text, Map<String, Object> metadata) {
         String resolvedDocId = (docId == null || docId.isBlank()) ? UUID.randomUUID().toString() : docId;
+        docs.removeIf(existing -> existing.docId().equals(resolvedDocId));
         docs.add(new StoredDoc(resolvedDocId, text == null ? "" : text, metadata));
         return resolvedDocId;
     }

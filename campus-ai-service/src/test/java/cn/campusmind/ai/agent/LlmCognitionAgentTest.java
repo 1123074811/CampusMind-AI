@@ -12,7 +12,7 @@ import org.springframework.ai.chat.prompt.Prompt;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
@@ -57,28 +57,21 @@ class LlmCognitionAgentTest {
     }
 
     @Test
-    void shouldFallbackToRulesWhenLlmOutputUnparseable() {
+    void shouldFailWhenLlmOutputUnparseable() {
         ChatModel chatModel = mock(ChatModel.class);
         when(chatModel.call(any(Prompt.class))).thenReturn(chatResponse("not a json"));
 
         LlmCognitionAgent agent = new LlmCognitionAgent(chatModel, properties);
-        CampusEventCandidate candidate = agent.extract("USER_TEXT", ISSUER_TEXT);
-
-        // 降级到规则抽取，规则版能识别讲座类型与地点
-        assertEquals("LECTURE", candidate.eventType());
-        assertEquals("图书馆报告厅", candidate.location());
+        assertThrows(RuntimeException.class, () -> agent.extract("USER_TEXT", ISSUER_TEXT));
     }
 
     @Test
-    void shouldFallbackToRulesWhenLlmThrows() {
+    void shouldFailWhenLlmThrows() {
         ChatModel chatModel = mock(ChatModel.class);
         when(chatModel.call(any(Prompt.class))).thenThrow(new RuntimeException("model unavailable"));
 
         LlmCognitionAgent agent = new LlmCognitionAgent(chatModel, properties);
-        CampusEventCandidate candidate = agent.extract("USER_TEXT", ISSUER_TEXT);
-
-        assertNotNull(candidate);
-        assertEquals("LECTURE", candidate.eventType());
+        assertThrows(RuntimeException.class, () -> agent.extract("USER_TEXT", ISSUER_TEXT));
     }
 
     private static ChatResponse chatResponse(String content) {

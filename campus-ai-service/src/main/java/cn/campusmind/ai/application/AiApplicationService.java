@@ -1,6 +1,7 @@
 package cn.campusmind.ai.application;
 
 import cn.campusmind.ai.agent.CognitionAgent;
+import cn.campusmind.ai.agent.rules.CognitionRules;
 import cn.campusmind.ai.agent.DecisionAgent;
 import cn.campusmind.ai.config.RuntimeAiConfig;
 import cn.campusmind.ai.controller.ChatResponse;
@@ -18,6 +19,8 @@ import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.stereotype.Service;
+import org.springframework.http.HttpStatus;
+import cn.campusmind.common.exception.BusinessException;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -44,8 +47,20 @@ public class AiApplicationService {
         this.eventVectorStore = eventVectorStore;
     }
 
-    public CampusEventCandidate extractEvent(String sourceType, String plainText, Long originalItemId, String originalUrl) {
-        return runtimeAiConfig.resolveCognitionAgent().extract(sourceType, plainText).withOriginal(originalItemId, originalUrl);
+    public CampusEventCandidate extractEvent(String sourceType, String plainText, Long originalItemId,
+                                             String originalUrl, boolean requireLlm) {
+        if (requireLlm && runtimeAiConfig.currentMode() != cn.campusmind.ai.config.AiModeProperties.Mode.LLM) {
+            throw new BusinessException("LLM_REQUIRED", "当前没有可用的真实 LLM", HttpStatus.SERVICE_UNAVAILABLE);
+        }
+        try {
+            return runtimeAiConfig.resolveCognitionAgent().extract(sourceType, plainText)
+                    .withOriginal(originalItemId, originalUrl);
+        } catch (RuntimeException ex) {
+            if (requireLlm) {
+                throw new BusinessException("LLM_EXTRACTION_FAILED", "真实 LLM 抽取失败", HttpStatus.SERVICE_UNAVAILABLE);
+            }
+            return CognitionRules.extract(sourceType, plainText).withOriginal(originalItemId, originalUrl);
+        }
     }
 
     public SearchPlan planSearch(String query, List<String> userScopes, boolean usePersonalProfile) {

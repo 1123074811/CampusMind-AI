@@ -15,5 +15,6 @@ campus:
     extract-url: http://127.0.0.1:1/api/v1/ai/cognition/extract
     backfill-initial-delay-ms: 3600000
   crawler:
+    robots-enforced: false
     user-agent: "CampusEventBot/1.0 (+contact: admin@example.edu)"
     min-interval-seconds: 3

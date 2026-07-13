@@ -58,9 +58,11 @@ public class CrawlerService {
     private final ListPageParser listPageParser;
     private final DetailPageParser detailPageParser;
     private final PublicWebFetcher publicWebFetcher;
+    private final RobotsPolicy robotsPolicy;
     private final CrawlerProperties crawlerProperties;
     private final JdbcTemplate jdbcTemplate;
     private final AiCardExtractor aiCardExtractor;
+    private final AiProcessingRecordStore aiProcessingRecordStore;
     private final VectorPusher vectorPusher;
 
     public CrawlerService(DataSourceMapper dataSourceMapper,
@@ -71,9 +73,11 @@ public class CrawlerService {
                           ListPageParser listPageParser,
                           DetailPageParser detailPageParser,
                           PublicWebFetcher publicWebFetcher,
+                          RobotsPolicy robotsPolicy,
                           CrawlerProperties crawlerProperties,
                           JdbcTemplate jdbcTemplate,
                           AiCardExtractor aiCardExtractor,
+                          AiProcessingRecordStore aiProcessingRecordStore,
                           VectorPusher vectorPusher) {
         this.dataSourceMapper = dataSourceMapper;
         this.crawlTaskMapper = crawlTaskMapper;
@@ -83,9 +87,11 @@ public class CrawlerService {
         this.listPageParser = listPageParser;
         this.detailPageParser = detailPageParser;
         this.publicWebFetcher = publicWebFetcher;
+        this.robotsPolicy = robotsPolicy;
         this.crawlerProperties = crawlerProperties;
         this.jdbcTemplate = jdbcTemplate;
         this.aiCardExtractor = aiCardExtractor;
+        this.aiProcessingRecordStore = aiProcessingRecordStore;
         this.vectorPusher = vectorPusher;
     }
 
@@ -181,6 +187,7 @@ public class CrawlerService {
         if (source == null) {
             throw new BusinessException("SOURCE_NOT_FOUND", "数据源不存在", HttpStatus.NOT_FOUND);
         }
+        CrawlTask previousTask = latestSuccessfulTask(sourceId);
         CrawlTask task = newTask(source);
         crawlTaskMapper.insert(task);
         if (!isSupported(source)) {
@@ -193,7 +200,7 @@ public class CrawlerService {
         }
         try {
             SelectorConfig selectorConfig = selectorConfigParser.parse(source.getSelectorConfig());
-            ListPageCrawl pageCrawl = crawlListPages(source, selectorConfig, options);
+            ListPageCrawl pageCrawl = crawlListPages(source, selectorConfig, options, previousTask);
             List<CrawledLink> filteredLinks = filterRecentLinks(pageCrawl.links(), options);
             int persistedCount = persistItems(task, source, selectorConfig, pageCrawl.parserVersion(), filteredLinks);
             task.setHttpStatus(pageCrawl.httpStatus());
@@ -208,6 +215,15 @@ public class CrawlerService {
         }
     }
 
+    private CrawlTask latestSuccessfulTask(Long sourceId) {
+        return crawlTaskMapper.selectOne(new LambdaQueryWrapper<CrawlTask>()
+                .eq(CrawlTask::getSourceId, sourceId)
+                .eq(CrawlTask::getTaskStatus, "SUCCESS")
+                .orderByDesc(CrawlTask::getFinishedAt)
+                .orderByDesc(CrawlTask::getId)
+                .last("LIMIT 1"));
+    }
+
     private List<CrawledLink> filterRecentLinks(List<CrawledLink> links, CrawlOptions options) {
         LocalDate cutoff = LocalDate.now().minusDays(options.normalizedDays() - 1L);
         return links.stream()
@@ -216,7 +232,8 @@ public class CrawlerService {
                 .toList();
     }
 
-    private ListPageCrawl crawlListPages(DataSource source, SelectorConfig selectorConfig, CrawlOptions options) {
+    private ListPageCrawl crawlListPages(DataSource source, SelectorConfig selectorConfig,
+                                         CrawlOptions options, CrawlTask previousTask) {
         Map<String, CrawledLink> discovered = new LinkedHashMap<>();
         String nextUrl = source.getBaseUrl();
         String parserVersion = selectorConfig.getParserVersion();
@@ -230,11 +247,19 @@ public class CrawlerService {
             if (!visitedPages.add(nextUrl)) {
                 break;
             }
-            PublicWebFetcher.FetchResult fetchResult = publicWebFetcher.fetch(nextUrl);
+            robotsPolicy.assertAllowed(source, nextUrl);
+            PublicWebFetcher.FetchResult fetchResult = page == 1 && previousTask != null
+                    ? publicWebFetcher.fetch(nextUrl, previousTask.getEtag(), previousTask.getLastModified())
+                    : publicWebFetcher.fetch(nextUrl);
             if (page == 1) {
                 firstHttpStatus = fetchResult.httpStatus();
                 firstEtag = fetchResult.etag();
                 firstLastModified = fetchResult.lastModified();
+                if (fetchResult.httpStatus() == 304) {
+                    return new ListPageCrawl(parserVersion, List.of(), firstHttpStatus,
+                            firstNonBlank(firstEtag, previousTask.getEtag()),
+                            firstNonBlank(firstLastModified, previousTask.getLastModified()));
+                }
             }
             ParsedListPage parsed = listPageParser.parse(fetchResult.body(), nextUrl, selectorConfig);
             parserVersion = parsed.parserVersion();
@@ -302,7 +327,7 @@ public class CrawlerService {
             item.setSummary(link.summary());
             item.setContentHash(hash);
             item.setParserVersion(parserVersion);
-            enrichDetail(item, link, selectorConfig);
+            enrichDetail(source, item, link, selectorConfig);
             item.setFetchedAt(fetchedAt);
 
             WebCrawlItem existing = webCrawlItemMapper.selectOne(new LambdaQueryWrapper<WebCrawlItem>()
@@ -323,9 +348,10 @@ public class CrawlerService {
         return persistedCount;
     }
 
-    private void enrichDetail(WebCrawlItem item, CrawledLink link, SelectorConfig selectorConfig) {
+    private void enrichDetail(DataSource source, WebCrawlItem item, CrawledLink link, SelectorConfig selectorConfig) {
         item.setParseStatus("LIST_ONLY");
         try {
+            robotsPolicy.assertAllowed(source, link.url());
             PublicWebFetcher.FetchResult detailFetch = publicWebFetcher.fetch(link.url());
             item.setDetailHttpStatus(detailFetch.httpStatus());
             item.setDetailFetchedAt(LocalDateTime.now());
@@ -397,23 +423,65 @@ public class CrawlerService {
     }
 
     private void extractAiCard(InformationItem item) {
+        LocalDateTime startedAt = LocalDateTime.now();
+        String promptVersion = aiCardExtractor.promptVersion();
+        String contentHash = item.getContentHash();
+        if (!aiProcessingRecordStore.claim(item.getId(), contentHash, promptVersion,
+                sha256(item.getDetailContent()), startedAt, startedAt.minusMinutes(30))) {
+            return;
+        }
+        if (!markAiProcessing(item, startedAt)) {
+            aiProcessingRecordStore.fail(item.getId(), contentHash, promptVersion,
+                    "信息内容在领取任务时已变化", LocalDateTime.now());
+            return;
+        }
         try {
             AiCardExtractor.Result result = aiCardExtractor.extract(item.getId(), item.getItemUrl(), item.getDetailContent());
-            item.setAiStatus(result.needHumanReview() ? "REVIEW" : "SUCCESS");
-            item.setAiEventType(result.eventType());
-            item.setAiSummary(result.summary());
-            item.setAiCardJson(result.cardJson());
-            item.setAiNeedReview(result.needHumanReview());
-            item.setAiError(null);
-            // 推送事件到 AI 向量库，供 RAG 检索
-            vectorPusher.push(item.getId(), item.getTitle(), result.eventType(),
-                    result.summary(), item.getPublishTime(), item.getDetailContent());
+            LocalDateTime finishedAt = LocalDateTime.now();
+            if (!saveAiResult(item, result, finishedAt)) {
+                aiProcessingRecordStore.fail(item.getId(), contentHash, promptVersion,
+                        "信息内容在处理期间已变化", finishedAt);
+                return;
+            }
+            aiProcessingRecordStore.succeed(item.getId(), contentHash, promptVersion, result, finishedAt);
+            try {
+                vectorPusher.push(item.getId(), item.getTitle(), result.eventType(),
+                        result.summary(), item.getPublishTime(), item.getDetailContent());
+            } catch (Exception vectorError) {
+                // ponytail: 向量回填失败不回滚已验证的摘要；后续定时回填会补齐。
+                org.slf4j.LoggerFactory.getLogger(CrawlerService.class)
+                        .warn("信息 {} 的向量推送失败，将由回填任务补齐", item.getId(), vectorError);
+            }
         } catch (Exception ex) {
-            item.setAiStatus("FAILED");
-            item.setAiError(truncate(ex.getMessage(), MAX_FAIL_REASON_LENGTH));
+            LocalDateTime finishedAt = LocalDateTime.now();
+            String error = truncate(ex.getMessage(), MAX_FAIL_REASON_LENGTH);
+            jdbcTemplate.update("""
+                    UPDATE information_item
+                    SET ai_status = 'FAILED', ai_error = ?, ai_processed_at = ?
+                    WHERE id = ? AND content_hash = ?
+                    """, error, finishedAt, item.getId(), contentHash);
+            aiProcessingRecordStore.fail(item.getId(), contentHash, promptVersion, error, finishedAt);
         }
-        item.setAiProcessedAt(LocalDateTime.now());
-        informationItemMapper.updateById(item);
+    }
+
+    private boolean markAiProcessing(InformationItem item, LocalDateTime startedAt) {
+        return jdbcTemplate.update("""
+                UPDATE information_item
+                SET ai_status = 'PROCESSING', ai_error = NULL, ai_processed_at = ?
+                WHERE id = ? AND content_hash = ?
+                  AND (ai_status = 'PENDING' OR ai_status IS NULL
+                       OR (ai_status = 'FAILED' AND ai_processed_at < ?))
+                """, startedAt, item.getId(), item.getContentHash(), startedAt.minusMinutes(30)) == 1;
+    }
+
+    private boolean saveAiResult(InformationItem item, AiCardExtractor.Result result, LocalDateTime finishedAt) {
+        return jdbcTemplate.update("""
+                UPDATE information_item
+                SET ai_status = ?, ai_event_type = ?, ai_summary = ?, ai_card_json = ?,
+                    ai_need_review = ?, ai_error = NULL, ai_processed_at = ?
+                WHERE id = ? AND content_hash = ?
+                """, result.needHumanReview() ? "REVIEW" : "SUCCESS", result.eventType(), result.summary(),
+                result.cardJson(), result.needHumanReview(), finishedAt, item.getId(), item.getContentHash()) == 1;
     }
 
     private LocalDateTime parseEventDate(String dateText) {

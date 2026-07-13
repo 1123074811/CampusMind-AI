@@ -14,6 +14,8 @@ public record CognitionExtractRequest(
         Long originalItemId,
 
         @Size(max = 1024)
-        String originalUrl
+        String originalUrl,
+
+        Boolean requireLlm
 ) {
 }

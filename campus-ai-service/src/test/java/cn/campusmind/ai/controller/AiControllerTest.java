@@ -37,11 +37,28 @@ class AiControllerTest {
                                 }
                                 """))
                 .andExpect(status().isOk())
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.header()
+                        .string("X-Campus-Ai-Mode", "RULE"))
                 .andExpect(jsonPath("$.data.eventType").value("LECTURE"))
                 .andExpect(jsonPath("$.data.location").value("图书馆报告厅"))
                 .andExpect(jsonPath("$.data.startTime").value("2026-07-08T19:00:00+08:00"))
                 .andExpect(jsonPath("$.data.tags[1]").value("AI"))
                 .andExpect(jsonPath("$.data.needHumanReview").value(false));
+    }
+
+    @Test
+    void cognitionRejectsRuleFallbackWhenLlmIsRequired() throws Exception {
+        mockMvc.perform(post("/api/v1/ai/cognition/extract")
+                        .contentType("application/json")
+                        .content("""
+                                {
+                                  "sourceType": "PUBLIC_WEB",
+                                  "plainText": "校园通知正文",
+                                  "requireLlm": true
+                                }
+                                """))
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(jsonPath("$.code").value("LLM_REQUIRED"));
     }
 
     @Test

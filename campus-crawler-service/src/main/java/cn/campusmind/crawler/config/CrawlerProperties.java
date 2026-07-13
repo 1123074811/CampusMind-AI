@@ -8,7 +8,9 @@ public class CrawlerProperties {
     private int defaultIntervalSeconds = 5;
     private int minIntervalSeconds = 3;
     private int robotsCacheTtlHours = 12;
+    private boolean robotsEnforced = true;
     private int maxRetry = 3;
+    private int maxResponseBytes = 5 * 1024 * 1024;
     private String dailyCron = "0 30 6 * * *";
     private String userAgent = "CampusEventBot/1.0 (+contact: admin@example.edu)";
 
@@ -36,12 +38,28 @@ public class CrawlerProperties {
         this.robotsCacheTtlHours = robotsCacheTtlHours;
     }
 
+    public boolean isRobotsEnforced() {
+        return robotsEnforced;
+    }
+
+    public void setRobotsEnforced(boolean robotsEnforced) {
+        this.robotsEnforced = robotsEnforced;
+    }
+
     public int getMaxRetry() {
         return maxRetry;
     }
 
     public void setMaxRetry(int maxRetry) {
         this.maxRetry = maxRetry;
+    }
+
+    public int getMaxResponseBytes() {
+        return maxResponseBytes;
+    }
+
+    public void setMaxResponseBytes(int maxResponseBytes) {
+        this.maxResponseBytes = maxResponseBytes;
     }
 
     public String getDailyCron() {
