@@ -4,8 +4,9 @@ server:
 spring:
   application:
     name: campus-gateway
-  codec:
-    max-in-memory-size: 15MB
+  http:
+    codecs:
+      max-in-memory-size: 15MB
   data:
     redis:
       host: ${GATEWAY_REDIS_HOST:localhost}
@@ -80,7 +81,6 @@ campus:
   security:
     public-paths:
       - /api/v1/auth/login
-      - /api/v1/information/      # 末尾斜杠：仅子路径(详情页)公开，基础路径需鉴权
       - /actuator/health
       - /actuator/info
     # 网关层限流配置（基于 Redis 令牌桶，按 IP 维度）

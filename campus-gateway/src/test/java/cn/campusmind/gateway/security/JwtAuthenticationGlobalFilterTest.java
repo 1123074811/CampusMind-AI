@@ -51,14 +51,19 @@ class JwtAuthenticationGlobalFilterTest {
     @Test
     void publicPathShouldBeReleasedWithoutToken() {
         ServerWebExchange exchange = MockServerWebExchange.from(
-                MockServerHttpRequest.post("/api/v1/auth/login").build());
+                MockServerHttpRequest.post("/api/v1/auth/login")
+                        .header("X-User-Id", "999")
+                        .header("X-User-Role", "ADMIN")
+                        .build());
         GatewayFilterChain chain = mock(GatewayFilterChain.class);
-        when(chain.filter(exchange)).thenReturn(Mono.empty());
+        when(chain.filter(any())).thenReturn(Mono.empty());
 
         StepVerifier.create(filter.filter(exchange, chain))
                 .verifyComplete();
 
-        verify(chain, times(1)).filter(exchange);
+        verify(chain, times(1)).filter(argThat(forwarded ->
+                !forwarded.getRequest().getHeaders().containsKey("X-User-Id")
+                        && !forwarded.getRequest().getHeaders().containsKey("X-User-Role")));
     }
 
     @Test
@@ -116,6 +121,8 @@ class JwtAuthenticationGlobalFilterTest {
         ServerWebExchange exchange = MockServerWebExchange.from(
                 MockServerHttpRequest.get("/api/v1/users/me")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
+                        .header("X-User-Id", "999")
+                        .header("X-User-Role", "ADMIN")
                         .build());
         GatewayFilterChain chain = mock(GatewayFilterChain.class);
 

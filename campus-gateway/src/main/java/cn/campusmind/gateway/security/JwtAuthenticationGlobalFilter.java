@@ -60,7 +60,13 @@ public class JwtAuthenticationGlobalFilter implements GlobalFilter, Ordered {
 
     @Override
     public Mono<Void> filter(ServerWebExchange exchange, GatewayFilterChain chain) {
-        ServerHttpRequest request = exchange.getRequest();
+        ServerHttpRequest request = exchange.getRequest().mutate()
+                .headers(headers -> {
+                    headers.remove("X-User-Id");
+                    headers.remove("X-User-Role");
+                })
+                .build();
+        exchange = exchange.mutate().request(request).build();
         String path = request.getPath().pathWithinApplication().value();
 
         if (isPublicPath(path)) {
@@ -89,8 +95,6 @@ public class JwtAuthenticationGlobalFilter implements GlobalFilter, Ordered {
             requireRouteRole(path, role);
             ServerHttpRequest authenticatedRequest = request.mutate()
                     .headers(headers -> {
-                        headers.remove("X-User-Id");
-                        headers.remove("X-User-Role");
                         headers.set("X-User-Id", userId);
                         headers.set("X-User-Role", role);
                     })

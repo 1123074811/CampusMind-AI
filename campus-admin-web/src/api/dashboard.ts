@@ -26,7 +26,6 @@ export async function reviewEvent(session: AdminSession | null, id: number, stat
     method: 'PUT',
     headers: {
       'Content-Type': 'application/json',
-      'X-User-Id': '9901',
       ...authHeaders(session)
     },
     body: JSON.stringify({ status, comment })
@@ -69,10 +68,7 @@ export async function updateEvent(session: AdminSession | null, id: number, data
 export async function deleteEvent(session: AdminSession | null, id: number) {
   const response = await fetch(`/api/admin/events/${id}`, {
     method: 'DELETE',
-    headers: {
-      'X-User-Id': '9901',
-      ...authHeaders(session)
-    }
+    headers: authHeaders(session)
   });
 
   if (!response.ok) {
@@ -90,7 +86,6 @@ export async function batchDeleteEvents(session: AdminSession | null, ids: numbe
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'X-User-Id': '9901',
       ...authHeaders(session)
     },
     body: JSON.stringify({ ids })
