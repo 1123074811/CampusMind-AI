@@ -12,4 +12,4 @@ try {
 }
 
 Start-Process -FilePath $exe -WorkingDirectory $appDir
-Write-Host 'CampusMind 用户端已启动。' -ForegroundColor Green
+Write-Host 'CampusMind user app started.' -ForegroundColor Green

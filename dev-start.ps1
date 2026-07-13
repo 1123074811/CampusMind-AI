@@ -163,7 +163,26 @@ function Ensure-InfraService {
         Write-Host "      $Label not found. Installing via Docker Compose service '$ComposeService'..." -ForegroundColor Yellow
         $composeExe = $compose[0]
         $composeArgs = @($compose[1], "-f", $InfraComposeFile, "up", "-d", $ComposeService)
-        & $composeExe @composeArgs
+        $restoreEnv = @{}
+        if ($ComposeService -eq "nacos") {
+            foreach ($name in @("MYSQL_ROOT_PASSWORD", "MYSQL_PASSWORD", "PGVECTOR_PASSWORD")) {
+                $restoreEnv[$name] = [Environment]::GetEnvironmentVariable($name, "Process")
+                if ([string]::IsNullOrEmpty($restoreEnv[$name])) {
+                    Set-Item "Env:$name" "compose-placeholder-not-persisted"
+                }
+            }
+        }
+        try {
+            & $composeExe @composeArgs
+        } finally {
+            foreach ($name in $restoreEnv.Keys) {
+                if ($null -eq $restoreEnv[$name]) {
+                    Remove-Item "Env:$name" -ErrorAction SilentlyContinue
+                } else {
+                    Set-Item "Env:$name" $restoreEnv[$name]
+                }
+            }
+        }
         if ($LASTEXITCODE -ne 0) {
             Write-Host "[ERROR] Failed to install/start $Label with Docker Compose." -ForegroundColor Red
             exit 1
@@ -201,14 +220,16 @@ function Invoke-MySqlScript {
     try {
         if ($mysql) {
             $sourcePath = $ScriptPath.Replace("\", "/")
-            & $mysql.Source `
+            $output = & $mysql.Source `
                 "--host=$($env:MYSQL_HOST)" `
                 "--port=$($env:MYSQL_PORT)" `
                 "--user=$Username" `
                 "--database=$Database" `
                 "--default-character-set=utf8mb4" `
                 "--execute=source $sourcePath"
-            return $LASTEXITCODE
+            $exitCode = $LASTEXITCODE
+            $output | Write-Host
+            return $exitCode
         }
 
         $compose = Get-DockerComposeCommand
@@ -405,6 +426,13 @@ Ensure-InfraService `
     -ComposeService "mongo" `
     -ContainerName "campusmind-mongo" `
     -NativeServiceNames @("MongoDB", "MongoDB Server", "mongodb")
+Ensure-InfraService `
+    -Label "Nacos" `
+    -HostName "localhost" `
+    -Port 8848 `
+    -ComposeService "nacos" `
+    -ContainerName "campusmind-nacos" `
+    -NativeServiceNames @()
 
 Ensure-MySqlSchema
 

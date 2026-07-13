@@ -108,8 +108,21 @@ CREATE TABLE IF NOT EXISTS data_source (
   UNIQUE KEY uk_source_base_url (base_url(255))
 ) COMMENT='公开网页数据源表';
 
-ALTER TABLE event_source_ref
-  ADD CONSTRAINT fk_event_source_ref_source FOREIGN KEY (source_id) REFERENCES data_source (id) ON DELETE SET NULL;
+SET @event_source_ref_source_fk_exists = (
+  SELECT COUNT(*)
+  FROM information_schema.table_constraints
+  WHERE constraint_schema = DATABASE()
+    AND table_name = 'event_source_ref'
+    AND constraint_name = 'fk_event_source_ref_source'
+);
+SET @event_source_ref_source_fk_sql = IF(
+  @event_source_ref_source_fk_exists = 0,
+  'ALTER TABLE event_source_ref ADD CONSTRAINT fk_event_source_ref_source FOREIGN KEY (source_id) REFERENCES data_source (id) ON DELETE SET NULL',
+  'DO 0'
+);
+PREPARE event_source_ref_source_fk_statement FROM @event_source_ref_source_fk_sql;
+EXECUTE event_source_ref_source_fk_statement;
+DEALLOCATE PREPARE event_source_ref_source_fk_statement;
 
 CREATE TABLE IF NOT EXISTS crawl_task (
   id BIGINT PRIMARY KEY AUTO_INCREMENT,
