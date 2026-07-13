@@ -5,10 +5,12 @@ import cn.campusmind.feed.controller.*;
 import cn.campusmind.feed.domain.DataSource;
 import cn.campusmind.feed.domain.InformationItem;
 import cn.campusmind.feed.domain.UserInformationState;
+import cn.campusmind.feed.domain.UserProfile;
 import cn.campusmind.feed.domain.UserSourceSubscription;
 import cn.campusmind.feed.infrastructure.mapper.DataSourceMapper;
 import cn.campusmind.feed.infrastructure.mapper.InformationItemMapper;
 import cn.campusmind.feed.infrastructure.mapper.UserInformationStateMapper;
+import cn.campusmind.feed.infrastructure.mapper.UserProfileMapper;
 import cn.campusmind.feed.infrastructure.mapper.UserSourceSubscriptionMapper;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.fasterxml.jackson.core.type.TypeReference;
@@ -37,6 +39,7 @@ public class InformationService {
     private final UserInformationStateMapper userInformationStateMapper;
     private final UserSourceSubscriptionMapper userSourceSubscriptionMapper;
     private final DataSourceMapper dataSourceMapper;
+    private final UserProfileMapper userProfileMapper;
     private final ObjectMapper objectMapper;
     private final JdbcTemplate jdbcTemplate;
     private final int sourceSubscriptionWeight;
@@ -45,6 +48,7 @@ public class InformationService {
                               UserInformationStateMapper userInformationStateMapper,
                               UserSourceSubscriptionMapper userSourceSubscriptionMapper,
                               DataSourceMapper dataSourceMapper,
+                              UserProfileMapper userProfileMapper,
                               ObjectMapper objectMapper,
                               JdbcTemplate jdbcTemplate,
                               @Value("${campus.feed.source-subscription-weight:100}") int sourceSubscriptionWeight) {
@@ -52,6 +56,7 @@ public class InformationService {
         this.userInformationStateMapper = userInformationStateMapper;
         this.userSourceSubscriptionMapper = userSourceSubscriptionMapper;
         this.dataSourceMapper = dataSourceMapper;
+        this.userProfileMapper = userProfileMapper;
         this.objectMapper = objectMapper;
         this.jdbcTemplate = jdbcTemplate;
         this.sourceSubscriptionWeight = sourceSubscriptionWeight;
@@ -77,10 +82,12 @@ public class InformationService {
         List<InformationItem> visibleRecords = records.stream().limit(safeSize).toList();
         Set<Long> subscribedSourceIds = subscribedSourceIds(userId);
         Map<Long, String> readStatuses = readStatuses(userId, visibleRecords);
+        UserProfile userProfile = userId != null ? loadUserProfile(userId) : null;
         List<InformationFeedItemResponse> items = visibleRecords.stream()
                 .map(item -> toFeedItem(item,
                         normalizeReadStatus(readStatuses.getOrDefault(item.getId(), "NEW")),
-                        subscribedSourceIds.contains(item.getSourceId())))
+                        subscribedSourceIds.contains(item.getSourceId()),
+                        userProfile))
                 .toList();
         LocalDateTime nextCursor = items.isEmpty()
                 ? null
@@ -244,11 +251,66 @@ public class InformationService {
         return "ARCHIVED".equals(status) ? "FAVORITED" : status;
     }
 
-    private InformationFeedItemResponse toFeedItem(InformationItem item, String readStatus) {
-        return toFeedItem(item, readStatus, false);
+    private UserProfile loadUserProfile(Long userId) {
+        return userProfileMapper.selectOne(new LambdaQueryWrapper<UserProfile>()
+                .eq(UserProfile::getUserId, userId)
+                .last("LIMIT 1"));
     }
 
-    private InformationFeedItemResponse toFeedItem(InformationItem item, String readStatus, boolean subscribed) {
+    private InformationFeedItemResponse toFeedItem(InformationItem item, String readStatus) {
+        return toFeedItem(item, readStatus, false, null);
+    }
+
+    private InformationFeedItemResponse toFeedItem(InformationItem item, String readStatus, boolean subscribed, UserProfile profile) {
+        List<String> reasons = new ArrayList<>();
+        if (subscribed) {
+            reasons.add("来自你订阅的" + item.getSourceName());
+        }
+        // 基于用户画像增强推荐理由
+        if (profile != null) {
+            Map<String, Object> card = aiCard(item);
+            // ai_event_type 与用户兴趣标签匹配
+            String eventType = item.getAiEventType();
+            String interestTags = profile.getInterestTags();
+            if (StringUtils.hasText(eventType) && StringUtils.hasText(interestTags)) {
+                String[] tags = interestTags.split("[,，、]");
+                for (String tag : tags) {
+                    String t = tag.trim().toLowerCase();
+                    if (!t.isEmpty() && matchesEventType(eventType, t)) {
+                        reasons.add("与你的兴趣标签「" + tag.trim() + "」匹配");
+                        break;
+                    }
+                }
+            }
+            // targetScopes 包含用户年级/专业
+            Object targetScopesObj = card.get("targetScopes");
+            if (targetScopesObj instanceof List<?> scopes) {
+                String grade = profile.getGrade();
+                String major = profile.getMajor();
+                for (Object scope : scopes) {
+                    if (!(scope instanceof String s)) continue;
+                    if (StringUtils.hasText(grade) && s.contains(grade)) {
+                        reasons.add("面向你所在的" + grade + "年级");
+                        break;
+                    }
+                    if (StringUtils.hasText(major) && s.contains(major)) {
+                        reasons.add("面向" + major + "专业");
+                        break;
+                    }
+                }
+            }
+            // 截止时间在 3 天内
+            Object deadlineObj = card.get("registrationDeadline");
+            if (deadlineObj instanceof String deadlineStr && StringUtils.hasText(deadlineStr)) {
+                LocalDateTime deadline = parseDateTime(deadlineStr);
+                if (deadline != null) {
+                    long hoursUntil = java.time.Duration.between(LocalDateTime.now(), deadline).toHours();
+                    if (hoursUntil > 0 && hoursUntil <= 72) {
+                        reasons.add("即将截止（剩余" + (hoursUntil / 24 + 1) + "天）");
+                    }
+                }
+            }
+        }
         return new InformationFeedItemResponse(
                 item.getId(),
                 item.getTitle(),
@@ -265,8 +327,22 @@ public class InformationService {
                 item.getAiNeedReview(),
                 aiCard(item),
                 subscribed ? sourceSubscriptionWeight : 0,
-                subscribed ? List.of("来自你订阅的" + item.getSourceName()) : List.of()
+                reasons
         );
+    }
+
+    private static boolean matchesEventType(String eventType, String tag) {
+        String lower = eventType.toLowerCase();
+        return switch (lower) {
+            case "exam" -> tag.contains("考试") || tag.contains("考研") || tag.contains("cet");
+            case "competition" -> tag.contains("竞赛") || tag.contains("比赛");
+            case "lecture" -> tag.contains("讲座") || tag.contains("学术");
+            case "course" -> tag.contains("课程") || tag.contains("教学");
+            case "activity" -> tag.contains("活动") || tag.contains("社团") || tag.contains("志愿");
+            case "service" -> tag.contains("服务") || tag.contains("后勤");
+            case "notice" -> tag.contains("通知") || tag.contains("教务");
+            default -> tag.contains("校园") || tag.contains("信息");
+        };
     }
 
     private Map<String, Object> aiCard(InformationItem item) {
@@ -481,15 +557,122 @@ public class InformationService {
     }
 
     @Transactional(readOnly = true)
-    public List<Map<String, Object>> actions(Long userId) {
+    public List<ActionItemResponse> actions(Long userId) {
         if (userId == null) {
             throw new BusinessException("USER_REQUIRED", "查看行动需要用户身份", HttpStatus.UNAUTHORIZED);
         }
-        return jdbcTemplate.queryForList("""
-                SELECT id, information_item_id AS informationItemId, title, due_at AS dueAt,
-                       original_url AS originalUrl, status, created_at AS createdAt
-                FROM user_action_item WHERE user_id = ? ORDER BY due_at IS NULL, due_at, id DESC
+        List<Map<String, Object>> rows = jdbcTemplate.queryForList("""
+                SELECT a.id, a.information_item_id AS informationItemId, a.title,
+                       a.due_at AS dueAt, a.original_url AS originalUrl,
+                       a.status, a.created_at AS createdAt
+                FROM user_action_item a
+                WHERE a.user_id = ?
+                ORDER BY a.due_at IS NULL, a.due_at, a.id DESC
                 """, userId);
+        return rows.stream().map(row -> {
+            Long itemId = ((Number) row.get("informationItemId")).longValue();
+            InformationItem info = informationItemMapper.selectById(itemId);
+            Map<String, Object> card = info != null ? aiCard(info) : Map.of();
+            List<String> materials = stringList(card.get("requiredMaterials"));
+            return new ActionItemResponse(
+                    ((Number) row.get("id")).longValue(),
+                    itemId,
+                    (String) row.get("title"),
+                    toLocalDateTime(row.get("dueAt")),
+                    (String) row.get("originalUrl"),
+                    (String) row.get("status"),
+                    toLocalDateTime(row.get("createdAt")),
+                    info != null ? info.getTitle() : null,
+                    info != null ? info.getSourceName() : null,
+                    materials
+            );
+        }).toList();
+    }
+
+    @Transactional(readOnly = true)
+    public List<ReminderItemResponse> reminders(Long userId) {
+        if (userId == null) {
+            throw new BusinessException("USER_REQUIRED", "查看提醒需要用户身份", HttpStatus.UNAUTHORIZED);
+        }
+        return jdbcTemplate.queryForList("""
+                SELECT r.id, r.action_item_id AS actionItemId,
+                       a.information_item_id AS informationItemId,
+                       a.title AS actionTitle,
+                       i.title AS sourceTitle,
+                       a.original_url AS originalUrl,
+                       r.remind_at AS remindAt,
+                       a.due_at AS dueAt,
+                       r.status, r.sent_at AS sentAt
+                FROM user_reminder r
+                JOIN user_action_item a ON a.id = r.action_item_id
+                LEFT JOIN information_item i ON i.id = a.information_item_id
+                WHERE r.user_id = ?
+                ORDER BY r.remind_at
+                """, userId)
+                .stream()
+                .map(row -> new ReminderItemResponse(
+                        ((Number) row.get("id")).longValue(),
+                        ((Number) row.get("actionItemId")).longValue(),
+                        row.get("informationItemId") != null ? ((Number) row.get("informationItemId")).longValue() : null,
+                        (String) row.get("actionTitle"),
+                        (String) row.get("sourceTitle"),
+                        (String) row.get("originalUrl"),
+                        toLocalDateTime(row.get("remindAt")),
+                        toLocalDateTime(row.get("dueAt")),
+                        (String) row.get("status"),
+                        toLocalDateTime(row.get("sentAt"))
+                ))
+                .toList();
+    }
+
+    @Transactional
+    public ReminderItemResponse dismissReminder(Long userId, Long reminderId) {
+        if (userId == null) {
+            throw new BusinessException("USER_REQUIRED", "操作提醒需要用户身份", HttpStatus.UNAUTHORIZED);
+        }
+        int updated = jdbcTemplate.update("""
+                UPDATE user_reminder SET status = 'DISMISSED'
+                WHERE id = ? AND user_id = ? AND status IN ('PENDING', 'DUE')
+                """, reminderId, userId);
+        if (updated == 0) {
+            throw new BusinessException("REMINDER_NOT_FOUND", "提醒不存在或已处理", HttpStatus.NOT_FOUND);
+        }
+        Map<String, Object> row = jdbcTemplate.queryForMap("""
+                SELECT r.id, r.action_item_id AS actionItemId,
+                       a.information_item_id AS informationItemId,
+                       a.title AS actionTitle,
+                       i.title AS sourceTitle,
+                       a.original_url AS originalUrl,
+                       r.remind_at AS remindAt,
+                       a.due_at AS dueAt,
+                       r.status, r.sent_at AS sentAt
+                FROM user_reminder r
+                JOIN user_action_item a ON a.id = r.action_item_id
+                LEFT JOIN information_item i ON i.id = a.information_item_id
+                WHERE r.id = ?
+                """, reminderId);
+        return new ReminderItemResponse(
+                ((Number) row.get("id")).longValue(),
+                ((Number) row.get("actionItemId")).longValue(),
+                row.get("informationItemId") != null ? ((Number) row.get("informationItemId")).longValue() : null,
+                (String) row.get("actionTitle"),
+                (String) row.get("sourceTitle"),
+                (String) row.get("originalUrl"),
+                toLocalDateTime(row.get("remindAt")),
+                toLocalDateTime(row.get("dueAt")),
+                (String) row.get("status"),
+                toLocalDateTime(row.get("sentAt"))
+        );
+    }
+
+    private static LocalDateTime toLocalDateTime(Object value) {
+        if (value instanceof LocalDateTime ldt) return ldt;
+        if (value instanceof java.sql.Timestamp ts) return ts.toLocalDateTime();
+        if (value instanceof String s && !s.isBlank()) {
+            try { return LocalDateTime.parse(s); }
+            catch (Exception ignored) { return null; }
+        }
+        return null;
     }
 
     private static List<String> stringList(Object value) {
@@ -512,6 +695,66 @@ public class InformationService {
                 return null;
             }
         }
+    }
+
+    // ========== 相关信息（去重融合） ==========
+
+    @Transactional(readOnly = true)
+    public List<RelatedItemResponse> relatedItems(Long itemId) {
+        InformationItem item = informationItemMapper.selectById(itemId);
+        if (item == null || !isVisible(item)) {
+            return List.of();
+        }
+        // 查找同来源或同事件类型的其他可见条目（最多 5 条）
+        LambdaQueryWrapper<InformationItem> query = new LambdaQueryWrapper<InformationItem>()
+                .ne(InformationItem::getId, itemId)
+                .and(w -> w.eq(InformationItem::getSourceId, item.getSourceId())
+                        .or()
+                        .eq(item.getAiEventType() != null, InformationItem::getAiEventType, item.getAiEventType()))
+                .in(InformationItem::getItemStatus, VISIBLE_ITEM_STATUS)
+                .eq(InformationItem::getParseStatus, "DETAIL_SUCCESS")
+                .orderByDesc(InformationItem::getFetchedAt)
+                .last("LIMIT 5");
+        List<InformationItem> related = informationItemMapper.selectList(query);
+        return related.stream().map(r -> new RelatedItemResponse(
+                r.getId(),
+                r.getTitle(),
+                r.getSourceName(),
+                r.getPublishTime() != null ? r.getPublishTime().toString() : r.getFetchedAt().toString(),
+                r.getSourceId().equals(item.getSourceId()) ? "与「" + item.getSourceName() + "」来源已融合为 1 条" : "补充背景，已关联上文"
+        )).toList();
+    }
+
+    // ========== 热门/趋势 ==========
+
+    @Transactional(readOnly = true)
+    public List<TrendingItemResponse> trending(int size) {
+        int safeSize = Math.min(Math.max(size, 1), 10);
+        // 按阅读量+收藏量排序的热门条目
+        List<Map<String, Object>> rows = jdbcTemplate.queryForList("""
+                SELECT i.id, i.title,
+                       COUNT(s.id) AS heat
+                FROM information_item i
+                LEFT JOIN user_information_state s ON s.item_id = i.id
+                WHERE i.item_status IN ('ACTIVE', 'UPDATED')
+                  AND i.parse_status = 'DETAIL_SUCCESS'
+                GROUP BY i.id, i.title
+                ORDER BY heat DESC, i.fetched_at DESC
+                LIMIT ?
+                """, safeSize);
+        List<TrendingItemResponse> result = new ArrayList<>();
+        for (int idx = 0; idx < rows.size(); idx++) {
+            Map<String, Object> row = rows.get(idx);
+            long heat = ((Number) row.get("heat")).longValue();
+            String heatLabel = heat >= 1000 ? String.format("热度 %.1fk", heat / 1000.0) : "热度 " + heat;
+            result.add(new TrendingItemResponse(
+                    ((Number) row.get("id")).longValue(),
+                    "#" + (idx + 1),
+                    (String) row.get("title"),
+                    heatLabel
+            ));
+        }
+        return result;
     }
 
 }

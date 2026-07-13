@@ -5,7 +5,9 @@ import cn.campusmind.user.controller.AdminUserListResponse;
 import cn.campusmind.user.controller.AdminUserResponse;
 import cn.campusmind.user.controller.CreateUserRequest;
 import cn.campusmind.user.controller.ResetPasswordRequest;
+import cn.campusmind.user.controller.ProfileTagsResponse;
 import cn.campusmind.user.controller.UpdateProfileRequest;
+import cn.campusmind.user.controller.UpdateProfileTagsRequest;
 import cn.campusmind.user.controller.UpdateUserStatusRequest;
 import cn.campusmind.user.controller.UserMeResponse;
 import cn.campusmind.user.controller.UserProfileResponse;
@@ -192,6 +194,41 @@ public class UserService {
         } catch (JsonProcessingException ex) {
             throw new BusinessException("PROFILE_SERIALIZE_FAILED", "用户画像保存失败", HttpStatus.INTERNAL_SERVER_ERROR);
         }
+    }
+
+    // ========== 用户画像标签与敏感度 ==========
+
+    @Transactional(readOnly = true)
+    public ProfileTagsResponse getProfileTags(CurrentUser currentUser) {
+        UserProfile profile = findProfile(currentUser.userId());
+        if (profile == null) {
+            return new ProfileTagsResponse(List.of(), 0.5);
+        }
+        List<String> tags = fromJson(profile.getInterestTags());
+        double sensitivity = profile.getSensitivity() != null ? profile.getSensitivity() : 0.5;
+        return new ProfileTagsResponse(tags, sensitivity);
+    }
+
+    @Transactional
+    public ProfileTagsResponse updateProfileTags(CurrentUser currentUser, List<String> tags, double sensitivity) {
+        requireAccount(currentUser.userId());
+        UserProfile profile = findProfile(currentUser.userId());
+        boolean creating = profile == null;
+        if (creating) {
+            profile = new UserProfile();
+            profile.setUserId(currentUser.userId());
+        }
+        profile.setInterestTags(toJson(tags));
+        profile.setSensitivity(Math.max(0, Math.min(1, sensitivity)));
+        if (creating) {
+            userProfileMapper.insert(profile);
+        } else {
+            userProfileMapper.updateById(profile);
+        }
+        return new ProfileTagsResponse(
+                fromJson(profile.getInterestTags()),
+                profile.getSensitivity() != null ? profile.getSensitivity() : 0.5
+        );
     }
 
     private List<String> fromJson(String json) {

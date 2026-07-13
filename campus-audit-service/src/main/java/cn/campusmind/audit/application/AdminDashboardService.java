@@ -23,6 +23,7 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -54,6 +55,7 @@ public class AdminDashboardService {
     private final ImportTaskMapper importTaskMapper;
     private final EventAuditLogMapper eventAuditLogMapper;
     private final ObjectMapper objectMapper;
+    private final JdbcTemplate jdbcTemplate;
 
     public AdminDashboardService(
             InformationItemMapper informationItemMapper,
@@ -61,7 +63,8 @@ public class AdminDashboardService {
             CrawlTaskMapper crawlTaskMapper,
             ImportTaskMapper importTaskMapper,
             EventAuditLogMapper eventAuditLogMapper,
-            ObjectMapper objectMapper
+            ObjectMapper objectMapper,
+            JdbcTemplate jdbcTemplate
     ) {
         this.informationItemMapper = informationItemMapper;
         this.dataSourceMapper = dataSourceMapper;
@@ -69,6 +72,7 @@ public class AdminDashboardService {
         this.importTaskMapper = importTaskMapper;
         this.eventAuditLogMapper = eventAuditLogMapper;
         this.objectMapper = objectMapper;
+        this.jdbcTemplate = jdbcTemplate;
     }
 
     @Transactional(readOnly = true)
@@ -200,6 +204,37 @@ public class AdminDashboardService {
         );
     }
 
+    @Transactional(readOnly = true)
+    public List<cn.campusmind.audit.controller.ChangeLogResponse> changeLogs(int size) {
+        int safeSize = Math.min(Math.max(size, 1), 100);
+        return jdbcTemplate.queryForList("""
+                SELECT cl.id, cl.item_id AS itemId,
+                       i.title AS itemTitle, i.source_name AS sourceName,
+                       cl.old_content_hash AS oldContentHash,
+                       cl.new_content_hash AS newContentHash,
+                       cl.changed_fields AS changedFields,
+                       cl.changed_at AS changedAt
+                FROM information_change_log cl
+                LEFT JOIN information_item i ON i.id = cl.item_id
+                ORDER BY cl.changed_at DESC, cl.id DESC
+                LIMIT ?
+                """, safeSize)
+                .stream()
+                .map(row -> new cn.campusmind.audit.controller.ChangeLogResponse(
+                        ((Number) row.get("id")).longValue(),
+                        ((Number) row.get("itemId")).longValue(),
+                        (String) row.get("itemTitle"),
+                        (String) row.get("sourceName"),
+                        (String) row.get("oldContentHash"),
+                        (String) row.get("newContentHash"),
+                        (String) row.get("changedFields"),
+                        row.get("changedAt") instanceof java.sql.Timestamp ts
+                                ? ts.toLocalDateTime()
+                                : (row.get("changedAt") instanceof LocalDateTime ldt ? ldt : null)
+                ))
+                .toList();
+    }
+
     private MetricsResponse buildMetrics(List<InformationItem> events, List<DataSource> sources, List<CrawlTask> tasks) {
         long reviewCount = events.stream().filter(event -> !"OFFLINE".equals(event.getItemStatus())).count();
         long urgentCount = events.stream()
@@ -209,7 +244,32 @@ public class AdminDashboardService {
         int sourceSuccessRate = tasks.isEmpty() ? 0 : (int) Math.round(successfulTasks * 100.0 / tasks.size());
         long sourcesNeedAuth = sources.stream().filter(source -> "NEEDS_AUTH".equals(sourceStatus(source, tasks))).count();
         long vectorPending = 0;
-        return new MetricsResponse(reviewCount, urgentCount, sourceSuccessRate, sourcesNeedAuth, vectorPending);
+
+        // AI 处理状态统计
+        long aiPending = 0, aiProcessing = 0, aiSuccess = 0, aiFailed = 0;
+        try {
+            List<Map<String, Object>> aiStats = jdbcTemplate.queryForList("""
+                    SELECT ai_status, COUNT(*) AS cnt
+                    FROM information_item
+                    WHERE ai_status IS NOT NULL
+                    GROUP BY ai_status
+                    """);
+            for (Map<String, Object> row : aiStats) {
+                String status = (String) row.get("ai_status");
+                long cnt = ((Number) row.get("cnt")).longValue();
+                switch (status) {
+                    case "PENDING" -> aiPending = cnt;
+                    case "PROCESSING" -> aiProcessing = cnt;
+                    case "SUCCESS" -> aiSuccess = cnt;
+                    case "FAILED", "REVIEW" -> aiFailed += cnt;
+                }
+            }
+        } catch (Exception ignored) {
+            // 表可能不存在或查询失败，静默处理
+        }
+
+        return new MetricsResponse(reviewCount, urgentCount, sourceSuccessRate, sourcesNeedAuth, vectorPending,
+                aiPending, aiProcessing, aiSuccess, aiFailed);
     }
 
     private List<AdminTaskResponse> mergeTasks(List<CrawlTask> tasks, List<ImportTask> imports, Map<Long, DataSource> sourceById) {

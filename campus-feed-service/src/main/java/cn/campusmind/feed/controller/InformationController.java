@@ -102,9 +102,34 @@ public class InformationController {
     }
 
     @GetMapping("/actions")
-    public ApiResponse<List<java.util.Map<String, Object>>> actions(
+    public ApiResponse<List<ActionItemResponse>> actions(
             @RequestHeader(value = "X-User-Id", required = false) Long userId) {
         return ApiResponse.ok(informationService.actions(userId));
+    }
+
+    @GetMapping("/reminders")
+    public ApiResponse<List<ReminderItemResponse>> reminders(
+            @RequestHeader(value = "X-User-Id", required = false) Long userId) {
+        return ApiResponse.ok(informationService.reminders(userId));
+    }
+
+    @PutMapping("/reminders/{id}/dismiss")
+    public ApiResponse<ReminderItemResponse> dismissReminder(
+            @RequestHeader(value = "X-User-Id", required = false) Long userId,
+            @PathVariable Long id) {
+        return ApiResponse.ok(informationService.dismissReminder(userId, id));
+    }
+
+    @GetMapping("/items/{id}/related")
+    public ApiResponse<List<RelatedItemResponse>> relatedItems(
+            @PathVariable Long id) {
+        return ApiResponse.ok(informationService.relatedItems(id));
+    }
+
+    @GetMapping("/trending")
+    public ApiResponse<List<TrendingItemResponse>> trending(
+            @RequestParam(defaultValue = "5") int size) {
+        return ApiResponse.ok(informationService.trending(size));
     }
 
     public record ConfirmActionRequest(String title) {}

@@ -31,6 +31,8 @@ public class UserProfile {
     @TableField("course_codes")
     private String courseCodes;
 
+    private Double sensitivity;
+
     @TableField("updated_at")
     private LocalDateTime updatedAt;
 
@@ -92,6 +94,14 @@ public class UserProfile {
 
     public void setCourseCodes(String courseCodes) {
         this.courseCodes = courseCodes;
+    }
+
+    public Double getSensitivity() {
+        return sensitivity;
+    }
+
+    public void setSensitivity(Double sensitivity) {
+        this.sensitivity = sensitivity;
     }
 
     public LocalDateTime getUpdatedAt() {

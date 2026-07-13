@@ -133,4 +133,13 @@ public class AdminController {
         adminDashboardService.batchDeleteEvents(request.ids(), auditTokenService.requireOperatorOrAdmin(authorization).userId());
         return ApiResponse.ok(null);
     }
+
+    @GetMapping("/change-logs")
+    public ApiResponse<java.util.List<ChangeLogResponse>> changeLogs(
+            @RequestHeader(value = "Authorization", required = false) String authorization,
+            @RequestParam(defaultValue = "50") int size
+    ) {
+        auditTokenService.requireAdmin(authorization);
+        return ApiResponse.ok(adminDashboardService.changeLogs(size));
+    }
 }

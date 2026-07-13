@@ -82,4 +82,19 @@ public class UserController {
         CurrentUser currentUser = authTokenService.parseBearerToken(authorization);
         return ApiResponse.ok(userService.resetPassword(currentUser, id, request));
     }
+
+    @GetMapping("/profile-tags")
+    public ApiResponse<ProfileTagsResponse> getProfileTags(
+            @RequestHeader(value = "Authorization", required = false) String authorization) {
+        CurrentUser currentUser = authTokenService.parseBearerToken(authorization);
+        return ApiResponse.ok(userService.getProfileTags(currentUser));
+    }
+
+    @PutMapping("/profile-tags")
+    public ApiResponse<ProfileTagsResponse> updateProfileTags(
+            @RequestHeader(value = "Authorization", required = false) String authorization,
+            @Valid @RequestBody UpdateProfileTagsRequest request) {
+        CurrentUser currentUser = authTokenService.parseBearerToken(authorization);
+        return ApiResponse.ok(userService.updateProfileTags(currentUser, request.tags(), request.sensitivity()));
+    }
 }

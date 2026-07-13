@@ -126,6 +126,49 @@ public class AiApplicationService {
     }
 
     /**
+     * AI 日报摘要：优先用 LLM 生成，回退到规则拼接。
+     */
+    public cn.campusmind.ai.controller.AiController.DailyBriefingResponse dailyBriefing(Long userId) {
+        String today = todayStr();
+        // 尝试从向量库检索今日相关事件
+        List<VectorSearchHit> hits = eventVectorStore.search("今日校园重要通知", RAG_TOP_K, userId);
+
+        String summary;
+        List<String> highlights = new ArrayList<>();
+
+        ChatModel model = runtimeAiConfig.resolveChatModel();
+        if (model != null && !hits.isEmpty()) {
+            try {
+                String context = hits.stream()
+                        .map(h -> {
+                            String t = h.metadata().get("title") != null ? h.metadata().get("title").toString() : "";
+                            return t + "：" + h.text();
+                        })
+                        .collect(Collectors.joining("\n"));
+                summary = callLlm(model,
+                        "请基于以下校园信息，用一两句话生成今日AI日报摘要，简洁概括重要事项：\n" + context);
+                highlights = hits.stream().limit(3)
+                        .map(h -> h.metadata().get("title") != null ? h.metadata().get("title").toString() : h.docId())
+                        .toList();
+                return new cn.campusmind.ai.controller.AiController.DailyBriefingResponse(summary, highlights);
+            } catch (Exception ignored) {
+                // 回退到规则生成
+            }
+        }
+
+        // 规则回退
+        if (hits.isEmpty()) {
+            summary = today + "，校园信息持续更新中，请留意最新通知。";
+        } else {
+            highlights = hits.stream().limit(3)
+                    .map(h -> h.metadata().get("title") != null ? h.metadata().get("title").toString() : h.docId())
+                    .toList();
+            summary = "今日有 " + hits.size() + " 条信息值得关注：" + String.join("、", highlights) + "。";
+        }
+        return new cn.campusmind.ai.controller.AiController.DailyBriefingResponse(summary, highlights);
+    }
+
+    /**
      * 检索取向量库，把命中事件作为上下文拼出 RAG 答案。命中为空时回退到固定话术。
      * 有 LLM 时将检索结果作为上下文交给 LLM 生成自然语言回复；无 LLM 时用规则格式化。
      */

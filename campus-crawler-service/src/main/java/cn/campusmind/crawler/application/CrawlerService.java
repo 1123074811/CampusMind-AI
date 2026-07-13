@@ -419,8 +419,22 @@ public class CrawlerService {
                 informationItem.setAiNeedReview(false);
             }
             informationItemMapper.updateById(informationItem);
+            if (changed) {
+                writeChangeLog(existing.getId(), existing.getContentHash(), contentHash);
+            }
         }
         return true;
+    }
+
+    private void writeChangeLog(Long itemId, String oldHash, String newHash) {
+        List<String> changedFields = new ArrayList<>();
+        changedFields.add("content");
+        changedFields.add("ai_status");
+        String changedFieldsJson = "[\"" + String.join("\",\"", changedFields) + "\"]";
+        jdbcTemplate.update("""
+                INSERT INTO information_change_log (item_id, old_content_hash, new_content_hash, changed_fields, changed_at)
+                VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+                """, itemId, oldHash, newHash, changedFieldsJson);
     }
 
     private void extractAiCard(InformationItem item) {

@@ -7,6 +7,7 @@ import cn.campusmind.ai.domain.SearchPlan;
 import cn.campusmind.ai.domain.VectorText;
 import cn.campusmind.common.web.ApiResponse;
 import jakarta.validation.Valid;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -76,5 +77,13 @@ public class AiController {
         return ApiResponse.ok(mode.name().toLowerCase());
     }
 
+    @GetMapping("/daily-briefing")
+    public ApiResponse<DailyBriefingResponse> dailyBriefing(
+            @RequestHeader(value = "X-User-Id", required = false) Long userId) {
+        return ApiResponse.ok(aiApplicationService.dailyBriefing(userId));
+    }
+
     public record RuntimeConfigRequest(String mode, String baseUrl, String model, String apiKey) {}
+
+    public record DailyBriefingResponse(String summary, java.util.List<String> highlights) {}
 }
