@@ -11,11 +11,20 @@ import java.net.InetAddress;
 import java.net.URI;
 import java.net.UnknownHostException;
 import java.nio.charset.StandardCharsets;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 @Component
 public class PublicWebFetcher {
 
     private static final int MAX_REDIRECTS = 5;
+
+    /**
+     * 匹配 &lt;meta http-equiv="refresh" content="...;url=..."&gt; 中的跳转地址。
+     */
+    private static final Pattern META_REFRESH_URL =
+            Pattern.compile("<meta[^>]+http-equiv\\s*=\\s*[\"']?refresh[\"']?[^>]+content\\s*=\\s*[\"']?[^\"'>]*;\\s*url\\s*=\\s*([^\"'\\s>]+)",
+                    Pattern.CASE_INSENSITIVE);
 
     private final RestClient restClient;
     private final CrawlerProperties crawlerProperties;
@@ -50,10 +59,19 @@ public class PublicWebFetcher {
             if (response.status() < 300 || response.status() >= 400) {
                 return new FetchResult(response.status(), response.etag(), response.lastModified(), response.body());
             }
-            if (response.location() == null) {
-                throw new IllegalStateException("网页重定向缺少 Location");
+            // 3xx 重定向：优先使用 Location 头，其次尝试从响应体 meta refresh 提取
+            URI location = response.location();
+            if (location == null) {
+                String metaUrl = extractMetaRefreshUrl(response.body());
+                if (metaUrl != null) {
+                    location = URI.create(metaUrl);
+                }
             }
-            current = validatePublicUrl(requestUri.resolve(response.location()).toString());
+            if (location == null) {
+                // 服务器返回 3xx 但无任何跳转目标，将响应体当作最终内容返回，由上层解析器处理
+                return new FetchResult(response.status(), response.etag(), response.lastModified(), response.body());
+            }
+            current = validatePublicUrl(requestUri.resolve(location).toString());
         }
         throw new IllegalStateException("网页重定向次数超过限制");
     }
@@ -65,6 +83,17 @@ public class PublicWebFetcher {
             throw new IllegalStateException("网页响应体超过大小限制");
         }
         return new String(bytes, StandardCharsets.UTF_8);
+    }
+
+    /**
+     * 从 HTML 响应体中提取 &lt;meta http-equiv="refresh"&gt; 的跳转 URL，若不存在则返回 null。
+     */
+    private static String extractMetaRefreshUrl(String html) {
+        if (html == null || html.isBlank()) {
+            return null;
+        }
+        Matcher matcher = META_REFRESH_URL.matcher(html);
+        return matcher.find() ? matcher.group(1) : null;
     }
 
     static URI validatePublicUrl(String value) {
