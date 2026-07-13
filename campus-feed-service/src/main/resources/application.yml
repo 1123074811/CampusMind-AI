@@ -23,3 +23,7 @@ management:
   tracing:
     sampling:
       probability: 1.0
+
+campus:
+  feed:
+    source-subscription-weight: ${FEED_SOURCE_SUBSCRIPTION_WEIGHT:100}

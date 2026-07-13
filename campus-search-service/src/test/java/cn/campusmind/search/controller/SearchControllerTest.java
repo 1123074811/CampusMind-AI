@@ -2,6 +2,8 @@ package cn.campusmind.search.controller;
 
 import cn.campusmind.search.application.DecisionClient;
 import cn.campusmind.search.application.DecisionPlan;
+import cn.campusmind.common.web.ApiResponse;
+import cn.campusmind.search.feign.VectorSearchFeignClient;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
 import org.junit.jupiter.api.BeforeEach;
@@ -24,6 +26,7 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.Date;
 import java.util.List;
+import java.util.Map;
 
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyList;
@@ -49,6 +52,9 @@ class SearchControllerTest {
 
     @MockBean
     private DecisionClient decisionClient;
+
+    @MockBean
+    private VectorSearchFeignClient vectorSearchFeignClient;
 
     @BeforeEach
     void setUp() throws Exception {
@@ -124,7 +130,36 @@ class SearchControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.intent").value("SEMANTIC_SEARCH"))
                 .andExpect(jsonPath("$.data.total").value(1))
-                .andExpect(jsonPath("$.data.items[0].title").value("人工智能讲座通知"));
+                .andExpect(jsonPath("$.data.items[0].title").value("人工智能讲座通知"))
+                .andExpect(jsonPath("$.data.mode").value("KEYWORD"))
+                .andExpect(jsonPath("$.data.fallback").value(true));
+    }
+
+    @Test
+    void semanticSearchUsesVectorHitsAndPreservesRank() throws Exception {
+        long firstId = insertEvent("数据库比赛", "数据库设计", "COMPETITION", "AI_PUBLISHED", "2026-07-09 19:00:00");
+        long secondId = insertEvent("算法比赛", "算法竞赛", "COMPETITION", "AI_PUBLISHED", "2026-07-10 19:00:00");
+        setVectorDocId(firstId, "event-db");
+        setVectorDocId(secondId, "event-algorithm");
+        when(decisionClient.plan(anyString(), anyList(), anyBoolean()))
+                .thenReturn(new DecisionPlan("SEMANTIC_SEARCH", List.of(), "ANY", List.of(), true, false, 10));
+        when(vectorSearchFeignClient.search(org.mockito.ArgumentMatchers.anyMap()))
+                .thenReturn(ApiResponse.ok(new VectorSearchFeignClient.VectorSearchResult(List.of(
+                        new VectorSearchFeignClient.VectorHit("event-algorithm", "", 0.93, Map.of()),
+                        new VectorSearchFeignClient.VectorHit("event-db", "", 0.82, Map.of())
+                ), 2)));
+
+        mockMvc.perform(get("/api/v1/search")
+                        .param("query", "适合我的编程竞赛")
+                        .header(AUTHORIZATION, bearerToken(1L, "alice", "STUDENT")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.total").value(2))
+                .andExpect(jsonPath("$.data.items[0].title").value("算法比赛"))
+                .andExpect(jsonPath("$.data.items[1].title").value("数据库比赛"))
+                .andExpect(jsonPath("$.data.mode").value("SEMANTIC"))
+                .andExpect(jsonPath("$.data.fallback").value(false))
+                .andExpect(jsonPath("$.data.items[0].score").value(0.93))
+                .andExpect(jsonPath("$.data.items[0].matchedBy").value("VECTOR"));
     }
 
     @Test
@@ -186,7 +221,7 @@ class SearchControllerTest {
                 .andExpect(jsonPath("$.code").value("QUERY_REQUIRED"));
     }
 
-    private void insertEvent(String title, String summary, String eventType, String status, String startTime) throws Exception {
+    private long insertEvent(String title, String summary, String eventType, String status, String startTime) throws Exception {
         try (Connection connection = dataSource.getConnection();
              PreparedStatement statement = connection.prepareStatement("""
                      INSERT INTO campus_event (
@@ -196,12 +231,26 @@ class SearchControllerTest {
                        ?, TIMESTAMP '2026-07-08 21:00:00',
                        '图书馆报告厅', '软件学院', '["软件学院"]', '["AI","讲座"]',
                        TIMESTAMP '2026-07-07 10:00:00')
-                     """)) {
+                     """, Statement.RETURN_GENERATED_KEYS)) {
             statement.setString(1, title);
             statement.setString(2, summary);
             statement.setString(3, eventType);
             statement.setString(4, status);
             statement.setString(5, startTime);
+            statement.executeUpdate();
+            try (var keys = statement.getGeneratedKeys()) {
+                keys.next();
+                return keys.getLong(1);
+            }
+        }
+    }
+
+    private void setVectorDocId(long eventId, String vectorDocId) throws Exception {
+        try (Connection connection = dataSource.getConnection();
+             PreparedStatement statement = connection.prepareStatement(
+                     "UPDATE campus_event SET vector_doc_id = ? WHERE id = ?")) {
+            statement.setString(1, vectorDocId);
+            statement.setLong(2, eventId);
             statement.executeUpdate();
         }
     }

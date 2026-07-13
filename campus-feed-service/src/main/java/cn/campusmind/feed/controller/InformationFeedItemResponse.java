@@ -2,6 +2,7 @@ package cn.campusmind.feed.controller;
 
 import java.time.LocalDateTime;
 import java.util.Map;
+import java.util.List;
 
 public record InformationFeedItemResponse(
         Long id,
@@ -17,6 +18,8 @@ public record InformationFeedItemResponse(
         String eventType,
         String aiSummary,
         Boolean aiNeedReview,
-        Map<String, Object> aiCard
+        Map<String, Object> aiCard,
+        int recommendationScore,
+        List<String> recommendReasons
 ) {
 }

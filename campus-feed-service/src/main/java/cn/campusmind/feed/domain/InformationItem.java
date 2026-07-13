@@ -69,6 +69,10 @@ public class InformationItem {
         return id;
     }
 
+    public Long getSourceId() {
+        return sourceId;
+    }
+
     public String getSourceName() {
         return sourceName;
     }

@@ -11,11 +11,12 @@ import org.springframework.util.StringUtils;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
- * 事件检索服务：基于 MySQL 的条件检索、个人日程检索、语义检索关键字降级。
- * 向量库（PGVector）未接入时，语义检索降级为关键字 like 检索。
+ * 事件检索服务：基于 MySQL 完成条件检索、可见性过滤和向量命中回表。
  */
 @Service
 public class EventSearchService {
@@ -69,7 +70,7 @@ public class EventSearchService {
         return campusEventMapper.selectList(query);
     }
 
-    public List<CampusEvent> semanticSearch(Long userId, String query, DecisionPlan plan) {
+    public List<CampusEvent> keywordSearch(Long userId, String query, DecisionPlan plan) {
         int topK = resolveTopK(plan, properties.keywordFallbackTopK());
         String keyword = sanitizeKeyword(query);
         LambdaQueryWrapper<CampusEvent> wrapper = new LambdaQueryWrapper<CampusEvent>()
@@ -82,6 +83,38 @@ public class EventSearchService {
                 .orderByDesc(CampusEvent::getPublishedAt)
                 .last("LIMIT " + topK);
         return campusEventMapper.selectList(wrapper);
+    }
+
+    /**
+     * 将向量库返回的文档 ID 映射为事件。权限与发布状态必须在可信数据库中再次校验，
+     * 并保持向量服务给出的相关性顺序。
+     */
+    public List<CampusEvent> findVectorHits(Long userId, List<String> docIds, int topK) {
+        if (docIds == null || docIds.isEmpty()) {
+            return List.of();
+        }
+        List<String> distinctIds = docIds.stream()
+                .filter(StringUtils::hasText)
+                .distinct()
+                .limit(Math.max(1, topK))
+                .toList();
+        if (distinctIds.isEmpty()) {
+            return List.of();
+        }
+        List<CampusEvent> events = campusEventMapper.selectList(new LambdaQueryWrapper<CampusEvent>()
+                .in(CampusEvent::getStatus, VISIBLE_STATUS)
+                .in(CampusEvent::getVectorDocId, distinctIds)
+                .and(w -> visibleTo(w, userId)));
+        Map<String, Integer> rank = new HashMap<>();
+        for (int i = 0; i < distinctIds.size(); i++) {
+            rank.put(distinctIds.get(i), i);
+        }
+        return events.stream()
+                .sorted((left, right) -> Integer.compare(
+                        rank.getOrDefault(left.getVectorDocId(), Integer.MAX_VALUE),
+                        rank.getOrDefault(right.getVectorDocId(), Integer.MAX_VALUE)))
+                .limit(Math.max(1, topK))
+                .toList();
     }
 
     private static int resolveTopK(DecisionPlan plan, int fallback) {

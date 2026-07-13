@@ -5,10 +5,13 @@ import cn.campusmind.search.application.DecisionPlan;
 import java.util.List;
 
 public record SearchResponse(
+        String query,
         String intent,
         DecisionPlan plan,
         List<SearchItemResponse> items,
         int total,
-        String message
+        String message,
+        String mode,
+        boolean fallback
 ) {
 }

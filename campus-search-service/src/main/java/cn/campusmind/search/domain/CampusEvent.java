@@ -116,6 +116,10 @@ public class CampusEvent {
         return tags;
     }
 
+    public String getVectorDocId() {
+        return vectorDocId;
+    }
+
     public LocalDateTime getPublishedAt() {
         return publishedAt;
     }

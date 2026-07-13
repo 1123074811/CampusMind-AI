@@ -4,6 +4,7 @@ import cn.campusmind.common.exception.BusinessException;
 import cn.campusmind.search.controller.SearchItemResponse;
 import cn.campusmind.search.controller.SearchResponse;
 import cn.campusmind.search.domain.CampusEvent;
+import cn.campusmind.search.feign.VectorSearchFeignClient;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -12,6 +13,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
 import java.util.List;
+import java.util.HashMap;
+import java.util.Map;
 
 /**
  * 搜索编排服务：调用决策 Agent 识别意图，按意图路由到不同检索策略，返回统一结果。
@@ -25,13 +28,16 @@ public class SearchService {
     private final DecisionClient decisionClient;
     private final EventSearchService eventSearchService;
     private final ObjectMapper objectMapper;
+    private final VectorSearchFeignClient vectorSearchClient;
 
     public SearchService(DecisionClient decisionClient,
                          EventSearchService eventSearchService,
-                         ObjectMapper objectMapper) {
+                         ObjectMapper objectMapper,
+                         VectorSearchFeignClient vectorSearchClient) {
         this.decisionClient = decisionClient;
         this.eventSearchService = eventSearchService;
         this.objectMapper = objectMapper;
+        this.vectorSearchClient = vectorSearchClient;
     }
 
     public SearchResponse search(CurrentUser user, String query, boolean usePersonalProfile) {
@@ -42,6 +48,9 @@ public class SearchService {
 
         List<CampusEvent> events;
         String message;
+        String retrievalMode = "FILTER";
+        boolean fallback = false;
+        Map<String, Double> vectorScores = Map.of();
         switch (plan.intent() == null ? "" : plan.intent()) {
             case "IMPORT_HELP" -> {
                 events = List.of();
@@ -56,12 +65,20 @@ public class SearchService {
                 message = "已按条件查询事件";
             }
             case "SEMANTIC_SEARCH" -> {
-                events = eventSearchService.semanticSearch(user.userId(), query, plan);
-                message = "已按语义检索事件（向量库未接入，使用关键字降级）";
+                SemanticResult result = semanticSearch(user.userId(), query, plan);
+                events = result.events();
+                retrievalMode = result.mode();
+                fallback = result.fallback();
+                vectorScores = result.scores();
+                message = result.message();
             }
             case "QA_EXPLAIN" -> {
-                events = eventSearchService.semanticSearch(user.userId(), query, plan);
-                message = "已按问答意图检索相关事件";
+                SemanticResult result = semanticSearch(user.userId(), query, plan);
+                events = result.events();
+                retrievalMode = result.mode();
+                fallback = result.fallback();
+                vectorScores = result.scores();
+                message = result.message();
             }
             default -> {
                 events = eventSearchService.feedQuery(user.userId(), plan);
@@ -69,13 +86,49 @@ public class SearchService {
             }
         }
 
+        String actualMode = retrievalMode;
+        Map<String, Double> actualScores = vectorScores;
         List<SearchItemResponse> items = events.stream()
-                .map(this::toItem)
+                .map(event -> toItem(event, actualMode, StringUtils.hasText(event.getVectorDocId())
+                        ? actualScores.get(event.getVectorDocId()) : null))
                 .toList();
-        return new SearchResponse(plan.intent(), plan, items, items.size(), message);
+        return new SearchResponse(query, plan.intent(), plan, items, items.size(), message, retrievalMode, fallback);
     }
 
-    private SearchItemResponse toItem(CampusEvent event) {
+    private SemanticResult semanticSearch(Long userId, String query, DecisionPlan plan) {
+        int topK = plan.topK() > 0 ? plan.topK() : 10;
+        try {
+            var response = vectorSearchClient.search(Map.of("query", query, "topK", topK));
+            if (response != null && response.success() && response.data() != null
+                    && response.data().hits() != null) {
+                List<String> docIds = response.data().hits().stream()
+                        .map(VectorSearchFeignClient.VectorHit::docId)
+                        .filter(StringUtils::hasText)
+                        .toList();
+                List<CampusEvent> vectorEvents = eventSearchService.findVectorHits(userId, docIds, topK);
+                if (!vectorEvents.isEmpty()) {
+                    Map<String, Double> scores = new HashMap<>();
+                    response.data().hits().forEach(hit -> {
+                        if (StringUtils.hasText(hit.docId())) {
+                            scores.putIfAbsent(hit.docId(), hit.score());
+                        }
+                    });
+                    return new SemanticResult(vectorEvents, "SEMANTIC", false,
+                            "已按 AI 语义相关性检索事件", Map.copyOf(scores));
+                }
+            }
+        } catch (RuntimeException ignored) {
+            // 向量服务异常不应阻断基础搜索，下面返回带显式标记的关键词降级结果。
+        }
+        return new SemanticResult(eventSearchService.keywordSearch(userId, query, plan),
+                "KEYWORD", true, "AI 语义检索暂不可用，已降级为关键词检索", Map.of());
+    }
+
+    private record SemanticResult(List<CampusEvent> events, String mode, boolean fallback,
+                                  String message, Map<String, Double> scores) {
+    }
+
+    private SearchItemResponse toItem(CampusEvent event, String mode, Double score) {
         return new SearchItemResponse(
                 event.getId(),
                 event.getTitle(),
@@ -88,7 +141,9 @@ public class SearchService {
                 event.getEndTime(),
                 event.getLocation(),
                 event.getOrganizer(),
-                parseTags(event.getTags())
+                parseTags(event.getTags()),
+                score,
+                "SEMANTIC".equals(mode) ? "VECTOR" : mode
         );
     }
 

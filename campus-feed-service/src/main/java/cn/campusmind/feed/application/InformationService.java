@@ -11,10 +11,10 @@ import cn.campusmind.feed.infrastructure.mapper.InformationItemMapper;
 import cn.campusmind.feed.infrastructure.mapper.UserInformationStateMapper;
 import cn.campusmind.feed.infrastructure.mapper.UserSourceSubscriptionMapper;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
-import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.http.HttpStatus;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -36,41 +36,64 @@ public class InformationService {
     private final UserSourceSubscriptionMapper userSourceSubscriptionMapper;
     private final DataSourceMapper dataSourceMapper;
     private final ObjectMapper objectMapper;
+    private final int sourceSubscriptionWeight;
 
     public InformationService(InformationItemMapper informationItemMapper,
                               UserInformationStateMapper userInformationStateMapper,
                               UserSourceSubscriptionMapper userSourceSubscriptionMapper,
                               DataSourceMapper dataSourceMapper,
-                              ObjectMapper objectMapper) {
+                              ObjectMapper objectMapper,
+                              @Value("${campus.feed.source-subscription-weight:100}") int sourceSubscriptionWeight) {
         this.informationItemMapper = informationItemMapper;
         this.userInformationStateMapper = userInformationStateMapper;
         this.userSourceSubscriptionMapper = userSourceSubscriptionMapper;
         this.dataSourceMapper = dataSourceMapper;
         this.objectMapper = objectMapper;
+        this.sourceSubscriptionWeight = sourceSubscriptionWeight;
     }
 
     @Transactional(readOnly = true)
     public InformationFeedResponse feed(Long userId, LocalDateTime cursor, int size) {
-        int safeSize = Math.min(Math.max(size, 1), 50);
-        LambdaQueryWrapper<InformationItem> query = new LambdaQueryWrapper<InformationItem>()
-                .in(InformationItem::getItemStatus, VISIBLE_ITEM_STATUS)
-                .eq(InformationItem::getParseStatus, "DETAIL_SUCCESS")
-                .lt(cursor != null, InformationItem::getFetchedAt, cursor)
-                .orderByDesc(InformationItem::getFetchedAt)
-                .orderByDesc(InformationItem::getId);
+        return feed(userId, cursor, null, null, size, "ALL");
+    }
 
-        Page<InformationItem> page = informationItemMapper.selectPage(Page.of(1, safeSize + 1L), query);
-        List<InformationItem> records = page.getRecords();
+    @Transactional(readOnly = true)
+    public InformationFeedResponse feed(Long userId, LocalDateTime cursor, Long cursorId,
+                                        Integer cursorSubscriptionMatch, int size, String mode) {
+        int safeSize = Math.min(Math.max(size, 1), 50);
+        String normalizedMode = mode == null ? "ALL" : mode.trim().toUpperCase(Locale.ROOT);
+        if (!Set.of("ALL", "SUBSCRIBED_ONLY").contains(normalizedMode)) {
+            throw new BusinessException("FEED_MODE_INVALID", "信息流模式仅支持 ALL 或 SUBSCRIBED_ONLY", HttpStatus.BAD_REQUEST);
+        }
+        boolean onlySubscribed = "SUBSCRIBED_ONLY".equals(normalizedMode);
+        List<InformationItem> records = informationItemMapper.selectRankedFeed(
+                userId, onlySubscribed, cursor, cursorId, cursorSubscriptionMatch, safeSize + 1);
         boolean hasMore = records.size() > safeSize;
         List<InformationItem> visibleRecords = records.stream().limit(safeSize).toList();
+        Set<Long> subscribedSourceIds = subscribedSourceIds(userId);
         Map<Long, String> readStatuses = readStatuses(userId, visibleRecords);
         List<InformationFeedItemResponse> items = visibleRecords.stream()
-                .map(item -> toFeedItem(item, normalizeReadStatus(readStatuses.getOrDefault(item.getId(), "NEW"))))
+                .map(item -> toFeedItem(item,
+                        normalizeReadStatus(readStatuses.getOrDefault(item.getId(), "NEW")),
+                        subscribedSourceIds.contains(item.getSourceId())))
                 .toList();
         LocalDateTime nextCursor = items.isEmpty()
                 ? null
                 : visibleRecords.get(visibleRecords.size() - 1).getFetchedAt();
-        return new InformationFeedResponse(items, nextCursor, hasMore);
+        Long nextCursorId = items.isEmpty() ? null : visibleRecords.get(visibleRecords.size() - 1).getId();
+        Integer nextSubscriptionMatch = items.isEmpty() ? null
+                : (subscribedSourceIds.contains(visibleRecords.get(visibleRecords.size() - 1).getSourceId()) ? 1 : 0);
+        return new InformationFeedResponse(items, nextCursor, nextCursorId, nextSubscriptionMatch, hasMore);
+    }
+
+    private Set<Long> subscribedSourceIds(Long userId) {
+        if (userId == null) {
+            return Set.of();
+        }
+        return userSourceSubscriptionMapper.selectList(new LambdaQueryWrapper<UserSourceSubscription>()
+                        .eq(UserSourceSubscription::getUserId, userId)
+                        .eq(UserSourceSubscription::getEnabled, 1))
+                .stream().map(UserSourceSubscription::getSourceId).collect(Collectors.toSet());
     }
 
     @Transactional(readOnly = true)
@@ -217,6 +240,10 @@ public class InformationService {
     }
 
     private InformationFeedItemResponse toFeedItem(InformationItem item, String readStatus) {
+        return toFeedItem(item, readStatus, false);
+    }
+
+    private InformationFeedItemResponse toFeedItem(InformationItem item, String readStatus, boolean subscribed) {
         return new InformationFeedItemResponse(
                 item.getId(),
                 item.getTitle(),
@@ -231,7 +258,9 @@ public class InformationService {
                 item.getAiEventType(),
                 item.getAiSummary(),
                 item.getAiNeedReview(),
-                aiCard(item)
+                aiCard(item),
+                subscribed ? sourceSubscriptionWeight : 0,
+                subscribed ? List.of("来自你订阅的" + item.getSourceName()) : List.of()
         );
     }
 

@@ -15,6 +15,8 @@ public record SearchItemResponse(
         LocalDateTime endTime,
         String location,
         String organizer,
-        List<String> tags
+        List<String> tags,
+        Double score,
+        String matchedBy
 ) {
 }

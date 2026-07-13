@@ -23,9 +23,13 @@ public class InformationController {
     public ApiResponse<InformationFeedResponse> feed(
             @RequestHeader(value = "X-User-Id", required = false) Long userId,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime cursor,
+            @RequestParam(required = false) Long cursorId,
+            @RequestParam(required = false) Integer cursorSubscriptionMatch,
+            @RequestParam(defaultValue = "ALL") String mode,
             @RequestParam(defaultValue = "20") int size
     ) {
-        return ApiResponse.ok(informationService.feed(userId, cursor, size));
+        return ApiResponse.ok(informationService.feed(
+                userId, cursor, cursorId, cursorSubscriptionMatch, size, mode));
     }
 
     @GetMapping("/items/{id}")
