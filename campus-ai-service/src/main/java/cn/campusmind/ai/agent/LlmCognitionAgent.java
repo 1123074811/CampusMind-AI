@@ -33,7 +33,7 @@ public class LlmCognitionAgent implements CognitionAgent {
     private static final String SYSTEM_PROMPT = """
             你是校园事件抽取助手。从用户提供的非结构化文本中抽取校园事件的结构化信息。
             字段含义：title 标题、eventType 事件类型(EXAM/HOMEWORK/COURSE/LECTURE/COMPETITION/ACTIVITY/SERVICE/NOTICE/OTHER)、
-            summary 摘要、startTime/endTime ISO8601 时间、location 地点、organizer 主办方、
+            summary 摘要（70-160 字，2-3 句独立改写，说明事项、关键结论和明确的下一步/时间）、startTime/endTime ISO8601 时间、location 地点、organizer 主办方、
             targetScopes 面向范围、tags 标签、needHumanReview 是否需人工复核、reason 判断依据。
             keyDates 关键时间集合、requiredActions 用户需要执行的动作。
             所有事件优先抽取实际出现的时间、地点、主办方、面向对象、关键日期、需办理事项和附件。
@@ -43,6 +43,7 @@ public class LlmCognitionAgent implements CognitionAgent {
             不得因“截止”“提交”“报告厅”把通知、招聘、会议或活动误判为 HOMEWORK 或 LECTURE；
             HOMEWORK 必须明确出现作业、课程作业，或雨课堂作业语境。
             originalItemId 和 originalUrl 返回 null，由系统在模型调用后写入，禁止编造。
+            summary 不得截取原文开头、逐句压缩或复制原文；不得连续复用原文超过 12 个汉字。
             字段缺失返回 null，列表缺失返回空数组。只返回 JSON，不要任何解释文字。
             """;
 

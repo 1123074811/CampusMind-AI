@@ -111,44 +111,31 @@ class _PrototypeDetailPageState extends State<PrototypeDetailPage> {
             // Title
             Text(_item.title, style: const TextStyle(fontSize: 21, fontWeight: FontWeight.w800, color: AppTheme.ink, height: 1.35, letterSpacing: -0.2)),
             const SizedBox(height: 16),
-            // AI Summary
-            Container(
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(
-                color: const Color(0xFFE2F6EE),
-                borderRadius: BorderRadius.circular(AppTheme.radiusSm),
-                border: Border.all(color: const Color(0xFFCDEEDE)),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      const Icon(Icons.auto_awesome, size: 15, color: AppTheme.brandInk),
-                      const SizedBox(width: 7),
-                      const Text('AI 智能摘要', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: AppTheme.brandInk)),
-                    ],
-                  ),
-                  const SizedBox(height: 10),
-                  ...[
-                    '今晚 22:00–24:00 选课系统暂停服务，请提前保存志愿。',
-                    '维护期间提交的选课请求将不生效，需次日重试。',
-                    '升级后新增「课程冲突检测」实时提示功能。',
-                  ].map((text) => Padding(
-                    padding: const EdgeInsets.only(bottom: 7),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+            if (_item.aiSummary.trim().isNotEmpty) ...[
+              Container(
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFE2F6EE),
+                  borderRadius: BorderRadius.circular(AppTheme.radiusSm),
+                  border: Border.all(color: const Color(0xFFCDEEDE)),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Row(
                       children: [
-                        Container(width: 6, height: 6, margin: const EdgeInsets.only(top: 6), decoration: const BoxDecoration(color: AppTheme.brand, shape: BoxShape.circle)),
-                        const SizedBox(width: 8),
-                        Expanded(child: Text(text, style: const TextStyle(fontSize: 12.5, color: AppTheme.ink2, height: 1.5))),
+                        Icon(Icons.auto_awesome, size: 15, color: AppTheme.brandInk),
+                        SizedBox(width: 7),
+                        Text('AI 智能摘要', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: AppTheme.brandInk)),
                       ],
                     ),
-                  )),
-                ],
+                    const SizedBox(height: 10),
+                    Text(_item.aiSummary, style: const TextStyle(fontSize: 12.5, color: AppTheme.ink2, height: 1.5)),
+                  ],
+                ),
               ),
-            ),
-            const SizedBox(height: 18),
+              const SizedBox(height: 18),
+            ],
             // Body
             Text(
               _item.detailContent.isNotEmpty ? _item.detailContent : _item.preview,

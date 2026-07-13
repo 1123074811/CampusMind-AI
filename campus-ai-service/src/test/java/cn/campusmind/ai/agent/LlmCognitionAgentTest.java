@@ -13,7 +13,9 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -49,6 +51,9 @@ class LlmCognitionAgentTest {
         assertEquals("人工智能主题讲座通知", candidate.title());
         assertEquals("LECTURE", candidate.eventType());
         assertEquals("图书馆报告厅", candidate.location());
+        var prompt = org.mockito.ArgumentCaptor.forClass(Prompt.class);
+        verify(chatModel).call(prompt.capture());
+        assertTrue(prompt.getValue().getInstructions().get(0).getText().contains("不得截取原文开头"));
     }
 
     @Test

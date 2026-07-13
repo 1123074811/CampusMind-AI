@@ -64,6 +64,7 @@ class InformationItem {
     required this.fetchedAt,
     this.aiStatus = 'PENDING',
     this.eventType = 'OTHER',
+    this.aiSummary = '',
     this.aiCard = const {},
     this.publishTime,
   });
@@ -79,6 +80,7 @@ class InformationItem {
   final DateTime fetchedAt;
   final String aiStatus;
   final String eventType;
+  final String aiSummary;
   final Map<String, Object?> aiCard;
   final DateTime? publishTime;
 
@@ -112,6 +114,7 @@ class InformationItem {
       fetchedAt: DateTime.parse(json['fetchedAt'] as String),
       aiStatus: json['aiStatus'] as String? ?? 'PENDING',
       eventType: json['eventType'] as String? ?? 'OTHER',
+      aiSummary: json['aiSummary'] as String? ?? '',
       aiCard: (json['aiCard'] as Map?)?.cast<String, Object?>() ?? const {},
       publishTime: json['publishTime'] == null
           ? null
@@ -124,6 +127,7 @@ class InformationItem {
     String? detailContent,
     String? readStatus,
     String? itemStatus,
+    String? aiSummary,
   }) {
     return InformationItem(
       id: id,
@@ -137,6 +141,7 @@ class InformationItem {
       fetchedAt: fetchedAt,
       aiStatus: aiStatus,
       eventType: eventType,
+      aiSummary: aiSummary ?? this.aiSummary,
       aiCard: aiCard,
       publishTime: publishTime,
     );
