@@ -42,7 +42,7 @@ class VectorPusher {
      * 将一条事件推送到向量库。异常时只记录日志，不抛出。
      */
     void push(Long itemId, String title, String eventType, String summary,
-              LocalDateTime publishTime, String content) {
+              LocalDateTime publishTime, String content, String sourceName, String contentHash) {
         try {
             Map<String, Object> event = new HashMap<>();
             event.put("title", title != null ? title : "");
@@ -58,6 +58,12 @@ class VectorPusher {
 
             Map<String, Object> body = new HashMap<>();
             body.put("docId", "info-" + itemId);
+            body.put("businessId", itemId);
+            body.put("sourceName", sourceName);
+            body.put("sourceType", "PUBLIC_WEB");
+            body.put("publishedAt", publishTime == null ? null : publishTime.format(ISO_FMT));
+            body.put("contentHash", contentHash);
+            body.put("status", "ACTIVE");
             body.put("event", event);
 
             String json = objectMapper.writeValueAsString(body);

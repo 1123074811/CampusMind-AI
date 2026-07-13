@@ -1,0 +1,37 @@
+# 真实持久化向量检索：与 llm profile 一起启用，且 pg 放在最后。
+# --spring.profiles.active=llm,pg
+campus:
+  ai:
+    vector-store: pg
+
+spring:
+  datasource:
+    url: ${PGVECTOR_URL:jdbc:postgresql://localhost:5432/campusmind_vector}
+    username: ${PGVECTOR_USERNAME:campusmind}
+    password: ${PGVECTOR_PASSWORD}
+  ai:
+    model:
+      embedding: openai
+    openai:
+      embedding:
+        base-url: ${EMBEDDING_BASE_URL:https://api.openai.com}
+        api-key: ${EMBEDDING_API_KEY}
+        options:
+          model: ${EMBEDDING_MODEL:text-embedding-3-small}
+          dimensions: 1536
+    vectorstore:
+      pgvector:
+        table-name: campus_ai_vectors
+        id-type: text
+        dimensions: 1536
+        initialize-schema: true
+        schema-validation: true
+  autoconfigure:
+    exclude:
+      - org.springframework.ai.model.openai.autoconfigure.OpenAiAudioSpeechAutoConfiguration
+      - org.springframework.ai.model.openai.autoconfigure.OpenAiAudioTranscriptionAutoConfiguration
+      - org.springframework.ai.model.openai.autoconfigure.OpenAiImageAutoConfiguration
+      - org.springframework.ai.model.openai.autoconfigure.OpenAiModerationAutoConfiguration
+      - org.springframework.boot.autoconfigure.mongo.MongoAutoConfiguration
+      - org.springframework.boot.autoconfigure.data.mongo.MongoDataAutoConfiguration
+      - org.springframework.boot.autoconfigure.data.mongo.MongoRepositoriesAutoConfiguration

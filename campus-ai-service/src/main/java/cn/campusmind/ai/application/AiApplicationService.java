@@ -75,6 +75,9 @@ public class AiApplicationService {
         EventVectorTextRequest event = request.event();
         VectorText vectorText = buildVectorText(event);
         Map<String, Object> metadata = new HashMap<>();
+        if (event.title() != null) {
+            metadata.put("title", event.title());
+        }
         if (event.eventType() != null) {
             metadata.put("eventType", event.eventType());
         }
@@ -87,8 +90,20 @@ public class AiApplicationService {
         if (request.ownerUserId() != null) {
             metadata.put("ownerUserId", request.ownerUserId());
         }
+        putIfPresent(metadata, "businessId", request.businessId());
+        putIfPresent(metadata, "sourceName", request.sourceName());
+        putIfPresent(metadata, "sourceType", request.sourceType());
+        putIfPresent(metadata, "publishedAt", request.publishedAt());
+        putIfPresent(metadata, "contentHash", request.contentHash());
+        putIfPresent(metadata, "status", request.status());
         String docId = eventVectorStore.store(request.docId(), vectorText.text(), metadata);
         return new VectorStoreResponse(docId, vectorText.text());
+    }
+
+    private static void putIfPresent(Map<String, Object> metadata, String key, Object value) {
+        if (value != null && (!(value instanceof String text) || !text.isBlank())) {
+            metadata.put(key, value);
+        }
     }
 
     public VectorSearchResponse searchVector(String query, int topK, Long userId) {

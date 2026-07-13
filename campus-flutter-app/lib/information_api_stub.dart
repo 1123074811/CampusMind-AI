@@ -356,7 +356,7 @@ class SearchResultItem {
     return SearchResultItem(
       id: (json['id'] as num?)?.toInt() ?? 0,
       title: json['title'] as String? ?? '',
-      snippet: json['snippet'] as String? ?? json['highlight'] as String? ?? '',
+      snippet: json['snippet'] as String? ?? json['summary'] as String? ?? json['highlight'] as String? ?? '',
       sourceName: json['sourceName'] as String?,
       eventType: json['eventType'] as String?,
     );

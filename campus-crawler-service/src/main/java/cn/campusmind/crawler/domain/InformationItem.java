@@ -117,6 +117,10 @@ public class InformationItem {
         this.sourceName = sourceName;
     }
 
+    public String getSourceName() {
+        return sourceName;
+    }
+
     public void setSourceUrl(String sourceUrl) {
         this.sourceUrl = sourceUrl;
     }

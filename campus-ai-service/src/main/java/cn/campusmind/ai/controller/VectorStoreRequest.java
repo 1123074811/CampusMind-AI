@@ -15,6 +15,18 @@ public record VectorStoreRequest(
 
         Long ownerUserId,
 
+        Long businessId,
+
+        String sourceName,
+
+        String sourceType,
+
+        String publishedAt,
+
+        String contentHash,
+
+        String status,
+
         @Valid
         @NotNull
         EventVectorTextRequest event

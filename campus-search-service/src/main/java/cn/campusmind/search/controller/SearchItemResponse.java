@@ -17,6 +17,8 @@ public record SearchItemResponse(
         String organizer,
         List<String> tags,
         Double score,
-        String matchedBy
+        String matchedBy,
+        String sourceName,
+        String snippet
 ) {
 }
