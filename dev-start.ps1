@@ -39,6 +39,8 @@ if (-not $env:MYSQL_DATABASE) { $env:MYSQL_DATABASE = "campusmind" }
 if (-not $env:REDIS_HOST) { $env:REDIS_HOST = "localhost" }
 if (-not $env:REDIS_PORT) { $env:REDIS_PORT = "6379" }
 if (-not $env:MONGODB_URI) { $env:MONGODB_URI = "mongodb://localhost:27017/campusmind" }
+if (-not $env:PGVECTOR_HOST) { $env:PGVECTOR_HOST = "localhost" }
+if (-not $env:PGVECTOR_PORT) { $env:PGVECTOR_PORT = "5432" }
 $MongoUri = [Uri]$env:MONGODB_URI
 $MongoHost = if ($MongoUri.Host) { $MongoUri.Host } else { "localhost" }
 $MongoPort = if ($MongoUri.Port -gt 0) { $MongoUri.Port } else { 27017 }
@@ -53,6 +55,7 @@ foreach ($prefix in @("AUTH", "USER", "EVENT", "FEED", "IMPORT", "CRAWLER", "AUD
     Set-Item -Path "Env:${prefix}_DB_PASSWORD" -Value $LocalDbPassword
 }
 if (-not $env:IMPORT_REDIS_PASSWORD) { $env:IMPORT_REDIS_PASSWORD = "" }
+$AiProfiles = if ($env:CAMPUS_AI_MODE -eq "llm") { "llm,pg" } else { "" }
 
 $BackendServices = @(
     @{Name="campus-gateway";         Port=8080; Profiles=""}
@@ -64,7 +67,7 @@ $BackendServices = @(
     @{Name="campus-crawler-service"; Port=8086; Profiles=""}
     @{Name="campus-audit-service";   Port=8087; Profiles=""}
     @{Name="campus-search-service";  Port=8088; Profiles=""}
-    @{Name="campus-ai-service";      Port=8089; Profiles=""}
+    @{Name="campus-ai-service";      Port=8089; Profiles=$AiProfiles}
 )
 $FrontendPort = 5173
 
@@ -433,6 +436,15 @@ Ensure-InfraService `
     -ComposeService "nacos" `
     -ContainerName "campusmind-nacos" `
     -NativeServiceNames @()
+if ($AiProfiles) {
+    Ensure-InfraService `
+        -Label "PGVector" `
+        -HostName $env:PGVECTOR_HOST `
+        -Port ([int]$env:PGVECTOR_PORT) `
+        -ComposeService "postgres" `
+        -ContainerName "campusmind-pgvector" `
+        -NativeServiceNames @("postgresql-x64-17", "postgresql-x64-16")
+}
 
 Ensure-MySqlSchema
 

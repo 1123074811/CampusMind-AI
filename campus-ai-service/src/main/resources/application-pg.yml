@@ -1,4 +1,5 @@
 # 真实持久化向量检索：与 llm profile 一起启用，且 pg 放在最后。
+# Embedding 使用支持中文的多语言 ONNX Transformer，首次运行会下载并缓存真实模型。
 # --spring.profiles.active=llm,pg
 campus:
   ai:
@@ -11,19 +12,20 @@ spring:
     password: ${PGVECTOR_PASSWORD}
   ai:
     model:
-      embedding: openai
-    openai:
-      embedding:
-        base-url: ${EMBEDDING_BASE_URL:https://api.openai.com}
-        api-key: ${EMBEDDING_API_KEY}
-        options:
-          model: ${EMBEDDING_MODEL:text-embedding-3-small}
-          dimensions: 1536
+      embedding: transformers
+    embedding:
+      transformer:
+        cache:
+          directory: ${TRANSFORMER_CACHE_DIR:${user.home}/.campusmind/models}
+        onnx:
+          model-uri: ${TRANSFORMER_MODEL_URI:https://huggingface.co/sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2/resolve/e8f8c211226b894fcb81acc59f3b34ba3efd5f42/onnx/model.onnx}
+        tokenizer:
+          uri: ${TRANSFORMER_TOKENIZER_URI:https://huggingface.co/sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2/resolve/e8f8c211226b894fcb81acc59f3b34ba3efd5f42/tokenizer.json}
     vectorstore:
       pgvector:
         table-name: campus_ai_vectors
         id-type: text
-        dimensions: 1536
+        dimensions: 384
         initialize-schema: true
         schema-validation: true
   autoconfigure:

@@ -34,20 +34,22 @@ Get-Process -Name java -ErrorAction SilentlyContinue | Stop-Process -Force -Erro
 Start-Sleep -Seconds 2
 
 $services = @(
-    @{Name="campus-gateway";         Port=8080}
-    @{Name="campus-auth-service";    Port=8081}
-    @{Name="campus-event-service";   Port=8083}
-    @{Name="campus-feed-service";    Port=8084}
-    @{Name="campus-import-service";  Port=8085}
-    @{Name="campus-crawler-service"; Port=8086}
-    @{Name="campus-ai-service";      Port=8089}
+    @{Name="campus-gateway";         Port=8080; Profiles=""}
+    @{Name="campus-auth-service";    Port=8081; Profiles=""}
+    @{Name="campus-event-service";   Port=8083; Profiles=""}
+    @{Name="campus-feed-service";    Port=8084; Profiles=""}
+    @{Name="campus-import-service";  Port=8085; Profiles=""}
+    @{Name="campus-crawler-service"; Port=8086; Profiles=""}
+    @{Name="campus-ai-service";      Port=8089; Profiles=$(if ($env:CAMPUS_AI_MODE -eq "llm") { "llm,pg" } else { "" })}
 )
 
 foreach ($svc in $services) {
     $jar = "$ProjectRoot\$($svc.Name)\target\$($svc.Name)-0.1.0-SNAPSHOT.jar"
     $log = "$LogDir\$($svc.Name).log"
     $errLog = "$LogDir\$($svc.Name)-err.log"
-    Start-Process -FilePath $Java -ArgumentList "-jar", $jar, "--server.port=$($svc.Port)" `
+    $jargs = @("-jar", $jar, "--server.port=$($svc.Port)")
+    if ($svc.Profiles) { $jargs += "--spring.profiles.active=$($svc.Profiles)" }
+    Start-Process -FilePath $Java -ArgumentList $jargs `
         -WorkingDirectory $ProjectRoot -RedirectStandardOutput $log -RedirectStandardError $errLog
     Write-Host "Started $($svc.Name) on port $($svc.Port)"
 }
@@ -63,23 +65,6 @@ foreach ($svc in $services) {
     } else {
         Write-Host "  [DOWN] $($svc.Name) port $port"
     }
-}
-
-# Switch AI to LLM mode
-$aiBaseUrl = $env:AI_BASE_URL
-$aiModel = $env:AI_MODEL
-$aiApiKey = $env:AI_API_KEY
-if ($aiBaseUrl -and $aiModel -and $aiApiKey) {
-    try {
-        $bodyJson = "{`"mode`":`"llm`",`"baseUrl`":`"$aiBaseUrl`",`"model`":`"$aiModel`",`"apiKey`":`"$aiApiKey`"}"
-        $body = [System.Text.Encoding]::UTF8.GetBytes($bodyJson)
-        $r = Invoke-WebRequest -Uri "http://localhost:8089/api/v1/ai/runtime-config" -Method PUT -Body $body -ContentType "application/json" -UseBasicParsing -TimeoutSec 10
-        Write-Host "AI LLM mode enabled: $($r.StatusCode)"
-    } catch {
-        Write-Host "AI mode switch: $($_.Exception.Message)"
-    }
-} else {
-    Write-Host "AI LLM mode skipped (AI_BASE_URL / AI_MODEL / AI_API_KEY not set in .env)"
 }
 
 Write-Host "Done."

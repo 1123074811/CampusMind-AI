@@ -296,7 +296,7 @@ POST /api/admin/ai-processing/{id}/retry
 ### 7.2 实现要求
 
 1. `campus-ai-service` 提供统一的 embedding 适配器，模型名称和维度从配置读取。
-2. 启动时校验配置维度与 `vector(1536)` 表结构一致；如果使用其他维度，必须提交对应迁移。
+2. 启动时校验多语言 MiniLM 的 384 维配置与 `vector(384)` 表结构一致；已有 1536 维部署先执行 `infra/postgres/migrations/002_multilingual_embedding_384.sql`，再重新生成历史向量。
 3. `PgEventVectorStore` 成为生产配置下的默认持久化实现；进程内实现只用于本地降级和测试。
 4. 向量写入使用业务唯一键执行 upsert，重复处理不得产生重复向量。
 5. 向量元数据至少包含事件/信息 ID、标题、分类、来源、发布时间、内容哈希和可见状态。

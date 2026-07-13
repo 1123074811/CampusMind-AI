@@ -22,9 +22,8 @@ import java.util.UUID;
  * {@link VectorStore#add(List)} 内部会调用 {@code EmbeddingModel} 生成向量并入库，
  * {@link VectorStore#similaritySearch(SearchRequest)} 内部 embed 查询再做向量检索。
  *
- * <p>依赖外部 PG 与 embedding 模型，单测无法覆盖；运行需真实环境。
- * 默认 {@code vector-store=memory}，要启用 PG 真实向量检索需显式配置
- * {@code campus.ai.vector-store=pg} 并提供 embedding + datasource。
+ * <p>依赖外部 PostgreSQL/pgvector 与真实 embedding 模型，需通过 {@code llm,pg}
+ * profiles 做端到端验证。
  */
 @Component
 @ConditionalOnProperty(name = "campus.ai.vector-store", havingValue = "pg")

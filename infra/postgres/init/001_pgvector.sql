@@ -4,7 +4,7 @@ CREATE TABLE IF NOT EXISTS campus_ai_vectors (
   id TEXT PRIMARY KEY,
   content TEXT,
   metadata JSON,
-  embedding vector(1536)
+  embedding vector(384)
 );
 
 CREATE INDEX IF NOT EXISTS idx_campus_ai_vectors_embedding
