@@ -24,6 +24,7 @@ class PrototypeDetailPage extends StatefulWidget {
 class _PrototypeDetailPageState extends State<PrototypeDetailPage> {
   late InformationItem _item = widget.item;
   bool _fav = false;
+  final Set<String> _confirmedActions = {};
 
   @override
   void initState() {
@@ -65,6 +66,22 @@ class _PrototypeDetailPageState extends State<PrototypeDetailPage> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('原文链接不可用')),
+      );
+    }
+  }
+
+  Future<void> _confirmAction(String title) async {
+    try {
+      await widget.api.confirmAction(_item.id, title, widget.session);
+      if (!mounted) return;
+      setState(() => _confirmedActions.add(title));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('已加入我的行动；有明确截止时间时会创建站内提醒')),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('行动暂时无法确认，请稍后重试')),
       );
     }
   }
@@ -143,6 +160,33 @@ class _PrototypeDetailPageState extends State<PrototypeDetailPage> {
                     ),
                     const SizedBox(height: 10),
                     Text(_item.aiSummary, style: const TextStyle(fontSize: 12.5, color: AppTheme.ink2, height: 1.5)),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 18),
+            ],
+            if (_item.confirmableActions.isNotEmpty) ...[
+              Container(
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: AppTheme.surface,
+                  borderRadius: BorderRadius.circular(AppTheme.radiusSm),
+                  border: Border.all(color: AppTheme.line),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('建议行动', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppTheme.ink)),
+                    const SizedBox(height: 8),
+                    for (final action in _item.confirmableActions)
+                      ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        dense: true,
+                        title: Text(action),
+                        trailing: _confirmedActions.contains(action)
+                            ? const Icon(Icons.check_circle, color: AppTheme.brand)
+                            : TextButton(onPressed: () => _confirmAction(action), child: const Text('确认加入')),
+                      ),
                   ],
                 ),
               ),

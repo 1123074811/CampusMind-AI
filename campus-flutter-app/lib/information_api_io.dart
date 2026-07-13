@@ -71,6 +71,16 @@ class IoCampusApi implements CampusApi {
     return InformationItem.fromJson(_data(root));
   }
 
+  @override
+  Future<void> confirmAction(int itemId, String title, LoginSession session) async {
+    await _request(
+      'POST',
+      '/api/v1/information/items/$itemId/actions',
+      session: session,
+      body: {'title': title},
+    );
+  }
+
   Future<Map<String, Object?>> _request(
     String method,
     String path, {
@@ -92,7 +102,6 @@ class IoCampusApi implements CampusApi {
           HttpHeaders.authorizationHeader,
           '${session.tokenType} ${session.accessToken}',
         );
-        request.headers.set('X-User-Id', session.user.id.toString());
       }
       if (body != null) {
         request.add(utf8.encode(jsonEncode(body)));
@@ -157,7 +166,6 @@ class IoCampusApi implements CampusApi {
         HttpHeaders.authorizationHeader,
         '${session.tokenType} ${session.accessToken}',
       );
-      request.headers.set('X-User-Id', session.user.id.toString());
 
       // 构建 multipart body
       final buffer = StringBuffer();
@@ -355,8 +363,4 @@ class IoCampusApi implements CampusApi {
 bool _isPersonalQuery(String message) {
   const keywords = ['我的', '我本周', '我今天', '我明天', '我的课表', '我的作业', '我的考试', '我的日程'];
   return keywords.any(message.contains);
-}
-
-Future<List<InformationItem>> fetchInformationFeed() {
-  return createCampusApi().fetchInformationFeed(null);
 }

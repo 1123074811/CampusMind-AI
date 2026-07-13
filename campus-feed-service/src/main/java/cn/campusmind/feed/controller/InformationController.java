@@ -92,4 +92,20 @@ public class InformationController {
     ) {
         return ApiResponse.ok(informationService.updateSubscription(userId, sourceId, request.enabled()));
     }
+
+    @PostMapping("/items/{id}/actions")
+    public ApiResponse<java.util.Map<String, Object>> confirmAction(
+            @RequestHeader(value = "X-User-Id", required = false) Long userId,
+            @PathVariable Long id,
+            @RequestBody ConfirmActionRequest request) {
+        return ApiResponse.ok(informationService.confirmAction(userId, id, request.title()));
+    }
+
+    @GetMapping("/actions")
+    public ApiResponse<List<java.util.Map<String, Object>>> actions(
+            @RequestHeader(value = "X-User-Id", required = false) Long userId) {
+        return ApiResponse.ok(informationService.actions(userId));
+    }
+
+    public record ConfirmActionRequest(String title) {}
 }

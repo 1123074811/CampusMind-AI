@@ -68,6 +68,7 @@ class InformationItem {
     this.eventType = 'OTHER',
     this.aiSummary = '',
     this.aiCard = const {},
+    this.aiNeedReview = false,
     this.publishTime,
   });
 
@@ -86,11 +87,19 @@ class InformationItem {
   final String eventType;
   final String aiSummary;
   final Map<String, Object?> aiCard;
+  final bool aiNeedReview;
   final DateTime? publishTime;
 
   bool get hasValidAiSummary =>
       aiSummary.trim().isNotEmpty &&
       (aiStatus == 'SUCCESS' || aiStatus == 'REVIEW');
+
+  List<String> get confirmableActions => aiStatus == 'SUCCESS' && !aiNeedReview
+      ? (aiCard['requiredActions'] as List<Object?>? ?? const [])
+          .whereType<String>()
+          .where((value) => value.trim().isNotEmpty)
+          .toList()
+      : const [];
 
   Uri? get safeOriginalUri {
     final uri = Uri.tryParse(originalUrl.trim());
@@ -142,6 +151,7 @@ class InformationItem {
       eventType: json['eventType'] as String? ?? 'OTHER',
       aiSummary: json['aiSummary'] as String? ?? '',
       aiCard: (json['aiCard'] as Map?)?.cast<String, Object?>() ?? const {},
+      aiNeedReview: json['aiNeedReview'] as bool? ?? false,
       publishTime: json['publishTime'] == null
           ? null
           : DateTime.tryParse(json['publishTime'] as String),
@@ -171,6 +181,7 @@ class InformationItem {
       eventType: eventType,
       aiSummary: aiSummary ?? this.aiSummary,
       aiCard: aiCard,
+      aiNeedReview: aiNeedReview,
       publishTime: publishTime,
     );
   }
@@ -267,6 +278,9 @@ abstract class CampusApi {
     String readStatus,
     LoginSession session,
   );
+
+  Future<void> confirmAction(int itemId, String title, LoginSession session) =>
+      Future.error(UnsupportedError('当前实现不支持行动确认'));
 
   /// 粘贴文本导入
   Future<ImportResult> importText(String text, LoginSession session);
@@ -425,8 +439,4 @@ class SubscriptionItem {
 
 CampusApi createCampusApi() {
   throw UnsupportedError('当前平台暂不支持网络请求');
-}
-
-Future<List<InformationItem>> fetchInformationFeed() {
-  return createCampusApi().fetchInformationFeed(null);
 }

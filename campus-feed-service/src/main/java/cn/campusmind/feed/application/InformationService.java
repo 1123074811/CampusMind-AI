@@ -15,6 +15,8 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.http.HttpStatus;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.dao.DuplicateKeyException;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -36,6 +38,7 @@ public class InformationService {
     private final UserSourceSubscriptionMapper userSourceSubscriptionMapper;
     private final DataSourceMapper dataSourceMapper;
     private final ObjectMapper objectMapper;
+    private final JdbcTemplate jdbcTemplate;
     private final int sourceSubscriptionWeight;
 
     public InformationService(InformationItemMapper informationItemMapper,
@@ -43,12 +46,14 @@ public class InformationService {
                               UserSourceSubscriptionMapper userSourceSubscriptionMapper,
                               DataSourceMapper dataSourceMapper,
                               ObjectMapper objectMapper,
+                              JdbcTemplate jdbcTemplate,
                               @Value("${campus.feed.source-subscription-weight:100}") int sourceSubscriptionWeight) {
         this.informationItemMapper = informationItemMapper;
         this.userInformationStateMapper = userInformationStateMapper;
         this.userSourceSubscriptionMapper = userSourceSubscriptionMapper;
         this.dataSourceMapper = dataSourceMapper;
         this.objectMapper = objectMapper;
+        this.jdbcTemplate = jdbcTemplate;
         this.sourceSubscriptionWeight = sourceSubscriptionWeight;
     }
 
@@ -426,6 +431,87 @@ public class InformationService {
             userSourceSubscriptionMapper.updateById(existing);
         }
         return new SubscriptionResponse(ds.getId(), ds.getName(), ds.getSourceType(), enabled, null);
+    }
+
+    @Transactional
+    public Map<String, Object> confirmAction(Long userId, Long itemId, String title) {
+        if (userId == null) {
+            throw new BusinessException("USER_REQUIRED", "确认行动需要用户身份", HttpStatus.UNAUTHORIZED);
+        }
+        InformationItem item = informationItemMapper.selectById(itemId);
+        if (item == null || !isVisible(item)) {
+            throw new BusinessException("INFORMATION_ITEM_NOT_FOUND", "信息条目不存在", HttpStatus.NOT_FOUND);
+        }
+        Map<String, Object> card = aiCard(item);
+        List<String> actions = stringList(card.get("requiredActions"));
+        if (!"SUCCESS".equals(item.getAiStatus()) || Boolean.TRUE.equals(item.getAiNeedReview())
+                || !StringUtils.hasText(title) || !actions.contains(title.trim())) {
+            throw new BusinessException("ACTION_NOT_CONFIRMABLE", "该行动尚未通过AI质量校验", HttpStatus.CONFLICT);
+        }
+        LocalDateTime dueAt = parseDateTime(card.get("registrationDeadline"));
+        try {
+            jdbcTemplate.update("""
+                    INSERT INTO user_action_item (
+                      user_id, information_item_id, title, due_at, original_url, status, created_at, updated_at
+                    ) VALUES (?, ?, ?, ?, ?, 'CONFIRMED', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                    """, userId, itemId, title.trim(), dueAt, item.getItemUrl());
+        } catch (DuplicateKeyException ignored) {
+            // 用户重复点击时返回同一行动，不重复创建提醒。
+        }
+        Map<String, Object> action = jdbcTemplate.queryForMap("""
+                SELECT id, information_item_id AS informationItemId, title, due_at AS dueAt,
+                       original_url AS originalUrl, status
+                FROM user_action_item WHERE user_id = ? AND information_item_id = ? AND title = ?
+                """, userId, itemId, title.trim());
+        if (dueAt != null && dueAt.isAfter(LocalDateTime.now())) {
+            LocalDateTime remindAt = dueAt.minusDays(1);
+            if (remindAt.isAfter(LocalDateTime.now())) {
+                try {
+                    jdbcTemplate.update("""
+                            INSERT INTO user_reminder (
+                              action_item_id, user_id, remind_at, status, created_at
+                            ) VALUES (?, ?, ?, 'PENDING', CURRENT_TIMESTAMP)
+                            """, action.get("id"), userId, remindAt);
+                } catch (DuplicateKeyException ignored) {
+                    // 同一行动同一提醒时间由数据库唯一键保证幂等。
+                }
+            }
+        }
+        return action;
+    }
+
+    @Transactional(readOnly = true)
+    public List<Map<String, Object>> actions(Long userId) {
+        if (userId == null) {
+            throw new BusinessException("USER_REQUIRED", "查看行动需要用户身份", HttpStatus.UNAUTHORIZED);
+        }
+        return jdbcTemplate.queryForList("""
+                SELECT id, information_item_id AS informationItemId, title, due_at AS dueAt,
+                       original_url AS originalUrl, status, created_at AS createdAt
+                FROM user_action_item WHERE user_id = ? ORDER BY due_at IS NULL, due_at, id DESC
+                """, userId);
+    }
+
+    private static List<String> stringList(Object value) {
+        if (!(value instanceof List<?> list)) {
+            return List.of();
+        }
+        return list.stream().filter(String.class::isInstance).map(String.class::cast).toList();
+    }
+
+    private static LocalDateTime parseDateTime(Object value) {
+        if (!(value instanceof String text) || !StringUtils.hasText(text)) {
+            return null;
+        }
+        try {
+            return LocalDateTime.parse(text.trim());
+        } catch (Exception ignored) {
+            try {
+                return java.time.OffsetDateTime.parse(text.trim()).toLocalDateTime();
+            } catch (Exception ignoredOffset) {
+                return null;
+            }
+        }
     }
 
 }

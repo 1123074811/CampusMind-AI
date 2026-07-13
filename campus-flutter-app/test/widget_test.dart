@@ -69,12 +69,31 @@ void main() {
     expect(find.text('查看原文'), findsNothing);
     expect(find.text('来源与校验信息'), findsOneWidget);
   });
+
+  testWidgets('user explicitly confirms a reviewed AI action', (tester) async {
+    final item = _item(
+      aiStatus: 'SUCCESS',
+      aiSummary: '报名摘要',
+      aiCard: const {'requiredActions': ['完成报名']},
+    );
+    final api = _FakeCampusApi(item);
+    await tester.pumpWidget(_detailApp(item, api));
+    await tester.pumpAndSettle();
+
+    expect(find.text('建议行动'), findsOneWidget);
+    await tester.tap(find.text('确认加入'));
+    await tester.pumpAndSettle();
+
+    expect(api.confirmedAction, '完成报名');
+    expect(find.byIcon(Icons.check_circle), findsOneWidget);
+  });
 }
 
 InformationItem _item({
   String aiStatus = 'PENDING',
   String aiSummary = '',
   String originalUrl = 'https://example.edu/notices/1',
+  Map<String, Object?> aiCard = const {},
 }) =>
     InformationItem(
       id: 1,
@@ -91,12 +110,13 @@ InformationItem _item({
       aiStatus: aiStatus,
       eventType: 'NOTICE',
       aiSummary: aiSummary,
+      aiCard: aiCard,
     );
 
-Widget _detailApp(InformationItem item) => MaterialApp(
+Widget _detailApp(InformationItem item, [CampusApi? api]) => MaterialApp(
       home: PrototypeDetailPage(
         item: item,
-        api: _FakeCampusApi(item),
+        api: api ?? _FakeCampusApi(item),
         session: LoginSession(
           accessToken: 'test-token',
           tokenType: 'Bearer',
@@ -110,12 +130,18 @@ Widget _detailApp(InformationItem item) => MaterialApp(
 class _FakeCampusApi implements CampusApi {
   _FakeCampusApi(this.item);
   final InformationItem item;
+  String? confirmedAction;
 
   @override
   Future<InformationItem> fetchInformationDetail(int id, LoginSession? session) async => item;
 
   @override
   Future<InformationItem> updateReadStatus(int id, String readStatus, LoginSession session) async => item;
+
+  @override
+  Future<void> confirmAction(int itemId, String title, LoginSession session) async {
+    confirmedAction = title;
+  }
 
   @override
   Future<LoginSession> login(String username, String password) => throw UnimplementedError();
