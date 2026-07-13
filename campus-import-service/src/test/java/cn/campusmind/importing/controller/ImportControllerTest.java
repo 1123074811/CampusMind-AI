@@ -256,6 +256,51 @@ class ImportControllerTest {
     }
 
     @Test
+    void rainJsonImportRejectsUnsupportedExporterVersion() throws Exception {
+        String rawJson = "{\"schemaVersion\":2,\"provider\":\"RAIN_CLASSROOM\",\"items\":[]}";
+        String body = "{\"dataType\":\"HOMEWORK\",\"rawJson\":" + jsonEscape(rawJson) + "}";
+
+        mockMvc.perform(post("/api/v1/import/rain/json")
+                        .header(AUTHORIZATION, bearerToken(1L, "alice", "STUDENT"))
+                        .contentType(APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("RAIN_JSON_INVALID"))
+                .andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.containsString("仅支持版本1")));
+    }
+
+    @Test
+    void rainJsonImportRejectsWrongFieldType() throws Exception {
+        String rawJson = "{\"schemaVersion\":1,\"provider\":\"RAIN_CLASSROOM\",\"items\":[{\"title\":123}]}";
+        String body = "{\"dataType\":\"HOMEWORK\",\"rawJson\":" + jsonEscape(rawJson) + "}";
+
+        mockMvc.perform(post("/api/v1/import/rain/json")
+                        .header(AUTHORIZATION, bearerToken(1L, "alice", "STUDENT"))
+                        .contentType(APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.containsString("字段title必须是字符串")));
+    }
+
+    @Test
+    void rainJsonImportSkipsDuplicateItemsAndReportsCounts() throws Exception {
+        when(cognitionClient.extract(eq("RAIN_CLASSROOM"), anyString())).thenReturn(candidate());
+        String item = "{\"courseName\":\"软件工程\",\"title\":\"作业一\",\"content\":\"提交报告\"}";
+        String rawJson = "{\"schemaVersion\":1,\"provider\":\"RAIN_CLASSROOM\",\"items\":[" + item + "," + item + "]}";
+        String body = "{\"dataType\":\"HOMEWORK\",\"rawJson\":" + jsonEscape(rawJson) + "}";
+
+        mockMvc.perform(post("/api/v1/import/rain/json")
+                        .header(AUTHORIZATION, bearerToken(1L, "alice", "STUDENT"))
+                        .contentType(APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.message").value("雨课堂JSON导入完成，成功1条，跳过1条，失败0条"));
+
+        assertEquals(1, countRows("import_task", "result_summary LIKE '%\"skipped\":1%'"));
+        verify(cognitionClient, times(1)).extract(eq("RAIN_CLASSROOM"), anyString());
+    }
+
+    @Test
     void deleteRawDocumentOnlyDeletesTheCallingUsersDocument() throws Exception {
         try (Connection connection = dataSource.getConnection();
              Statement statement = connection.createStatement()) {

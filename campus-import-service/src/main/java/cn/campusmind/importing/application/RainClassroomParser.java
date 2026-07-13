@@ -14,6 +14,8 @@ import java.util.List;
 @Component
 public class RainClassroomParser {
 
+    private static final int SUPPORTED_SCHEMA_VERSION = 1;
+
     private final ObjectMapper objectMapper;
 
     public RainClassroomParser(ObjectMapper objectMapper) {
@@ -22,6 +24,10 @@ public class RainClassroomParser {
 
     public List<RawRainItem> parseJson(String rawJson) throws Exception {
         JsonNode root = objectMapper.readTree(rawJson);
+        if (root == null || (!root.isObject() && !root.isArray())) {
+            throw new IllegalArgumentException("雨课堂JSON根节点必须是对象或数组");
+        }
+        validateEnvelope(root);
 
         JsonNode list = locateList(root);
         if (list == null || !list.isArray()) {
@@ -29,16 +35,38 @@ public class RainClassroomParser {
         }
 
         List<RawRainItem> items = new ArrayList<>();
-        for (JsonNode node : list) {
-            items.add(new RawRainItem(
+        for (int index = 0; index < list.size(); index++) {
+            JsonNode node = list.get(index);
+            if (!node.isObject()) {
+                throw new IllegalArgumentException("第" + (index + 1) + "条数据必须是对象");
+            }
+            RawRainItem item = new RawRainItem(
                     textOrNull(node, "courseName"),
                     textOrNull(node, "title"),
                     textOrNull(node, "content"),
                     textOrNull(node, "deadline"),
                     textOrNull(node, "teacherName")
-            ));
+            );
+            if (item.toPlainText().isBlank()) {
+                throw new IllegalArgumentException("第" + (index + 1) + "条数据没有可导入内容");
+            }
+            items.add(item);
         }
         return items;
+    }
+
+    private void validateEnvelope(JsonNode root) {
+        if (!root.isObject()) {
+            return; // 兼容用户直接导出的旧版数组结构
+        }
+        JsonNode version = root.get("schemaVersion");
+        if (version != null && (!version.isIntegralNumber() || version.intValue() != SUPPORTED_SCHEMA_VERSION)) {
+            throw new IllegalArgumentException("不支持的schemaVersion，仅支持版本" + SUPPORTED_SCHEMA_VERSION);
+        }
+        JsonNode provider = root.get("provider");
+        if (provider != null && (!provider.isTextual() || !"RAIN_CLASSROOM".equals(provider.textValue()))) {
+            throw new IllegalArgumentException("provider必须为RAIN_CLASSROOM");
+        }
     }
 
     private JsonNode locateList(JsonNode root) {
@@ -69,7 +97,10 @@ public class RainClassroomParser {
         if (child.isMissingNode() || child.isNull()) {
             return null;
         }
-        String text = child.asText();
+        if (!child.isTextual()) {
+            throw new IllegalArgumentException("字段" + field + "必须是字符串");
+        }
+        String text = child.textValue();
         return text == null || text.isBlank() ? null : text;
     }
 }

@@ -28,9 +28,11 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Base64;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
 @Service
@@ -264,10 +266,18 @@ public class ImportService {
         RawDocument doc = rawDocumentService.save(buildRawDocument("RAIN_CLASSROOM", user.userId(), null, rawJson, contentHash, null));
         ImportTask task = createTask(user.userId(), "RAIN_JSON", doc.getId());
         int success = 0;
+        int skipped = 0;
         int fail = 0;
         List<Long> eventIds = new ArrayList<>();
-        for (RawRainItem item : items) {
+        List<String> failureReasons = new ArrayList<>();
+        Set<String> seen = new HashSet<>();
+        for (int index = 0; index < items.size(); index++) {
+            RawRainItem item = items.get(index);
             String plainText = item.toPlainText();
+            if (!seen.add(sha256(plainText))) {
+                skipped++;
+                continue;
+            }
             try {
                 CognitionResult candidate = cognitionClient.extract("RAIN_CLASSROOM", plainText);
                 Long eid = persistEvent(user, candidate, "RAIN_CLASSROOM", sha256(plainText), doc.getId(), null, true, plainText);
@@ -275,13 +285,18 @@ public class ImportService {
                 success++;
             } catch (Exception ex) {
                 fail++;
+                if (failureReasons.size() < 20) {
+                    failureReasons.add("第" + (index + 1) + "条：" + truncate(safeMessage(ex), 200));
+                }
             }
         }
         task.setTaskStatus(success > 0 ? "SUCCESS" : "FAILED");
         Map<String, Object> summary = new LinkedHashMap<>();
         summary.put("total", items.size());
         summary.put("success", success);
+        summary.put("skipped", skipped);
         summary.put("fail", fail);
+        summary.put("failureReasons", failureReasons);
         summary.put("eventIds", eventIds);
         task.setResultSummary(toJson(summary));
         if (success == 0) {
@@ -290,7 +305,7 @@ public class ImportService {
         task.setFinishedAt(LocalDateTime.now());
         importTaskMapper.updateById(task);
         return response(task, success > 0
-                ? "雨课堂JSON导入完成，成功" + success + "条，失败" + fail + "条"
+                ? "雨课堂JSON导入完成，成功" + success + "条，跳过" + skipped + "条，失败" + fail + "条"
                 : "雨课堂JSON导入失败，未生成任何事件");
     }
 
@@ -491,6 +506,10 @@ public class ImportService {
     private static String safeMessage(Exception ex) {
         String message = ex.getMessage();
         return message == null ? ex.getClass().getSimpleName() : message;
+    }
+
+    private static String truncate(String value, int maxLength) {
+        return value.length() <= maxLength ? value : value.substring(0, maxLength);
     }
 
     /**

@@ -15,6 +15,7 @@ import org.springframework.util.StringUtils;
 import java.time.LocalDateTime;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.Collection;
 import java.util.Map;
 import java.util.Set;
 
@@ -28,8 +29,10 @@ public class RawDocumentService {
 
     /** 脱敏字段白名单：这些字段在存储前会被删除 */
     private static final Set<String> SENSITIVE_FIELDS = Set.of(
-            "name", "phone", "mobile", "avatar", "studentId", "student_id",
-            "deviceId", "device_id", "token", "cookie", "password"
+            "name", "phone", "mobile", "avatar", "studentid", "student_id",
+            "deviceid", "device_id", "token", "accesstoken", "access_token",
+            "refreshtoken", "refresh_token", "cookie", "authorization", "password",
+            "secret", "apikey", "api_key"
     );
 
     private final MongoTemplate mongoTemplate;
@@ -102,14 +105,8 @@ public class RawDocumentService {
         }
         try {
             Object parsed = objectMapper.readValue(trimmed, Object.class);
-            if (parsed instanceof Map<?, ?> map) {
-                @SuppressWarnings("unchecked")
-                Map<String, Object> stringKeyedMap = (Map<String, Object>) map;
-                sanitizeMap(stringKeyedMap);
-                return objectMapper.writeValueAsString(stringKeyedMap);
-            }
-            // 不是 Map 类型（如数组），原样返回
-            return rawJson;
+            sanitizeValue(parsed);
+            return objectMapper.writeValueAsString(parsed);
         } catch (Exception ex) {
             log.debug("脱敏解析失败，原样保留: sourceType={}, error={}", sourceType, ex.getMessage());
             return rawJson;
@@ -120,13 +117,18 @@ public class RawDocumentService {
      * 递归删除 Map 中的敏感字段。
      */
     private void sanitizeMap(Map<String, Object> map) {
-        map.keySet().removeIf(key -> SENSITIVE_FIELDS.contains(key));
+        map.keySet().removeIf(key -> SENSITIVE_FIELDS.contains(key.toLowerCase(java.util.Locale.ROOT)));
         for (Object value : map.values()) {
-            if (value instanceof Map<?, ?> nested) {
-                @SuppressWarnings("unchecked")
-                Map<String, Object> stringKeyedMap = (Map<String, Object>) nested;
-                sanitizeMap(stringKeyedMap);
-            }
+            sanitizeValue(value);
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private void sanitizeValue(Object value) {
+        if (value instanceof Map<?, ?> map) {
+            sanitizeMap((Map<String, Object>) map);
+        } else if (value instanceof Collection<?> collection) {
+            collection.forEach(this::sanitizeValue);
         }
     }
 }

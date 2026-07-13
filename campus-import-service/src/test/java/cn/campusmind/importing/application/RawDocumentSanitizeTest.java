@@ -100,13 +100,15 @@ class RawDocumentSanitizeTest {
     }
 
     @Test
-    void shouldReturnJsonArrayAsIs() {
+    void shouldSanitizeNestedObjectsInJsonArray() {
         String jsonArray = """
-                [{"name": "test", "value": 1}]
+                [{"name": "test", "value": 1, "headers": {"Authorization": "Bearer secret"}}]
                 """;
 
         String sanitized = service.sanitizeRawJson(jsonArray, "USER_TEXT");
 
-        assertEquals(jsonArray.trim(), sanitized.trim(), "JSON 数组应原样返回");
+        assertFalse(sanitized.contains("test"), "数组中的姓名应被脱敏");
+        assertFalse(sanitized.contains("Bearer secret"), "大小写不同的授权字段应被脱敏");
+        assertTrue(sanitized.contains("\"value\":1"), "非敏感数组字段应保留");
     }
 }
