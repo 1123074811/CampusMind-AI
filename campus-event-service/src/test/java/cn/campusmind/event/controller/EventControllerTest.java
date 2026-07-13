@@ -7,6 +7,7 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.MvcResult;
 
 import javax.sql.DataSource;
 import java.sql.Connection;
@@ -118,20 +119,24 @@ class EventControllerTest {
                 }
                 """;
 
-        mockMvc.perform(post("/api/v1/events")
+        MvcResult createResult = mockMvc.perform(post("/api/v1/events")
                         .header("X-User-Id", "1")
                         .contentType(APPLICATION_JSON)
                         .content(body))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data").isNumber());
+                .andExpect(jsonPath("$.data").isNumber())
+                .andReturn();
 
-        mockMvc.perform(get("/api/v1/events/3").header("X-User-Id", "1"))
+        long eventId = com.jayway.jsonpath.JsonPath.parse(
+                createResult.getResponse().getContentAsString()).read("$.data", Long.class);
+
+        mockMvc.perform(get("/api/v1/events/" + eventId).header("X-User-Id", "1"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.title").value("我的作业"));
-        mockMvc.perform(get("/api/v1/events/3").header("X-User-Id", "2"))
+        mockMvc.perform(get("/api/v1/events/" + eventId).header("X-User-Id", "2"))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value("EVENT_NOT_FOUND"));
-        mockMvc.perform(get("/api/v1/events/3")
+        mockMvc.perform(get("/api/v1/events/" + eventId)
                         .header("X-User-Id", "9901")
                         .header("X-User-Role", "ADMIN"))
                 .andExpect(status().isOk())

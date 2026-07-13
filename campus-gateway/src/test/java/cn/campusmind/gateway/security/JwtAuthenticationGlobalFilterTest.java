@@ -40,10 +40,10 @@ class JwtAuthenticationGlobalFilterTest {
     @BeforeEach
     void setUp() {
         GatewayAuthProperties authProperties = new GatewayAuthProperties(ISSUER, SECRET);
-        GatewaySecurityProperties securityProperties = new GatewaySecurityProperties(List.of(
-                "/api/v1/auth/login",
-                "/actuator/health"
-        ));
+        GatewaySecurityProperties securityProperties = new GatewaySecurityProperties(
+                List.of("/api/v1/auth/login", "/actuator/health"),
+                new GatewaySecurityProperties.RateLimit(false, 50, 10)
+        );
         filter = new JwtAuthenticationGlobalFilter(authProperties, securityProperties);
         signingKey = Keys.hmacShaKeyFor(SECRET.getBytes(StandardCharsets.UTF_8));
     }

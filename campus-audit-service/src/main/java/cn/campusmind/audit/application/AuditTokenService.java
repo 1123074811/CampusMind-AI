@@ -1,6 +1,6 @@
 package cn.campusmind.audit.application;
 
-import cn.campusmind.audit.config.AuditAuthProperties;
+import cn.campusmind.common.config.JwtAuthProperties;
 import cn.campusmind.common.exception.BusinessException;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
@@ -15,9 +15,9 @@ import java.nio.charset.StandardCharsets;
 @Service
 public class AuditTokenService {
 
-    private final AuditAuthProperties properties;
+    private final JwtAuthProperties properties;
 
-    public AuditTokenService(AuditAuthProperties properties) {
+    public AuditTokenService(JwtAuthProperties properties) {
         this.properties = properties;
     }
 

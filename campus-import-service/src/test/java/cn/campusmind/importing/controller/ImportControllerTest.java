@@ -184,6 +184,21 @@ class ImportControllerTest {
     }
 
     @Test
+    void textImportMarksInformationCompensationWhenItemCreationFails() throws Exception {
+        when(cognitionClient.extract(eq("USER_TEXT"), anyString())).thenReturn(candidate());
+        when(informationServiceClient.createItem(any(), any(), any(), any(), any(), any())).thenReturn(null);
+
+        mockMvc.perform(post("/api/v1/import/text")
+                        .header(AUTHORIZATION, bearerToken(1L, "alice", "STUDENT"))
+                        .contentType(APPLICATION_JSON)
+                        .content("{\"text\":\"补偿测试文本\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("SUCCESS"));
+
+        assertEquals(1, countRows("import_task", "result_summary LIKE '%information_item_creation_failed%'"));
+    }
+
+    @Test
     void textImportRecordsFailureWhenCognitionUnavailable() throws Exception {
         when(cognitionClient.extract(anyString(), anyString()))
                 .thenThrow(new cn.campusmind.common.exception.BusinessException(

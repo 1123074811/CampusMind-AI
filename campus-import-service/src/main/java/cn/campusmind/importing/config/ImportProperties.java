@@ -4,9 +4,6 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 
 @ConfigurationProperties(prefix = "campus.import")
 public record ImportProperties(
-        String aiBaseUrl,
-        String eventBaseUrl,
-        String feedBaseUrl,
         int rainCookieTtlMinutes,
         boolean rainCookieEnabled,
         int maxRainJsonBytes,
@@ -14,9 +11,9 @@ public record ImportProperties(
         int maxTextLength,
         int maxImageBytes,
         int maxFileBytes,
-        /** AI 认知服务连接超时（秒） */
+        /** Feign 客户端连接超时（秒） */
         int aiConnectTimeoutSeconds,
-        /** AI 认知服务读取超时（秒） */
+        /** Feign 客户端读取超时（秒） */
         int aiReadTimeoutSeconds,
         /** 单用户每分钟最大导入次数 */
         int rateLimitPerMinute,

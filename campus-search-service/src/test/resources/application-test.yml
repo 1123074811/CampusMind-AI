@@ -9,6 +9,17 @@ spring:
       - org.springframework.ai.vectorstore.pgvector.autoconfigure.PgVectorStoreAutoConfiguration
       - org.springframework.boot.autoconfigure.data.redis.RedisAutoConfiguration
       - org.springframework.boot.autoconfigure.data.redis.RedisRepositoriesAutoConfiguration
+      - com.alibaba.cloud.nacos.discovery.NacosDiscoveryAutoConfiguration
+      - com.alibaba.cloud.nacos.NacosConfigAutoConfiguration
+      - com.alibaba.cloud.nacos.registry.NacosServiceRegistryAutoConfiguration
+      - com.alibaba.cloud.sentinel.SentinelAutoConfiguration
+      - com.alibaba.cloud.sentinel.SentinelWebAutoConfiguration
+  cloud:
+    nacos:
+      discovery:
+        enabled: false
+      config:
+        enabled: false
 
 mybatis-plus:
   configuration:
@@ -20,6 +31,5 @@ campus:
       issuer: campusmind-auth-test
       secret: test-secret-key-with-at-least-32-bytes
   search:
-    ai-base-url: http://localhost:8089
     default-top-k: 20
     keyword-fallback-top-k: 10

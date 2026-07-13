@@ -2,36 +2,27 @@ package cn.campusmind.importing.application;
 
 import cn.campusmind.common.exception.BusinessException;
 import cn.campusmind.common.web.ApiResponse;
-import cn.campusmind.importing.config.ImportProperties;
-import org.springframework.core.ParameterizedTypeReference;
+import cn.campusmind.importing.feign.EventFeignClient;
 import org.springframework.http.HttpStatus;
-import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
-import org.springframework.web.client.RestClient;
 
-import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
- * 通过 HTTP 调用 campus-event-service 的 POST /api/v1/events 端点。
+ * 事件服务客户端适配器：通过 Feign 调用 campus-event-service 创建事件。
+ *
+ * <p>底层使用 {@link EventFeignClient}（基于 OpenFeign + Nacos 服务发现），
+ * 替代原先的 RestClient 硬编码 URL 方式。请求头透传由
+ * {@link cn.campusmind.common.feign.FeignAuthRequestInterceptor} 自动处理。
  */
 @Component
 public class HttpEventServiceClient implements EventServiceClient {
 
-    private static final ParameterizedTypeReference<ApiResponse<Long>> RESPONSE_TYPE =
-            new ParameterizedTypeReference<>() {};
+    private final EventFeignClient feignClient;
 
-    private final RestClient restClient;
-
-    public HttpEventServiceClient(ImportProperties properties) {
-        SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
-        factory.setConnectTimeout(Duration.ofSeconds(properties.aiConnectTimeoutSeconds()));
-        factory.setReadTimeout(Duration.ofSeconds(properties.aiReadTimeoutSeconds()));
-        this.restClient = RestClient.builder()
-                .baseUrl(properties.eventBaseUrl())
-                .requestFactory(factory)
-                .build();
+    public HttpEventServiceClient(EventFeignClient feignClient) {
+        this.feignClient = feignClient;
     }
 
     @Override
@@ -60,15 +51,7 @@ public class HttpEventServiceClient implements EventServiceClient {
 
         ApiResponse<Long> response;
         try {
-            RestClient.RequestBodyUriSpec request = restClient.post();
-            var requestWithUri = request.uri("/api/v1/events");
-            if (ownerUserId != null) {
-                requestWithUri.header("X-User-Id", String.valueOf(ownerUserId));
-            }
-            response = requestWithUri
-                    .body(body)
-                    .retrieve()
-                    .body(RESPONSE_TYPE);
+            response = feignClient.createEvent(body, ownerUserId);
         } catch (RuntimeException ex) {
             throw new BusinessException("EVENT_SERVICE_UNAVAILABLE",
                     "事件服务暂不可用：" + ex.getMessage(), HttpStatus.BAD_GATEWAY);

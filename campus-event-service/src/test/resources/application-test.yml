@@ -8,6 +8,15 @@ spring:
     exclude:
       - org.springframework.boot.autoconfigure.mongo.MongoAutoConfiguration
       - org.springframework.boot.autoconfigure.data.mongo.MongoDataAutoConfiguration
+      - com.alibaba.cloud.nacos.discovery.NacosDiscoveryAutoConfiguration
+      - com.alibaba.cloud.nacos.NacosConfigAutoConfiguration
+      - com.alibaba.cloud.nacos.registry.NacosServiceRegistryAutoConfiguration
+  cloud:
+    nacos:
+      discovery:
+        enabled: false
+      config:
+        enabled: false
 
 mybatis-plus:
   configuration:

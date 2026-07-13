@@ -1,7 +1,7 @@
 package cn.campusmind.search.application;
 
 import cn.campusmind.common.exception.BusinessException;
-import cn.campusmind.search.config.AuthProperties;
+import cn.campusmind.common.config.JwtAuthProperties;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
@@ -15,10 +15,10 @@ import java.nio.charset.StandardCharsets;
 @Service
 public class AuthTokenService {
 
-    private final AuthProperties properties;
+    private final JwtAuthProperties properties;
     private final SecretKey signingKey;
 
-    public AuthTokenService(AuthProperties properties) {
+    public AuthTokenService(JwtAuthProperties properties) {
         this.properties = properties;
         this.signingKey = Keys.hmacShaKeyFor(properties.secret().getBytes(StandardCharsets.UTF_8));
     }

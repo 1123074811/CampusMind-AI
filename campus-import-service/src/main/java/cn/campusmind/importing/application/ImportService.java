@@ -14,6 +14,8 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -33,6 +35,8 @@ import java.util.concurrent.TimeUnit;
 
 @Service
 public class ImportService {
+
+    private static final Logger log = LoggerFactory.getLogger(ImportService.class);
 
     private static final String[] DATE_PATTERNS = {"yyyy-MM-dd HH:mm:ss", "yyyy-MM-dd HH:mm", "yyyy-MM-dd HH"};
 
@@ -91,8 +95,8 @@ public class ImportService {
         try {
             CognitionResult candidate = cognitionClient.extract("USER_TEXT", text);
             Long eventId = persistEvent(user, candidate, "USER_TEXT", contentHash, doc.getId(), null, false, text);
-            persistInformationItem(candidate, "用户文本提交", text, contentHash);
-            succeedTask(task, eventId, candidate);
+            boolean infoCompensated = persistInformationItemWithCompensation(candidate, "用户文本提交", text, contentHash, eventId);
+            succeedTask(task, eventId, candidate, infoCompensated);
             return response(task, "文本导入完成，已生成AI预测事件");
         } catch (Exception ex) {
             failTask(task, ex.getMessage());
@@ -144,8 +148,8 @@ public class ImportService {
             // 3. 调用认知服务生成事件
             CognitionResult candidate = cognitionClient.extract("USER_IMAGE", ocrText);
             Long eventId = persistEvent(user, candidate, "USER_IMAGE", contentHash, doc.getId(), null, true, ocrText);
-            persistInformationItem(candidate, "用户图片OCR", ocrText, contentHash);
-            succeedTask(task, eventId, candidate);
+            boolean infoCompensated = persistInformationItemWithCompensation(candidate, "用户图片OCR", ocrText, contentHash, eventId);
+            succeedTask(task, eventId, candidate, infoCompensated);
             return response(task, "图片OCR识别完成，已生成AI预测事件");
         } catch (BusinessException ex) {
             failTask(task, ex.getMessage());
@@ -191,8 +195,8 @@ public class ImportService {
 
             CognitionResult candidate = cognitionClient.extract("USER_FILE", text);
             Long eventId = persistEvent(user, candidate, "USER_FILE", contentHash, doc.getId(), null, false, text);
-            persistInformationItem(candidate, "用户文件上传", text, contentHash);
-            succeedTask(task, eventId, candidate);
+            boolean infoCompensated = persistInformationItemWithCompensation(candidate, "用户文件上传", text, contentHash, eventId);
+            succeedTask(task, eventId, candidate, infoCompensated);
             return response(task, "文件导入完成，已生成AI预测事件");
         } catch (Exception ex) {
             failTask(task, ex.getMessage());
@@ -345,14 +349,29 @@ public class ImportService {
         );
     }
 
-    private void persistInformationItem(CognitionResult candidate, String sourceName, String text, String contentHash) {
+    /**
+     * 尝试创建信息条目；若失败则记录补偿日志并返回 true 表示需要补偿。
+     * 事件已创建成功时，信息条目失败不影响主流程，但会标记待补偿状态供后续对账。
+     */
+    private boolean persistInformationItemWithCompensation(
+            CognitionResult candidate, String sourceName, String text,
+            String contentHash, Long eventId) {
         try {
-            String title = StringUtils.hasText(candidate.title()) ? candidate.title() : "未命名信息";
-            String content = StringUtils.hasText(candidate.summary()) ? candidate.summary() : text;
-            informationServiceClient.createItem(title, content, sourceName, null, null, contentHash);
+            if (persistInformationItem(candidate, sourceName, text, contentHash) == null) {
+                throw new IllegalStateException("信息条目创建失败");
+            }
+            return false;
         } catch (Exception ex) {
-            // 信息条目创建失败不影响主流程
+            log.warn("[SAGA-COMPENSATION] eventId={} 已创建但信息条目失败，待补偿: sourceName={}, title={}, cause={}",
+                    eventId, sourceName, candidate.title(), ex.getMessage());
+            return true;
         }
+    }
+
+    private Long persistInformationItem(CognitionResult candidate, String sourceName, String text, String contentHash) {
+        String title = StringUtils.hasText(candidate.title()) ? candidate.title() : "未命名信息";
+        String content = StringUtils.hasText(candidate.summary()) ? candidate.summary() : text;
+        return informationServiceClient.createItem(title, content, sourceName, null, null, contentHash);
     }
 
     private RawDocument buildRawDocument(String sourceType, Long ownerUserId, String sourceUrl,
@@ -379,12 +398,16 @@ public class ImportService {
         return t;
     }
 
-    private void succeedTask(ImportTask task, Long eventId, CognitionResult candidate) {
+    private void succeedTask(ImportTask task, Long eventId, CognitionResult candidate, boolean infoCompensationNeeded) {
         task.setTaskStatus("SUCCESS");
         Map<String, Object> summary = new LinkedHashMap<>();
         summary.put("eventId", eventId);
         summary.put("eventType", candidate.eventType());
         summary.put("needHumanReview", candidate.needHumanReview());
+        if (infoCompensationNeeded) {
+            summary.put("infoCompensationNeeded", true);
+            summary.put("infoCompensationReason", "information_item_creation_failed");
+        }
         task.setResultSummary(toJson(summary));
         task.setFinishedAt(LocalDateTime.now());
         importTaskMapper.updateById(task);

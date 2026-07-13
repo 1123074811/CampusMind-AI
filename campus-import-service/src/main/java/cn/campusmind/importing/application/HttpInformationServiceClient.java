@@ -1,38 +1,30 @@
 package cn.campusmind.importing.application;
 
 import cn.campusmind.common.web.ApiResponse;
-import cn.campusmind.importing.config.ImportProperties;
+import cn.campusmind.importing.feign.InformationFeignClient;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.core.ParameterizedTypeReference;
-import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
-import org.springframework.web.client.RestClient;
 
-import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
- * 通过 HTTP 调用 campus-feed-service 的 POST /api/v1/information 端点。
+ * 信息服务客户端适配器：通过 Feign 调用 campus-feed-service 创建 information_item。
+ *
+ * <p>底层使用 {@link InformationFeignClient}（基于 OpenFeign + Nacos 服务发现），
+ * 替代原先的 RestClient 硬编码 URL 方式。请求头透传由
+ * {@link cn.campusmind.common.feign.FeignAuthRequestInterceptor} 自动处理。
  */
 @Component
 public class HttpInformationServiceClient implements InformationServiceClient {
 
     private static final Logger log = LoggerFactory.getLogger(HttpInformationServiceClient.class);
-    private static final ParameterizedTypeReference<ApiResponse<Long>> RESPONSE_TYPE =
-            new ParameterizedTypeReference<>() {};
 
-    private final RestClient restClient;
+    private final InformationFeignClient feignClient;
 
-    public HttpInformationServiceClient(ImportProperties properties) {
-        SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
-        factory.setConnectTimeout(Duration.ofSeconds(properties.aiConnectTimeoutSeconds()));
-        factory.setReadTimeout(Duration.ofSeconds(properties.aiReadTimeoutSeconds()));
-        this.restClient = RestClient.builder()
-                .baseUrl(properties.feedBaseUrl())
-                .requestFactory(factory)
-                .build();
+    public HttpInformationServiceClient(InformationFeignClient feignClient) {
+        this.feignClient = feignClient;
     }
 
     @Override
@@ -48,11 +40,7 @@ public class HttpInformationServiceClient implements InformationServiceClient {
 
         ApiResponse<Long> response;
         try {
-            response = restClient.post()
-                    .uri("/api/v1/information")
-                    .body(body)
-                    .retrieve()
-                    .body(RESPONSE_TYPE);
+            response = feignClient.createItem(body);
         } catch (RuntimeException ex) {
             log.warn("信息服务创建条目失败（不影响事件创建）: {}", ex.getMessage());
             return null;

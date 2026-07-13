@@ -44,8 +44,22 @@ services:
       - pgvector-data:/var/lib/postgresql/data
       - ./postgres/init:/docker-entrypoint-initdb.d:ro
 
+  nacos:
+    image: ${NACOS_IMAGE:-nacos/nacos-server:v2.4.3}
+    container_name: campusmind-nacos
+    environment:
+      MODE: standalone
+      PREFER_HOST_MODE: hostname
+      TZ: Asia/Shanghai
+    ports:
+      - "8848:8848"
+      - "9848:9848"
+    volumes:
+      - nacos-data:/home/nacos/data
+
 volumes:
   mysql-data:
   redis-data:
   mongo-data:
   pgvector-data:
+  nacos-data:

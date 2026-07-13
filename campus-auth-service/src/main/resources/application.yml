@@ -4,6 +4,12 @@ server:
 spring:
   application:
     name: campus-auth-service
+  cloud:
+    nacos:
+      discovery:
+        server-addr: ${NACOS_SERVER_ADDR:127.0.0.1:8848}
+        namespace: ${NACOS_NAMESPACE:public}
+        group: ${NACOS_GROUP:DEFAULT_GROUP}
   datasource:
     url: ${AUTH_DB_URL:jdbc:mysql://localhost:3306/campusmind?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai}
     username: ${AUTH_DB_USERNAME}
@@ -21,3 +27,6 @@ management:
     web:
       exposure:
         include: health,info
+  tracing:
+    sampling:
+      probability: 1.0

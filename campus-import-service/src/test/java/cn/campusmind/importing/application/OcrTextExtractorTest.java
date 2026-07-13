@@ -17,9 +17,6 @@ class OcrTextExtractorTest {
 
     private ImportProperties createProperties() {
         return new ImportProperties(
-                "http://localhost:8089",  // aiBaseUrl
-                "http://localhost:8083",  // eventBaseUrl
-                "http://localhost:8084",  // feedBaseUrl
                 10,                        // rainCookieTtlMinutes
                 false,                     // rainCookieEnabled
                 2097152,                   // maxRainJsonBytes

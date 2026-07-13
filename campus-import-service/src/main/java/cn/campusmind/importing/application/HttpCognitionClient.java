@@ -2,48 +2,35 @@ package cn.campusmind.importing.application;
 
 import cn.campusmind.common.exception.BusinessException;
 import cn.campusmind.common.web.ApiResponse;
-import cn.campusmind.importing.config.ImportProperties;
-import org.springframework.core.ParameterizedTypeReference;
+import cn.campusmind.importing.feign.CognitionFeignClient;
 import org.springframework.http.HttpStatus;
-import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
-import org.springframework.web.client.RestClient;
 
-import java.time.Duration;
 import java.util.Map;
 
 /**
- * 通过 HTTP 调用 campus-ai-service 的 /api/v1/ai/cognition/extract 端点。
+ * 认知客户端适配器：通过 Feign 调用 campus-ai-service 的认知抽取接口。
+ *
+ * <p>底层使用 {@link CognitionFeignClient}（基于 OpenFeign + Nacos 服务发现），
+ * 替代原先的 RestClient 硬编码 URL 方式。请求头透传由
+ * {@link cn.campusmind.common.feign.FeignAuthRequestInterceptor} 自动处理。
  * 测试中可通过 @MockBean CognitionClient 替换，避免依赖真实 ai-service 运行。
  */
 @Component
 public class HttpCognitionClient implements CognitionClient {
 
-    private static final ParameterizedTypeReference<ApiResponse<CognitionResult>> RESPONSE_TYPE =
-            new ParameterizedTypeReference<>() {
-            };
+    private final CognitionFeignClient feignClient;
 
-    private final RestClient restClient;
-
-    public HttpCognitionClient(ImportProperties properties) {
-        SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
-        factory.setConnectTimeout(Duration.ofSeconds(properties.aiConnectTimeoutSeconds()));
-        factory.setReadTimeout(Duration.ofSeconds(properties.aiReadTimeoutSeconds()));
-        this.restClient = RestClient.builder()
-                .baseUrl(properties.aiBaseUrl())
-                .requestFactory(factory)
-                .build();
+    public HttpCognitionClient(CognitionFeignClient feignClient) {
+        this.feignClient = feignClient;
     }
 
     @Override
     public CognitionResult extract(String sourceType, String plainText) {
         ApiResponse<CognitionResult> response;
         try {
-            response = restClient.post()
-                    .uri("/api/v1/ai/cognition/extract")
-                    .body(Map.of("sourceType", sourceType, "plainText", plainText))
-                    .retrieve()
-                    .body(RESPONSE_TYPE);
+            response = feignClient.extract(
+                    Map.of("sourceType", sourceType, "plainText", plainText));
         } catch (RuntimeException ex) {
             throw new BusinessException("COGNITION_UNAVAILABLE",
                     "AI 认知服务暂不可用：" + ex.getMessage(), HttpStatus.BAD_GATEWAY);
