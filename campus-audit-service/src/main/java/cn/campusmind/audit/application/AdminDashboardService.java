@@ -122,11 +122,16 @@ public class AdminDashboardService {
     }
 
     @Transactional
-    public AdminEventResponse updateEvent(Long eventId, String title, String summary, String eventType) {
+    public AdminEventResponse updateEvent(Long eventId, Long operatorId,
+                                          String title, String summary, String eventType) {
         InformationItem event = informationItemMapper.selectById(eventId);
         if (event == null) {
             throw new BusinessException("EVENT_NOT_FOUND", "事件不存在", HttpStatus.NOT_FOUND);
         }
+        Map<String, Object> before = new java.util.LinkedHashMap<>();
+        before.put("title", event.getTitle());
+        before.put("summary", event.getAiSummary());
+        before.put("eventType", event.getAiEventType());
         if (StringUtils.hasText(title)) {
             event.setTitle(title);
         }
@@ -137,6 +142,19 @@ public class AdminDashboardService {
             event.setAiEventType(eventType);
         }
         informationItemMapper.updateById(event);
+
+        Map<String, Object> after = new java.util.LinkedHashMap<>();
+        after.put("title", event.getTitle());
+        after.put("summary", event.getAiSummary());
+        after.put("eventType", event.getAiEventType());
+        EventAuditLog log = new EventAuditLog();
+        log.setEventId(null);
+        log.setOperatorId(operatorId == null ? 9901L : operatorId);
+        log.setAction("CORRECT");
+        log.setBeforeSnapshot(writeJson(before));
+        log.setAfterSnapshot(writeJson(after));
+        log.setComment("信息#" + eventId + "：管理员修订AI结果");
+        eventAuditLogMapper.insert(log);
         return toEvent(event);
     }
 
@@ -344,7 +362,7 @@ public class AdminDashboardService {
         }
     }
 
-    private String writeJson(Map<String, String> value) {
+    private String writeJson(Map<String, ?> value) {
         try {
             return objectMapper.writeValueAsString(value);
         } catch (JsonProcessingException ex) {

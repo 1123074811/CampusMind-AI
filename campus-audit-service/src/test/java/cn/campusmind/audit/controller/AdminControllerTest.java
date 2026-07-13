@@ -215,6 +215,25 @@ class AdminControllerTest {
     }
 
     @Test
+    void correctionWritesBeforeAndAfterSnapshots() throws Exception {
+        mockMvc.perform(put("/api/admin/events/1001")
+                        .header("Authorization", adminToken())
+                        .contentType("application/json")
+                        .content("""
+                                {"title":"修订后的讲座通知","summary":"管理员确认后的摘要","eventType":"LECTURE"}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.title").value("修订后的讲座通知"));
+
+        mockMvc.perform(get("/api/admin/logs")
+                        .header("Authorization", adminToken()).param("action", "CORRECT"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items[0].operatorId").value(9901))
+                .andExpect(jsonPath("$.data.items[0].beforeSnapshot").value(org.hamcrest.Matchers.containsString("人工智能主题讲座通知")))
+                .andExpect(jsonPath("$.data.items[0].afterSnapshot").value(org.hamcrest.Matchers.containsString("管理员确认后的摘要")));
+    }
+
+    @Test
     void studentCannotAccessAdminDashboard() throws Exception {
         mockMvc.perform(get("/api/admin/dashboard").header("Authorization", token("STUDENT", 9902L)))
                 .andExpect(status().isForbidden())
@@ -226,6 +245,10 @@ class AdminControllerTest {
         mockMvc.perform(get("/api/admin/tables/campus_event").header("Authorization", adminToken()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data[0].id").value(1005));
+
+        mockMvc.perform(get("/api/admin/tables").header("Authorization", adminToken()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[?(@.name=='ai_processing_record')].label").value("AI处理记录"));
     }
 
     private String adminToken() {

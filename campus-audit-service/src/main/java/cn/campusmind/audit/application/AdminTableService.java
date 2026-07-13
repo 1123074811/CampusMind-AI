@@ -22,6 +22,7 @@ public class AdminTableService {
             "import_task", new TableSpec("导入任务", List.of("id", "user_id", "import_type", "task_status", "created_at", "finished_at")),
             "crawl_task", new TableSpec("采集任务", List.of("id", "source_id", "task_status", "http_status", "started_at", "finished_at")),
             "event_audit_log", new TableSpec("审计日志", List.of("id", "event_id", "operator_id", "action", "comment", "created_at")),
+            "ai_processing_record", new TableSpec("AI处理记录", List.of("id", "information_item_id", "status", "provider", "model_version", "prompt_version", "prompt_tokens", "completion_tokens", "error_message", "started_at", "finished_at", "created_at")),
             "user", new TableSpec("用户", List.of("id", "username", "phone", "role", "status", "created_at", "updated_at"))
     );
 

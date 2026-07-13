@@ -103,8 +103,9 @@ public class AdminController {
             @RequestHeader(value = "Authorization", required = false) String authorization,
             @Valid @RequestBody UpdateEventRequest request
     ) {
-        auditTokenService.requireOperatorOrAdmin(authorization);
-        return ApiResponse.ok(adminDashboardService.updateEvent(id, request.title(), request.summary(), request.eventType()));
+        var operator = auditTokenService.requireOperatorOrAdmin(authorization);
+        return ApiResponse.ok(adminDashboardService.updateEvent(
+                id, operator.userId(), request.title(), request.summary(), request.eventType()));
     }
 
     @DeleteMapping("/events/{id}")
