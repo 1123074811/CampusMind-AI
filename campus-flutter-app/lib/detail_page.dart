@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'app_theme.dart';
 import 'information_api.dart';
@@ -25,12 +26,15 @@ class _PrototypeDetailPageState extends State<PrototypeDetailPage> {
   late InformationItem _item = widget.item;
   bool _fav = false;
   final Set<String> _confirmedActions = {};
+  List<RelatedItem> _relatedItems = [];
+  bool _relatedLoading = true;
 
   @override
   void initState() {
     super.initState();
     _fav = _item.readStatus == 'FAVORITED';
     _loadDetail();
+    _loadRelated();
   }
 
   Future<void> _loadDetail() async {
@@ -43,6 +47,23 @@ class _PrototypeDetailPageState extends State<PrototypeDetailPage> {
       setState(() => _item = item);
       widget.onItemChanged(item);
     } catch (_) {}
+  }
+
+  Future<void> _loadRelated() async {
+    try {
+      final items = await widget.api.fetchRelatedItems(_item.id, widget.session);
+      if (!mounted) return;
+      setState(() { _relatedItems = items; _relatedLoading = false; });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _relatedLoading = false);
+    }
+  }
+
+  Future<void> _shareItem() async {
+    final url = _item.safeOriginalUri?.toString() ?? '';
+    final text = '${_item.title}${url.isNotEmpty ? '\n$url' : ''}';
+    await Share.share(text, subject: _item.title);
   }
 
   Future<void> _toggleFav() async {
@@ -103,9 +124,7 @@ class _PrototypeDetailPageState extends State<PrototypeDetailPage> {
                   children: [
                     _IconBtn(icon: _fav ? Icons.bookmark : Icons.bookmark_outline, onTap: _toggleFav, active: _fav),
                     const SizedBox(width: 8),
-                    _IconBtn(icon: Icons.share_outlined, onTap: () {
-                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('分享链接已复制')));
-                    }),
+                    _IconBtn(icon: Icons.share_outlined, onTap: _shareItem),
                   ],
                 ),
               ],
@@ -243,16 +262,53 @@ class _PrototypeDetailPageState extends State<PrototypeDetailPage> {
             ),
             const SizedBox(height: 22),
             // Related
-            const Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text('相关信息 · 去重融合', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: AppTheme.ink)),
-              ],
-            ),
-            const SizedBox(height: 12),
-            _RelatedCard(source: '辅导员通知', time: '10 分钟前', title: '班群提醒：今晚选课系统维护，志愿请提前存', fuse: '与「教务处」来源已融合为 1 条'),
-            const SizedBox(height: 10),
-            _RelatedCard(source: '官网公告', time: '25 分钟前', title: '选课系统 v3.2 升级说明（冲突检测上线）', fuse: '补充背景，已关联上文'),
+            if (_relatedItems.isNotEmpty || _relatedLoading) ...[              const Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text('相关信息 · 去重融合', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: AppTheme.ink)),
+                ],
+              ),
+              const SizedBox(height: 12),
+              if (_relatedLoading)
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 16),
+                  child: Center(child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))),
+                )
+              else
+                ..._relatedItems.asMap().entries.map((entry) {
+                  final related = entry.value;
+                  return Padding(
+                    padding: EdgeInsets.only(bottom: entry.key < _relatedItems.length - 1 ? 10 : 0),
+                    child: GestureDetector(
+                      onTap: () {
+                        Navigator.of(context).push(MaterialPageRoute(
+                          builder: (_) => PrototypeDetailPage(
+                            item: InformationItem(
+                              id: related.id,
+                              title: related.title,
+                              sourceName: related.sourceName,
+                              preview: '',
+                              originalUrl: '',
+                              readStatus: 'NEW',
+                              itemStatus: 'ACTIVE',
+                              fetchedAt: DateTime.now(),
+                            ),
+                            api: widget.api,
+                            session: widget.session,
+                            onItemChanged: (_) {},
+                          ),
+                        ));
+                      },
+                      child: _RelatedCard(
+                        source: related.sourceName,
+                        time: related.displayTime,
+                        title: related.title,
+                        fuse: related.fuseNote,
+                      ),
+                    ),
+                  );
+                }),
+            ],
           ],
         ),
       ),

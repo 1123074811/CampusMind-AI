@@ -96,7 +96,7 @@ class _PrototypeAssistantPageState extends State<PrototypeAssistantPage> {
                   TextSpan(
                     style: const TextStyle(fontSize: 13, color: AppTheme.ink2, height: 1.55),
                     children: [
-                      const TextSpan(text: '你好，林晓。我已读取你关注的 '),
+                      TextSpan(text: '你好，${widget.session.user.username}。我已读取你关注的 '),
                       const TextSpan(text: '教务、课程、活动', style: TextStyle(fontWeight: FontWeight.w700, color: AppTheme.ink)),
                       const TextSpan(text: ' 等 6 类信息源。可以问我「今天有什么重要通知」「帮我找最近的讲座」或「我的课表有冲突吗」。'),
                     ],

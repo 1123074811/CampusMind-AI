@@ -1,12 +1,87 @@
 import 'package:flutter/material.dart';
 import 'app_theme.dart';
 import 'information_api.dart';
+import 'detail_page.dart';
 
 class PrototypeDiscoverPage extends StatelessWidget {
   const PrototypeDiscoverPage({super.key, this.onOpenImport, required this.api, required this.session});
   final VoidCallback? onOpenImport;
   final CampusApi api;
   final LoginSession session;
+
+  void _showManageChannels(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: AppTheme.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 20, 20, 16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('管理信息频道', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: AppTheme.ink)),
+              const SizedBox(height: 12),
+              const Text('在「我的订阅」中可添加/移除频道、调整订阅优先级。', style: TextStyle(fontSize: 13, color: AppTheme.ink2, height: 1.5)),
+              const SizedBox(height: 16),
+              SizedBox(
+                width: double.infinity,
+                child: TextButton(
+                  onPressed: () => Navigator.of(ctx).pop(),
+                  child: const Text('知道了'),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _showMoreTrending(BuildContext context) {
+    Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => CategoryFeedPage(label: '本周热门', query: '热门', api: api, session: session),
+    ));
+  }
+
+  void _showAddSubscription(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: AppTheme.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 20, 20, 16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('添加订阅源', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: AppTheme.ink)),
+              const SizedBox(height: 12),
+              _AddSubItem(icon: Icons.link, label: '粘贴网址自动订阅', desc: '输入校园网站 URL，AI 自动识别并订阅'),
+              const SizedBox(height: 10),
+              _AddSubItem(icon: Icons.rss_feed, label: 'RSS 订阅', desc: '添加 RSS Feed 地址'),
+              const SizedBox(height: 10),
+              _AddSubItem(icon: Icons.school, label: '雨课堂授权', desc: '导入雨课堂课程数据'),
+              const SizedBox(height: 16),
+              SizedBox(
+                width: double.infinity,
+                child: TextButton(
+                  onPressed: () => Navigator.of(ctx).pop(),
+                  child: const Text('取消'),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -65,17 +140,17 @@ class PrototypeDiscoverPage extends StatelessWidget {
           ],
         ),
         const SizedBox(height: 20),
-        _SectionTitle(title: '信息频道', action: '管理'),
+        _SectionTitle(title: '信息频道', action: '管理', onAction: () => _showManageChannels(context)),
         const SizedBox(height: 12),
-        _CategoryGrid(),
+        _CategoryGrid(api: api, session: session),
         const SizedBox(height: 20),
-        _SectionTitle(title: '本周热门', action: '更多'),
+        _SectionTitle(title: '本周热门', action: '更多', onAction: () => _showMoreTrending(context)),
         const SizedBox(height: 12),
-        _TrendingRow(),
+        _TrendingRow(api: api, session: session),
         const SizedBox(height: 20),
-        _SectionTitle(title: '我的订阅源', action: '添加'),
+        _SectionTitle(title: '我的订阅源', action: '添加', onAction: () => _showAddSubscription(context)),
         const SizedBox(height: 12),
-        _SubscriptionList(),
+        _SubscriptionList(api: api, session: session),
         const SizedBox(height: 16),
       ],
     );
@@ -83,50 +158,108 @@ class PrototypeDiscoverPage extends StatelessWidget {
 }
 
 class _SectionTitle extends StatelessWidget {
-  const _SectionTitle({required this.title, this.action});
+  const _SectionTitle({required this.title, this.action, this.onAction});
   final String title;
   final String? action;
+  final VoidCallback? onAction;
   @override
   Widget build(BuildContext context) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
         Text(title, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: AppTheme.ink)),
-        if (action != null) Text(action!, style: const TextStyle(fontSize: 12.5, color: AppTheme.brandInk, fontWeight: FontWeight.w600)),
+        if (action != null)
+          GestureDetector(
+            onTap: onAction,
+            child: Text(action!, style: const TextStyle(fontSize: 12.5, color: AppTheme.brandInk, fontWeight: FontWeight.w600)),
+          ),
       ],
     );
   }
 }
 
-class _CategoryGrid extends StatelessWidget {
+class _AddSubItem extends StatelessWidget {
+  const _AddSubItem({required this.icon, required this.label, required this.desc});
+  final IconData icon;
+  final String label;
+  final String desc;
   @override
   Widget build(BuildContext context) {
-    final items = [
-      ('教务通知', '326 条 · 已订阅', Icons.format_list_bulleted, AppTheme.brand),
-      ('课程学术', '214 条 · 已订阅', Icons.article_outlined, AppTheme.info),
-      ('校园活动', '158 条 · 已订阅', Icons.add, AppTheme.accent),
-      ('实习招聘', '97 条 · 已订阅', Icons.person_outline, AppTheme.rose),
-    ];
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(color: AppTheme.surface2, borderRadius: BorderRadius.circular(12)),
+      child: Row(
+        children: [
+          Container(
+            width: 36, height: 36,
+            decoration: BoxDecoration(color: AppTheme.brandSoft, borderRadius: BorderRadius.circular(10)),
+            child: Icon(icon, color: AppTheme.brandInk, size: 18),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(label, style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600, color: AppTheme.ink)),
+                Text(desc, style: const TextStyle(fontSize: 11, color: AppTheme.muted)),
+              ],
+            ),
+          ),
+          const Icon(Icons.chevron_right, color: AppTheme.muted, size: 18),
+        ],
+      ),
+    );
+  }
+}
+
+class _CategoryGrid extends StatelessWidget {
+  const _CategoryGrid({required this.api, required this.session});
+  final CampusApi api;
+  final LoginSession session;
+
+  static const _categories = [
+    ('教务通知', '已订阅', Icons.format_list_bulleted, AppTheme.brand, '教务'),
+    ('课程学术', '已订阅', Icons.article_outlined, AppTheme.info, '课程'),
+    ('校园活动', '已订阅', Icons.add, AppTheme.accent, '活动'),
+    ('实习招聘', '已订阅', Icons.person_outline, AppTheme.rose, '实习'),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
     return Column(
       children: [
         Row(
           children: [
-            Expanded(child: _CatCard(name: items[0].$1, desc: items[0].$2, icon: items[0].$3, color: items[0].$4)),
+            Expanded(child: _buildCard(context, _categories[0])),
             const SizedBox(width: 12),
-            Expanded(child: _CatCard(name: items[1].$1, desc: items[1].$2, icon: items[1].$3, color: items[1].$4)),
+            Expanded(child: _buildCard(context, _categories[1])),
           ],
         ),
         const SizedBox(height: 12),
         Row(
           children: [
-            Expanded(child: _CatCard(name: items[2].$1, desc: items[2].$2, icon: items[2].$3, color: items[2].$4)),
+            Expanded(child: _buildCard(context, _categories[2])),
             const SizedBox(width: 12),
-            Expanded(child: _CatCard(name: items[3].$1, desc: items[3].$2, icon: items[3].$3, color: items[3].$4)),
+            Expanded(child: _buildCard(context, _categories[3])),
           ],
         ),
         const SizedBox(height: 12),
-        _WideCatCard(),
+        GestureDetector(
+          onTap: () => Navigator.of(context).push(MaterialPageRoute(
+            builder: (_) => CategoryFeedPage(label: '失物招领 · 后勤服务', query: '失物招领 后勤', api: api, session: session),
+          )),
+          child: _WideCatCard(),
+        ),
       ],
+    );
+  }
+
+  Widget _buildCard(BuildContext context, (String, String, IconData, Color, String) cat) {
+    return GestureDetector(
+      onTap: () => Navigator.of(context).push(MaterialPageRoute(
+        builder: (_) => CategoryFeedPage(label: cat.$1, query: cat.$5, api: api, session: session),
+      )),
+      child: _CatCard(name: cat.$1, desc: cat.$2, icon: cat.$3, color: cat.$4),
     );
   }
 }
@@ -191,36 +324,82 @@ class _WideCatCard extends StatelessWidget {
   }
 }
 
-class _TrendingRow extends StatelessWidget {
-  final _trends = const [
-    ('#1', '选课系统维护通知', '热度 2.4k'),
-    ('#2', 'AI 前沿讲座报名', '热度 1.8k'),
-    ('#3', '校园马拉松路线', '热度 1.2k'),
+class _TrendingRow extends StatefulWidget {
+  const _TrendingRow({required this.api, required this.session});
+  final CampusApi api;
+  final LoginSession session;
+
+  @override
+  State<_TrendingRow> createState() => _TrendingRowState();
+}
+
+class _TrendingRowState extends State<_TrendingRow> {
+  List<TrendingItem> _items = [];
+  bool _loading = true;
+
+  static const _fallback = [
+    TrendingItem(id: 0, rank: '#1', title: '选课系统维护通知', heatLabel: '热度 2.4k'),
+    TrendingItem(id: 0, rank: '#2', title: 'AI 前沿讲座报名', heatLabel: '热度 1.8k'),
+    TrendingItem(id: 0, rank: '#3', title: '校园马拉松路线', heatLabel: '热度 1.2k'),
   ];
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final items = await widget.api.fetchTrending(widget.session);
+      if (!mounted) return;
+      setState(() { _items = items; _loading = false; });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() { _items = _fallback; _loading = false; });
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    final trends = _items.isEmpty ? _fallback : _items;
+    if (_loading) {
+      return const SizedBox(
+        height: 100,
+        child: Center(child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))),
+      );
+    }
     return SizedBox(
       height: 100,
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
-        itemCount: _trends.length,
+        itemCount: trends.length,
         separatorBuilder: (_, __) => const SizedBox(width: 10),
         itemBuilder: (ctx, i) {
-          final t = _trends[i];
-          return Container(
+          final t = trends[i];
+          return GestureDetector(
+            onTap: () {
+              if (t.id > 0) {
+                Navigator.of(context).push(MaterialPageRoute(
+                  builder: (_) => CategoryFeedPage(label: t.title, query: t.title, api: widget.api, session: widget.session),
+                ));
+              }
+            },
+            child: Container(
             width: 152,
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(color: AppTheme.surface, borderRadius: BorderRadius.circular(14), border: Border.all(color: AppTheme.line)),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(t.$1, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: AppTheme.accent)),
+                Text(t.rank, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: AppTheme.accent)),
                 const SizedBox(height: 4),
-                Text(t.$2, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppTheme.ink, height: 1.4)),
+                Text(t.title, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppTheme.ink, height: 1.4)),
                 const Spacer(),
-                Text(t.$3, style: const TextStyle(fontSize: 11, color: AppTheme.muted, fontWeight: FontWeight.w600)),
+                Text(t.heatLabel, style: const TextStyle(fontSize: 11, color: AppTheme.muted, fontWeight: FontWeight.w600)),
               ],
             ),
+          ),
           );
         },
       ),
@@ -229,31 +408,81 @@ class _TrendingRow extends StatelessWidget {
 }
 
 class _SubscriptionList extends StatefulWidget {
+  const _SubscriptionList({required this.api, required this.session});
+  final CampusApi api;
+  final LoginSession session;
+
   @override
   State<_SubscriptionList> createState() => _SubscriptionListState();
 }
 
 class _SubscriptionListState extends State<_SubscriptionList> {
-  final _sources = [
-    ('教务处', '官方通知 · 自动抓取', Icons.format_list_bulleted, true),
-    ('学生会', '活动与社团', Icons.person_outline, true),
-    ('图书馆', '座位与资源', Icons.article_outlined, false),
-  ];
-  late List<bool> _on;
+  List<SubscriptionItem> _items = [];
+  bool _loading = true;
 
   @override
   void initState() {
     super.initState();
-    _on = _sources.map((e) => e.$4).toList();
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final items = await widget.api.fetchSubscriptions(widget.session);
+      if (!mounted) return;
+      setState(() { _items = items; _loading = false; });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _toggle(int index) async {
+    final item = _items[index];
+    final newEnabled = !item.enabled;
+    try {
+      await widget.api.updateSubscription(item.sourceId, newEnabled, widget.session);
+      if (!mounted) return;
+      setState(() {
+        _items[index] = SubscriptionItem(
+          sourceId: item.sourceId,
+          sourceName: item.sourceName,
+          sourceType: item.sourceType,
+          enabled: newEnabled,
+          subscribedAt: item.subscribedAt,
+        );
+      });
+    } catch (_) {}
+  }
+
+  String _typeLabel(String type) {
+    switch (type) {
+      case 'PUBLIC_WEB': return '自动抓取';
+      case 'RAIN_CLASSROOM': return '雨课堂';
+      default: return type;
+    }
   }
 
   @override
   Widget build(BuildContext context) {
+    if (_loading) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 20),
+        child: Center(child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))),
+      );
+    }
+    if (_items.isEmpty) {
+      return Container(
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(color: AppTheme.surface, borderRadius: BorderRadius.circular(AppTheme.radiusSm), border: Border.all(color: AppTheme.line)),
+        child: const Center(child: Text('暂无订阅源', style: TextStyle(fontSize: 13, color: AppTheme.muted))),
+      );
+    }
     return Container(
       decoration: BoxDecoration(color: AppTheme.surface, borderRadius: BorderRadius.circular(AppTheme.radiusSm), border: Border.all(color: AppTheme.line)),
       child: Column(
-        children: List.generate(_sources.length, (i) {
-          final s = _sources[i];
+        children: List.generate(_items.length, (i) {
+          final item = _items[i];
           return Column(
             children: [
               Padding(
@@ -263,31 +492,31 @@ class _SubscriptionListState extends State<_SubscriptionList> {
                     Container(
                       width: 32, height: 32,
                       decoration: BoxDecoration(color: AppTheme.surface2, borderRadius: BorderRadius.circular(9)),
-                      child: Icon(s.$3, color: AppTheme.brandInk, size: 16),
+                      child: const Icon(Icons.rss_feed, color: AppTheme.brandInk, size: 16),
                     ),
                     const SizedBox(width: 12),
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(s.$1, style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600, color: AppTheme.ink)),
-                          Text(s.$2, style: const TextStyle(fontSize: 11, color: AppTheme.muted)),
+                          Text(item.sourceName, style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600, color: AppTheme.ink)),
+                          Text(_typeLabel(item.sourceType), style: const TextStyle(fontSize: 11, color: AppTheme.muted)),
                         ],
                       ),
                     ),
                     GestureDetector(
-                      onTap: () => setState(() => _on[i] = !_on[i]),
+                      onTap: () => _toggle(i),
                       child: AnimatedContainer(
                         duration: const Duration(milliseconds: 200),
                         width: 42, height: 24,
                         padding: const EdgeInsets.all(3),
                         decoration: BoxDecoration(
-                          color: _on[i] ? AppTheme.brand : AppTheme.surface2,
+                          color: item.enabled ? AppTheme.brand : AppTheme.surface2,
                           borderRadius: BorderRadius.circular(99),
                         ),
                         child: AnimatedAlign(
                           duration: const Duration(milliseconds: 200),
-                          alignment: _on[i] ? Alignment.centerRight : Alignment.centerLeft,
+                          alignment: item.enabled ? Alignment.centerRight : Alignment.centerLeft,
                           child: Container(width: 18, height: 18, decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle)),
                         ),
                       ),
@@ -295,7 +524,7 @@ class _SubscriptionListState extends State<_SubscriptionList> {
                   ],
                 ),
               ),
-              if (i < _sources.length - 1) const Divider(height: 1, color: AppTheme.line),
+              if (i < _items.length - 1) const Divider(height: 1, color: AppTheme.line),
             ],
           );
         }),
@@ -430,6 +659,112 @@ class _SearchPageState extends State<_SearchPage> {
           ],
         ),
       ),
+    );
+  }
+}
+
+// —————————————————————————————————————————
+// 分类详情页：展示某个分类下的信息列表
+// —————————————————————————————————————————
+
+class CategoryFeedPage extends StatefulWidget {
+  const CategoryFeedPage({
+    super.key,
+    required this.label,
+    required this.query,
+    required this.api,
+    required this.session,
+  });
+  final String label;
+  final String query;
+  final CampusApi api;
+  final LoginSession session;
+
+  @override
+  State<CategoryFeedPage> createState() => _CategoryFeedPageState();
+}
+
+class _CategoryFeedPageState extends State<CategoryFeedPage> {
+  List<SearchResultItem> _results = [];
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final results = await widget.api.search(widget.query, widget.session);
+      if (!mounted) return;
+      setState(() { _results = results.items; _loading = false; });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _loading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: AppTheme.bg,
+      appBar: AppBar(
+        backgroundColor: AppTheme.bg,
+        elevation: 0,
+        title: Text(widget.label, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: AppTheme.ink)),
+        iconTheme: const IconThemeData(color: AppTheme.ink),
+      ),
+      body: _loading
+          ? const Center(child: SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2)))
+          : _results.isEmpty
+              ? const Center(child: Text('暂无相关内容', style: TextStyle(fontSize: 14, color: AppTheme.muted)))
+              : ListView.separated(
+                  padding: const EdgeInsets.fromLTRB(20, 10, 20, 24),
+                  itemCount: _results.length,
+                  separatorBuilder: (_, __) => const SizedBox(height: 12),
+                  itemBuilder: (ctx, i) {
+                    final r = _results[i];
+                    return GestureDetector(
+                      onTap: () => Navigator.of(context).push(MaterialPageRoute(
+                        builder: (_) => PrototypeDetailPage(item: r.toInformationItem(), api: widget.api, session: widget.session, onItemChanged: (_) {}),
+                      )),
+                      child: Container(
+                        padding: const EdgeInsets.all(14),
+                        decoration: BoxDecoration(
+                          color: AppTheme.surface,
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(color: AppTheme.line),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                                  decoration: BoxDecoration(color: const Color(0xFFF3F4F6), borderRadius: BorderRadius.circular(4)),
+                                  child: Text(r.sourceName ?? '未知来源', style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: AppTheme.muted)),
+                                ),
+                                const Spacer(),
+                                if (r.eventType != null)
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                                    decoration: BoxDecoration(color: AppTheme.brandSoft, borderRadius: BorderRadius.circular(4)),
+                                    child: Text(r.eventType!, style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: AppTheme.brandInk)),
+                                  ),
+                              ],
+                            ),
+                            const SizedBox(height: 8),
+                            Text(r.title, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: AppTheme.ink, height: 1.4)),
+                            const SizedBox(height: 6),
+                            Text(r.snippet, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12.5, color: AppTheme.muted, height: 1.5)),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                ),
     );
   }
 }

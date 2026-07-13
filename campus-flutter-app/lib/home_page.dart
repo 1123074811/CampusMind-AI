@@ -1,37 +1,158 @@
 import 'package:flutter/material.dart';
+import 'package:share_plus/share_plus.dart';
 import 'app_theme.dart';
 import 'information_api.dart';
+import 'reminders_page.dart';
 
-class PrototypeHomePage extends StatelessWidget {
+class PrototypeHomePage extends StatefulWidget {
   const PrototypeHomePage({
     super.key,
     required this.items,
     required this.onOpenDetail,
     required this.onOpenImport,
     required this.userName,
+    required this.api,
+    required this.session,
+    this.onItemUpdated,
   });
   final List<InformationItem> items;
   final ValueChanged<InformationItem> onOpenDetail;
   final VoidCallback onOpenImport;
   final String userName;
+  final CampusApi api;
+  final LoginSession session;
+  final ValueChanged<InformationItem>? onItemUpdated;
+
+  @override
+  State<PrototypeHomePage> createState() => _PrototypeHomePageState();
+}
+
+class _PrototypeHomePageState extends State<PrototypeHomePage> {
+  int _activeChip = 0;
+  int _reminderCount = 0;
+  String _sortMode = 'smart';
+  String _briefingSummary = '';
+
+  static const _sortOptions = <String, String>{
+    'smart': '智能排序',
+    'newest': '最新发布',
+    'hot': '热度优先',
+  };
+
+  static const _chipLabels = ['全部', '教务通知', '课程学术', '校园活动', '失物招领', '实习招聘'];
+  static const _chipKeywords = <String, List<String>>{
+    '教务通知': ['教务', '选课', '考试', '成绩', '教学'],
+    '课程学术': ['课程', '讲座', '学术', '研讨', '学院'],
+    '校园活动': ['活动', '社团', '志愿', '比赛', '校园'],
+    '失物招领': ['失物', '招领', '后勤'],
+    '实习招聘': ['实习', '招聘', '就业', '岗位'],
+  };
+
+  List<InformationItem> get _filteredItems {
+    if (_activeChip == 0) return widget.items;
+    final keywords = _chipKeywords[_chipLabels[_activeChip]] ?? const [];
+    return widget.items.where((item) {
+      final text = '${item.sourceName} ${item.title}';
+      return keywords.any((k) => text.contains(k));
+    }).toList();
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _loadReminderCount();
+    _loadBriefing();
+  }
+
+  Future<void> _loadBriefing() async {
+    try {
+      final briefing = await widget.api.fetchDailyBriefing(widget.session);
+      if (!mounted) return;
+      setState(() {
+        _briefingSummary = briefing.summary;
+      });
+    } catch (_) {
+      // 回退：从本地 items 生成
+      if (!mounted) return;
+      setState(() {});
+    }
+  }
+
+  Future<void> _loadReminderCount() async {
+    try {
+      final reminders = await widget.api.fetchReminders(widget.session);
+      if (!mounted) return;
+      final pending = reminders.where((r) => !r.isDismissed && !r.isExpired).length;
+      setState(() => _reminderCount = pending);
+    } catch (_) {
+      // 静默失败，不影响首页展示
+    }
+  }
+
+  Future<void> _toggleFavorite(InformationItem item) async {
+    final isFav = item.readStatus == 'FAVORITED';
+    final newStatus = isFav ? 'READ' : 'FAVORITED';
+    try {
+      final updated = await widget.api.updateReadStatus(item.id, newStatus, widget.session);
+      if (!mounted) return;
+      widget.onItemUpdated?.call(updated);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(isFav ? '已取消收藏' : '已加入收藏')),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('操作失败，请重试')),
+      );
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
+    final items = _filteredItems;
     final urgentCount = items.where((e) => e.readStatus == 'NEW').length;
+    // 动态计算相关度
+    final relevance = items.isEmpty ? 0 : ((items.where((e) => e.recommendReasons.isNotEmpty).length / items.length) * 100).round();
+    // 动态生成日报摘要
+    final briefingText = _briefingSummary.isNotEmpty
+        ? _briefingSummary
+        : _generateBriefing(items);
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 6, 20, 22),
       children: [
         // Header
-        _AppHeader(userName: userName),
+        _AppHeader(userName: widget.userName),
         const SizedBox(height: 18),
         // AI Hero
-        _AiHeroPanel(total: items.length, urgent: urgentCount, onImport: onOpenImport),
+        _AiHeroPanel(
+          total: items.length,
+          urgent: urgentCount,
+          relevancePercent: relevance,
+          briefingSummary: briefingText,
+          reminderCount: _reminderCount,
+          onImport: widget.onOpenImport,
+          onOpenReminders: () {
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => RemindersPage(api: widget.api, session: widget.session),
+              ),
+            ).then((_) => _loadReminderCount());
+          },
+        ),
         const SizedBox(height: 18),
         // Chips
-        const _CategoryChips(),
+        _CategoryChips(
+          labels: _chipLabels,
+          selectedIndex: _activeChip,
+          onChanged: (i) => setState(() => _activeChip = i),
+        ),
         const SizedBox(height: 16),
-        // Section title
-        const _SectionTitle(title: '为你推荐', action: '智能排序 ▾'),
+        // Section title with sort dropdown
+        _SectionTitle(
+          title: '为你推荐',
+          action: '${_sortOptions[_sortMode] ?? '智能排序'} ▾',
+          onAction: () => _showSortMenu(context),
+        ),
         const SizedBox(height: 12),
         // Feed cards
         if (items.isEmpty)
@@ -40,11 +161,68 @@ class PrototypeHomePage extends StatelessWidget {
           ...items.map(
             (item) => Padding(
               padding: const EdgeInsets.only(bottom: 14),
-              child: _FeedCard(item: item, onTap: () => onOpenDetail(item)),
+              child: _FeedCard(
+                item: item,
+                onTap: () => widget.onOpenDetail(item),
+                onFavorite: () => _toggleFavorite(item),
+                onShare: () => _shareItem(item),
+              ),
             ),
           ),
       ],
     );
+  }
+
+  void _showSortMenu(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: AppTheme.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 20, 20, 16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('排序方式', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: AppTheme.ink)),
+              const SizedBox(height: 12),
+              ..._sortOptions.entries.map((entry) => ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: Icon(
+                  entry.key == _sortMode ? Icons.radio_button_checked : Icons.radio_button_off,
+                  color: entry.key == _sortMode ? AppTheme.brand : AppTheme.muted,
+                ),
+                title: Text(entry.value, style: TextStyle(
+                  fontSize: 14, fontWeight: FontWeight.w600,
+                  color: entry.key == _sortMode ? AppTheme.brandInk : AppTheme.ink,
+                )),
+                onTap: () {
+                  Navigator.of(ctx).pop();
+                  setState(() => _sortMode = entry.key);
+                },
+              )),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  String _generateBriefing(List<InformationItem> items) {
+    if (items.isEmpty) return '暂无新的校园信息。';
+    final titles = items.take(3).map((e) => e.title).toList();
+    if (titles.length == 1) return titles.first;
+    final joined = titles.take(2).join('、');
+    return titles.length > 2 ? '$joined 等 ${items.length} 条信息值得关注。' : '$joined。';
+  }
+
+  void _shareItem(InformationItem item) {
+    final url = item.safeOriginalUri?.toString() ?? '';
+    final text = '${item.title}${url.isNotEmpty ? '\n$url' : ''}';
+    Share.share(text, subject: item.title);
   }
 }
 
@@ -88,10 +266,22 @@ class _AppHeader extends StatelessWidget {
 }
 
 class _AiHeroPanel extends StatelessWidget {
-  const _AiHeroPanel({required this.total, required this.urgent, required this.onImport});
+  const _AiHeroPanel({
+    required this.total,
+    required this.urgent,
+    required this.relevancePercent,
+    required this.briefingSummary,
+    required this.reminderCount,
+    required this.onImport,
+    required this.onOpenReminders,
+  });
   final int total;
   final int urgent;
+  final int relevancePercent;
+  final String briefingSummary;
+  final int reminderCount;
   final VoidCallback onImport;
+  final VoidCallback onOpenReminders;
 
   @override
   Widget build(BuildContext context) {
@@ -118,7 +308,7 @@ class _AiHeroPanel extends StatelessWidget {
           ),
           const SizedBox(height: 6),
           Text(
-            '选课系统今晚维护、计算机学院讲座明日截止报名、图书馆自习室已延长开放。',
+            briefingSummary.isNotEmpty ? briefingSummary : '暂无新的校园信息。',
             style: TextStyle(fontSize: 13, color: Colors.white.withValues(alpha: 0.9), height: 1.55),
           ),
           const SizedBox(height: 14),
@@ -128,9 +318,33 @@ class _AiHeroPanel extends StatelessWidget {
               const SizedBox(width: 18),
               _StatItem(value: '$urgent', label: '紧急/重要'),
               const SizedBox(width: 18),
-              const _StatItem(value: '86%', label: '相关度'),
+              _StatItem(value: '$relevancePercent%', label: '相关度'),
             ],
           ),
+          if (reminderCount > 0) ...[
+            const SizedBox(height: 12),
+            GestureDetector(
+              onTap: onOpenReminders,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFBE123C).withValues(alpha: 0.25),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.notifications_active, color: Colors.white, size: 15),
+                    const SizedBox(width: 6),
+                    Text('待处理提醒 $reminderCount 条',
+                        style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: Colors.white)),
+                    const SizedBox(width: 4),
+                    const Icon(Icons.chevron_right, color: Colors.white, size: 16),
+                  ],
+                ),
+              ),
+            ),
+          ],
           const SizedBox(height: 12),
           // 导入入口
           GestureDetector(
@@ -178,16 +392,15 @@ class _StatItem extends StatelessWidget {
   }
 }
 
-class _CategoryChips extends StatefulWidget {
-  const _CategoryChips();
-
-  @override
-  State<_CategoryChips> createState() => _CategoryChipsState();
-}
-
-class _CategoryChipsState extends State<_CategoryChips> {
-  int _active = 0;
-  final _labels = const ['全部', '教务通知', '课程学术', '校园活动', '失物招领', '实习招聘'];
+class _CategoryChips extends StatelessWidget {
+  const _CategoryChips({
+    required this.labels,
+    required this.selectedIndex,
+    required this.onChanged,
+  });
+  final List<String> labels;
+  final int selectedIndex;
+  final ValueChanged<int> onChanged;
 
   @override
   Widget build(BuildContext context) {
@@ -195,24 +408,24 @@ class _CategoryChipsState extends State<_CategoryChips> {
       height: 38,
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
-        itemCount: _labels.length,
+        itemCount: labels.length,
         separatorBuilder: (_, __) => const SizedBox(width: 9),
         itemBuilder: (context, i) => GestureDetector(
-          onTap: () => setState(() => _active = i),
+          onTap: () => onChanged(i),
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 14),
             decoration: BoxDecoration(
-              color: _active == i ? AppTheme.ink : AppTheme.surface,
+              color: selectedIndex == i ? AppTheme.ink : AppTheme.surface,
               borderRadius: BorderRadius.circular(999),
-              border: Border.all(color: _active == i ? AppTheme.ink : AppTheme.line),
+              border: Border.all(color: selectedIndex == i ? AppTheme.ink : AppTheme.line),
             ),
             alignment: Alignment.center,
             child: Text(
-              _labels[i],
+              labels[i],
               style: TextStyle(
                 fontSize: 13,
                 fontWeight: FontWeight.w600,
-                color: _active == i ? Colors.white : AppTheme.ink2,
+                color: selectedIndex == i ? Colors.white : AppTheme.ink2,
               ),
             ),
           ),
@@ -223,9 +436,10 @@ class _CategoryChipsState extends State<_CategoryChips> {
 }
 
 class _SectionTitle extends StatelessWidget {
-  const _SectionTitle({required this.title, this.action});
+  const _SectionTitle({required this.title, this.action, this.onAction});
   final String title;
   final String? action;
+  final VoidCallback? onAction;
 
   @override
   Widget build(BuildContext context) {
@@ -234,16 +448,21 @@ class _SectionTitle extends StatelessWidget {
       children: [
         Text(title, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: AppTheme.ink)),
         if (action != null)
-          Text(action!, style: const TextStyle(fontSize: 12.5, color: AppTheme.brandInk, fontWeight: FontWeight.w600)),
+          GestureDetector(
+            onTap: onAction,
+            child: Text(action!, style: const TextStyle(fontSize: 12.5, color: AppTheme.brandInk, fontWeight: FontWeight.w600)),
+          ),
       ],
     );
   }
 }
 
 class _FeedCard extends StatelessWidget {
-  const _FeedCard({required this.item, required this.onTap});
+  const _FeedCard({required this.item, required this.onTap, this.onFavorite, this.onShare});
   final InformationItem item;
   final VoidCallback onTap;
+  final VoidCallback? onFavorite;
+  final VoidCallback? onShare;
 
   @override
   Widget build(BuildContext context) {
@@ -294,15 +513,41 @@ class _FeedCard extends StatelessWidget {
                 ),
               ),
             ],
+            // 推荐理由标签
+            if (item.recommendReasons.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 6, runSpacing: 4,
+                children: item.recommendReasons.map((reason) => Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: AppTheme.brandSoft,
+                    borderRadius: BorderRadius.circular(5),
+                  ),
+                  child: Text(reason, style: const TextStyle(fontSize: 11, color: AppTheme.brandInk, fontWeight: FontWeight.w500)),
+                )).toList(),
+              ),
+            ],
             const SizedBox(height: 10),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text('含 2 条相关来源已融合', style: TextStyle(fontSize: 11.5, color: AppTheme.muted)),
+                Text(
+                  item.recommendReasons.isNotEmpty
+                      ? '含 ${item.recommendReasons.length + 1} 条相关来源已融合'
+                      : '独立来源',
+                  style: TextStyle(fontSize: 11.5, color: AppTheme.muted),
+                ),
                 Row(children: [
-                  Text('收藏', style: TextStyle(fontSize: 11.5, color: AppTheme.muted)),
+                  GestureDetector(
+                    onTap: onFavorite,
+                    child: Text('收藏', style: TextStyle(fontSize: 11.5, color: item.readStatus == 'FAVORITED' ? AppTheme.brand : AppTheme.muted, fontWeight: FontWeight.w600)),
+                  ),
                   const SizedBox(width: 14),
-                  Text('转发', style: TextStyle(fontSize: 11.5, color: AppTheme.muted)),
+                  GestureDetector(
+                    onTap: onShare,
+                    child: Text('转发', style: TextStyle(fontSize: 11.5, color: AppTheme.muted)),
+                  ),
                 ]),
               ],
             ),

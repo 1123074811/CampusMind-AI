@@ -5,6 +5,9 @@ import 'my_subscriptions_page.dart';
 import 'my_favorites_page.dart';
 import 'my_read_history_page.dart';
 import 'my_imported_events_page.dart';
+import 'my_actions_page.dart';
+import 'reminders_page.dart';
+import 'data_source_preference_page.dart';
 
 class PrototypeProfilePage extends StatefulWidget {
   const PrototypeProfilePage({
@@ -25,12 +28,44 @@ class PrototypeProfilePage extends StatefulWidget {
 
 class _PrototypeProfilePageState extends State<PrototypeProfilePage> {
   UserStats _stats = const UserStats(readCount: 0, favoriteCount: 0, subscriptionCount: 0);
+  UserProfile? _profile;
   bool _loading = true;
+  final List<String> _allTags = ['课程学术', '校园活动', '实习招聘', '失物招领', '后勤服务', '教务通知', '竞赛比赛', '生活服务'];
+  Set<String> _activeTags = {};
+  double _sensitivity = 0.5;
 
   @override
   void initState() {
     super.initState();
     _loadStats();
+    _loadProfile();
+    _loadTags();
+  }
+
+  Future<void> _loadTags() async {
+    try {
+      final profile = await widget.api.fetchProfileTags(widget.session);
+      if (!mounted) return;
+      setState(() {
+        _activeTags = profile.tags.toSet();
+        _sensitivity = profile.sensitivity;
+        for (final tag in profile.tags) {
+          if (!_allTags.contains(tag)) _allTags.add(tag);
+        }
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _activeTags = {'课程学术', '校园活动', '实习招聘'};
+        _sensitivity = 0.78;
+      });
+    }
+  }
+
+  Future<void> _saveTags() async {
+    try {
+      await widget.api.updateProfileTags(_activeTags.toList(), _sensitivity, widget.session);
+    } catch (_) {}
   }
 
   Future<void> _loadStats() async {
@@ -42,6 +77,14 @@ class _PrototypeProfilePageState extends State<PrototypeProfilePage> {
       if (!mounted) return;
       setState(() => _loading = false);
     }
+  }
+
+  Future<void> _loadProfile() async {
+    try {
+      final profile = await widget.api.fetchMe(widget.session);
+      if (!mounted) return;
+      setState(() => _profile = profile);
+    } catch (_) {}
   }
 
   @override
@@ -76,7 +119,7 @@ class _PrototypeProfilePageState extends State<PrototypeProfilePage> {
                   children: [
                     Text(widget.userName, style: const TextStyle(fontSize: 19, fontWeight: FontWeight.w800, color: Colors.white)),
                     const SizedBox(height: 3),
-                    Text('计算机学院 · 学号 20231104', style: TextStyle(fontSize: 12, color: Colors.white.withValues(alpha: 0.9))),
+                    Text(_profile?.nickname ?? _profile?.email ?? _profile?.role ?? '加载中…', style: TextStyle(fontSize: 12, color: Colors.white.withValues(alpha: 0.9))),
                   ],
                 ),
               ),
@@ -128,13 +171,36 @@ class _PrototypeProfilePageState extends State<PrototypeProfilePage> {
               const SizedBox(height: 12),
               Wrap(
                 spacing: 8, runSpacing: 8,
-                children: [
-                  _TagChip(label: '课程学术', active: true),
-                  _TagChip(label: '校园活动', active: true),
-                  _TagChip(label: '实习招聘', active: true),
-                  _TagChip(label: '失物招领'),
-                  _TagChip(label: '后勤服务'),
-                ],
+                children: _allTags.map((tag) {
+                  final active = _activeTags.contains(tag);
+                  return GestureDetector(
+                    onTap: () {
+                      setState(() {
+                        if (active) {
+                          _activeTags.remove(tag);
+                        } else {
+                          _activeTags.add(tag);
+                        }
+                      });
+                      _saveTags();
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: active ? AppTheme.brandSoft : AppTheme.surface2,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: active ? AppTheme.brand : Colors.transparent),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (active) ...[const Icon(Icons.check, size: 13, color: AppTheme.brandInk), const SizedBox(width: 4)],
+                          Text(tag, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: active ? AppTheme.brandInk : AppTheme.ink2)),
+                        ],
+                      ),
+                    ),
+                  );
+                }).toList(),
               ),
               const SizedBox(height: 14),
               Row(
@@ -143,16 +209,26 @@ class _PrototypeProfilePageState extends State<PrototypeProfilePage> {
                   const Text('重要性敏感度', style: TextStyle(fontSize: 12.5, color: AppTheme.ink2)),
                   Row(
                     children: [
-                      const Text('高', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: AppTheme.brandInk)),
+                      Text(_sensitivity >= 0.7 ? '高' : _sensitivity >= 0.4 ? '中' : '低',
+                        style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: AppTheme.brandInk)),
                       const SizedBox(width: 10),
-                      Container(
-                        width: 120, height: 6,
-                        decoration: BoxDecoration(color: AppTheme.surface2, borderRadius: BorderRadius.circular(99)),
-                        child: FractionallySizedBox(
-                          alignment: Alignment.centerLeft,
-                          widthFactor: 0.78,
-                          child: Container(
-                            decoration: BoxDecoration(color: AppTheme.brand, borderRadius: BorderRadius.circular(99)),
+                      SizedBox(
+                        width: 120,
+                        child: SliderTheme(
+                          data: SliderThemeData(
+                            trackHeight: 6,
+                            activeTrackColor: AppTheme.brand,
+                            inactiveTrackColor: AppTheme.surface2,
+                            thumbColor: AppTheme.brand,
+                            thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 8),
+                            overlayShape: SliderComponentShape.noOverlay,
+                          ),
+                          child: Slider(
+                            value: _sensitivity,
+                            onChanged: (v) {
+                              setState(() => _sensitivity = v);
+                            },
+                            onChangeEnd: (_) => _saveTags(),
                           ),
                         ),
                       ),
@@ -177,6 +253,13 @@ class _PrototypeProfilePageState extends State<PrototypeProfilePage> {
                 )),
               ),
               _MenuItem(
+                icon: Icons.task_alt,
+                label: '我的行动',
+                onTap: () => Navigator.of(context).push(MaterialPageRoute(
+                  builder: (_) => MyActionsPage(api: widget.api, session: widget.session),
+                )),
+              ),
+              _MenuItem(
                 icon: Icons.school_outlined,
                 label: '我的雨课堂导入',
                 onTap: () => Navigator.of(context).push(MaterialPageRoute(
@@ -197,8 +280,20 @@ class _PrototypeProfilePageState extends State<PrototypeProfilePage> {
                   builder: (_) => MyReadHistoryPage(api: widget.api, session: widget.session, onOpenDetail: _openDetail),
                 )),
               ),
-              _MenuItem(icon: Icons.notifications_outlined, label: '推送与提醒设置'),
-              _MenuItem(icon: Icons.info_outline, label: '数据源偏好'),
+              _MenuItem(
+                icon: Icons.notifications_outlined,
+                label: '消息提醒',
+                onTap: () => Navigator.of(context).push(MaterialPageRoute(
+                  builder: (_) => RemindersPage(api: widget.api, session: widget.session),
+                )),
+              ),
+              _MenuItem(
+                icon: Icons.info_outline,
+                label: '数据源偏好',
+                onTap: () => Navigator.of(context).push(MaterialPageRoute(
+                  builder: (_) => DataSourcePreferencePage(api: widget.api, session: widget.session),
+                )),
+              ),
               _MenuItem(icon: Icons.logout, label: '退出登录', isLogout: true, onTap: widget.onLogout),
             ],
           ),
@@ -337,23 +432,6 @@ class _StatBox extends StatelessWidget {
           ],
         ),
       ),
-    );
-  }
-}
-
-class _TagChip extends StatelessWidget {
-  const _TagChip({required this.label, this.active = false});
-  final String label;
-  final bool active;
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 6),
-      decoration: BoxDecoration(
-        color: active ? AppTheme.brandSoft : AppTheme.surface2,
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Text(label, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: active ? AppTheme.brandInk : AppTheme.ink2)),
     );
   }
 }

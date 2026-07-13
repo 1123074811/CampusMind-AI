@@ -5,7 +5,8 @@ import 'information_api_stub.dart';
 
 export 'information_api_stub.dart'
     show CampusApi, CampusUser, InformationItem, LoginSession, ImportResult, ImportTaskItem, ImportedEventItem, SessionExpiredException,
-         AiChatResult, SearchResult, SearchResultItem, UserProfile, UserStats, SubscriptionItem;
+         AiChatResult, SearchResult, SearchResultItem, UserProfile, UserStats, SubscriptionItem, ActionItem, ReminderItem,
+         RelatedItem, TrendingItem, UserProfileTags, DailyBriefing;
 
 const _apiBase = String.fromEnvironment(
   'CAMPUSMIND_API_BASE',
@@ -356,6 +357,120 @@ class IoCampusApi implements CampusApi {
       body: {'enabled': enabled},
     );
     return SubscriptionItem.fromJson(_data(root));
+  }
+
+  @override
+  Future<List<ActionItem>> fetchActions(LoginSession session) async {
+    final root = await _request(
+      'GET',
+      '/api/v1/information/actions',
+      session: session,
+    );
+    final list = root['data'];
+    if (list is List) {
+      return list
+          .cast<Map<String, Object?>>()
+          .map(ActionItem.fromJson)
+          .toList();
+    }
+    return const [];
+  }
+
+  @override
+  Future<List<ReminderItem>> fetchReminders(LoginSession session) async {
+    final root = await _request(
+      'GET',
+      '/api/v1/information/reminders',
+      session: session,
+    );
+    final list = root['data'];
+    if (list is List) {
+      return list
+          .cast<Map<String, Object?>>()
+          .map(ReminderItem.fromJson)
+          .toList();
+    }
+    return const [];
+  }
+
+  @override
+  Future<void> dismissReminder(int reminderId, LoginSession session) async {
+    await _request(
+      'PUT',
+      '/api/v1/information/reminders/$reminderId/dismiss',
+      session: session,
+    );
+  }
+
+  @override
+  Future<List<RelatedItem>> fetchRelatedItems(int itemId, LoginSession session) async {
+    final root = await _request(
+      'GET',
+      '/api/v1/information/items/$itemId/related',
+      session: session,
+    );
+    final list = root['data'];
+    if (list is List) {
+      return list.cast<Map<String, Object?>>().map(RelatedItem.fromJson).toList();
+    }
+    return const [];
+  }
+
+  @override
+  Future<List<TrendingItem>> fetchTrending(LoginSession session) async {
+    final root = await _request(
+      'GET',
+      '/api/v1/information/trending?size=5',
+      session: session,
+    );
+    final list = root['data'];
+    if (list is List) {
+      return list.cast<Map<String, Object?>>().map(TrendingItem.fromJson).toList();
+    }
+    return const [];
+  }
+
+  @override
+  Future<UserProfileTags> fetchProfileTags(LoginSession session) async {
+    final root = await _request(
+      'GET',
+      '/api/v1/users/profile-tags',
+      session: session,
+    );
+    return UserProfileTags.fromJson(_data(root));
+  }
+
+  @override
+  Future<UserProfileTags> updateProfileTags(List<String> tags, double sensitivity, LoginSession session) async {
+    final root = await _request(
+      'PUT',
+      '/api/v1/users/profile-tags',
+      session: session,
+      body: {'tags': tags, 'sensitivity': sensitivity},
+    );
+    return UserProfileTags.fromJson(_data(root));
+  }
+
+  @override
+  Future<DailyBriefing> fetchDailyBriefing(LoginSession session) async {
+    final root = await _request(
+      'GET',
+      '/api/v1/ai/daily-briefing',
+      session: session,
+    );
+    return DailyBriefing.fromJson(_data(root));
+  }
+
+  @override
+  Future<List<InformationItem>> fetchInformationFeedSorted(String sort, LoginSession? session) async {
+    final root = await _request(
+      'GET',
+      '/api/v1/information/feed?size=30&sort=${Uri.encodeQueryComponent(sort)}',
+      session: session,
+    );
+    final data = _data(root);
+    final items = data['items'] as List<Object?>? ?? const [];
+    return items.cast<Map<String, Object?>>().map(InformationItem.fromJson).toList();
   }
 }
 

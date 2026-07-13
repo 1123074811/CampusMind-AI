@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
 import 'app_theme.dart';
@@ -116,9 +117,21 @@ class _ImportPageState extends State<ImportPage>
   // ─── 选择操作 ─────────────────────────────────
 
   Future<void> _pickFile() async {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('请先开启 Windows 开发者模式以启用文件选择'), backgroundColor: AppTheme.accent),
-    );
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['pdf', 'docx', 'txt', 'xlsx'],
+      );
+      if (result != null && result.files.single.path != null) {
+        if (!mounted) return;
+        setState(() => _pickedFilePath = result.files.single.path!);
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('选择文件失败：$e'), backgroundColor: AppTheme.rose),
+      );
+    }
   }
 
   // ─── 构建 ─────────────────────────────────

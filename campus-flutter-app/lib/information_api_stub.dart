@@ -70,6 +70,7 @@ class InformationItem {
     this.aiCard = const {},
     this.aiNeedReview = false,
     this.publishTime,
+    this.recommendReasons = const [],
   });
 
   final int id;
@@ -89,6 +90,7 @@ class InformationItem {
   final Map<String, Object?> aiCard;
   final bool aiNeedReview;
   final DateTime? publishTime;
+  final List<String> recommendReasons;
 
   bool get hasValidAiSummary =>
       aiSummary.trim().isNotEmpty &&
@@ -155,6 +157,8 @@ class InformationItem {
       publishTime: json['publishTime'] == null
           ? null
           : DateTime.tryParse(json['publishTime'] as String),
+      recommendReasons: (json['recommendReasons'] as List<Object?>? ?? const [])
+          .whereType<String>().toList(),
     );
   }
 
@@ -330,6 +334,42 @@ abstract class CampusApi {
 
   /// 更新订阅状态
   Future<SubscriptionItem> updateSubscription(int sourceId, bool enabled, LoginSession session);
+
+  /// 获取行动列表
+  Future<List<ActionItem>> fetchActions(LoginSession session) =>
+      Future.value(const []);
+
+  /// 获取提醒列表
+  Future<List<ReminderItem>> fetchReminders(LoginSession session) =>
+      Future.value(const []);
+
+  /// 消除提醒
+  Future<void> dismissReminder(int reminderId, LoginSession session) =>
+      Future.error(UnsupportedError('当前实现不支持消除提醒'));
+
+  /// 获取相关信息（去重融合）
+  Future<List<RelatedItem>> fetchRelatedItems(int itemId, LoginSession session) =>
+      Future.value(const []);
+
+  /// 获取热门/趋势信息
+  Future<List<TrendingItem>> fetchTrending(LoginSession session) =>
+      Future.value(const []);
+
+  /// 获取用户信息画像标签
+  Future<UserProfileTags> fetchProfileTags(LoginSession session) =>
+      Future.value(const UserProfileTags(tags: [], sensitivity: 0.5));
+
+  /// 更新用户信息画像标签
+  Future<UserProfileTags> updateProfileTags(List<String> tags, double sensitivity, LoginSession session) =>
+      Future.value(const UserProfileTags(tags: [], sensitivity: 0.5));
+
+  /// 获取 AI 日报摘要
+  Future<DailyBriefing> fetchDailyBriefing(LoginSession session) =>
+      Future.value(const DailyBriefing(summary: '', highlights: []));
+
+  /// 带排序的 Feed
+  Future<List<InformationItem>> fetchInformationFeedSorted(String sort, LoginSession? session) =>
+      fetchInformationFeed(session);
 }
 
 class AiChatResult {
@@ -375,6 +415,18 @@ class SearchResultItem {
       eventType: json['eventType'] as String?,
     );
   }
+
+  InformationItem toInformationItem() => InformationItem(
+    id: id,
+    title: title,
+    sourceName: sourceName ?? '未知来源',
+    preview: snippet,
+    originalUrl: '',
+    readStatus: 'NEW',
+    itemStatus: 'ACTIVE',
+    fetchedAt: DateTime.now(),
+    eventType: eventType ?? 'OTHER',
+  );
 }
 
 class UserProfile {
@@ -410,6 +462,100 @@ class UserStats {
   }
 }
 
+/// 行动项
+class ActionItem {
+  const ActionItem({
+    required this.id,
+    required this.informationItemId,
+    required this.title,
+    this.dueAt,
+    this.originalUrl,
+    required this.status,
+    this.createdAt,
+    this.sourceTitle,
+    this.sourceName,
+    this.requiredMaterials = const [],
+  });
+
+  final int id;
+  final int informationItemId;
+  final String title;
+  final DateTime? dueAt;
+  final String? originalUrl;
+  final String status;
+  final DateTime? createdAt;
+  final String? sourceTitle;
+  final String? sourceName;
+  final List<String> requiredMaterials;
+
+  bool get isExpired => dueAt != null && dueAt!.isBefore(DateTime.now());
+  bool get isDueSoon => dueAt != null && !isExpired && dueAt!.difference(DateTime.now()).inDays <= 3;
+
+  factory ActionItem.fromJson(Map<String, Object?> json) {
+    final materialsRaw = json['requiredMaterials'] as List<Object?>? ?? const [];
+    return ActionItem(
+      id: (json['id'] as num).toInt(),
+      informationItemId: (json['informationItemId'] as num).toInt(),
+      title: json['title'] as String? ?? '',
+      dueAt: json['dueAt'] == null ? null : DateTime.tryParse(json['dueAt'] as String),
+      originalUrl: json['originalUrl'] as String?,
+      status: json['status'] as String? ?? 'CONFIRMED',
+      createdAt: json['createdAt'] == null ? null : DateTime.tryParse(json['createdAt'] as String),
+      sourceTitle: json['sourceTitle'] as String?,
+      sourceName: json['sourceName'] as String?,
+      requiredMaterials: materialsRaw.whereType<String>().toList(),
+    );
+  }
+}
+
+/// 提醒项
+class ReminderItem {
+  const ReminderItem({
+    required this.id,
+    required this.actionItemId,
+    this.informationItemId,
+    required this.actionTitle,
+    this.sourceTitle,
+    this.originalUrl,
+    this.remindAt,
+    this.dueAt,
+    required this.status,
+    this.sentAt,
+  });
+
+  final int id;
+  final int actionItemId;
+  final int? informationItemId;
+  final String actionTitle;
+  final String? sourceTitle;
+  final String? originalUrl;
+  final DateTime? remindAt;
+  final DateTime? dueAt;
+  final String status;
+  final DateTime? sentAt;
+
+  bool get isDismissed => status == 'DISMISSED';
+  bool get isDue => status == 'DUE';
+  bool get isExpired => dueAt != null && dueAt!.isBefore(DateTime.now());
+
+  factory ReminderItem.fromJson(Map<String, Object?> json) {
+    return ReminderItem(
+      id: (json['id'] as num).toInt(),
+      actionItemId: (json['actionItemId'] as num).toInt(),
+      informationItemId: json['informationItemId'] != null
+          ? (json['informationItemId'] as num).toInt()
+          : null,
+      actionTitle: json['actionTitle'] as String? ?? '',
+      sourceTitle: json['sourceTitle'] as String?,
+      originalUrl: json['originalUrl'] as String?,
+      remindAt: json['remindAt'] == null ? null : DateTime.tryParse(json['remindAt'] as String),
+      dueAt: json['dueAt'] == null ? null : DateTime.tryParse(json['dueAt'] as String),
+      status: json['status'] as String? ?? 'PENDING',
+      sentAt: json['sentAt'] == null ? null : DateTime.tryParse(json['sentAt'] as String),
+    );
+  }
+}
+
 /// 订阅项
 class SubscriptionItem {
   const SubscriptionItem({
@@ -435,6 +581,75 @@ class SubscriptionItem {
           : DateTime.tryParse(json['subscribedAt'] as String),
     );
   }
+}
+
+/// 相关信息条目
+class RelatedItem {
+  const RelatedItem({
+    required this.id,
+    required this.title,
+    required this.sourceName,
+    required this.displayTime,
+    this.fuseNote = '',
+  });
+  final int id;
+  final String title;
+  final String sourceName;
+  final String displayTime;
+  final String fuseNote;
+
+  factory RelatedItem.fromJson(Map<String, Object?> json) => RelatedItem(
+    id: (json['id'] as num?)?.toInt() ?? 0,
+    title: json['title'] as String? ?? '',
+    sourceName: json['sourceName'] as String? ?? '',
+    displayTime: json['displayTime'] as String? ?? '',
+    fuseNote: json['fuseNote'] as String? ?? '',
+  );
+}
+
+/// 热门/趋势条目
+class TrendingItem {
+  const TrendingItem({
+    required this.id,
+    required this.rank,
+    required this.title,
+    required this.heatLabel,
+  });
+  final int id;
+  final String rank;
+  final String title;
+  final String heatLabel;
+
+  factory TrendingItem.fromJson(Map<String, Object?> json) => TrendingItem(
+    id: (json['id'] as num?)?.toInt() ?? 0,
+    rank: json['rank'] as String? ?? '',
+    title: json['title'] as String? ?? '',
+    heatLabel: json['heatLabel'] as String? ?? '',
+  );
+}
+
+/// 用户画像标签
+class UserProfileTags {
+  const UserProfileTags({required this.tags, required this.sensitivity});
+  final List<String> tags;
+  final double sensitivity;
+
+  factory UserProfileTags.fromJson(Map<String, Object?> json) => UserProfileTags(
+    tags: (json['tags'] as List<Object?>? ?? const []).whereType<String>().toList(),
+    sensitivity: (json['sensitivity'] as num?)?.toDouble() ?? 0.5,
+  );
+}
+
+/// AI 日报
+class DailyBriefing {
+  const DailyBriefing({required this.summary, required this.highlights});
+  final String summary;
+  final List<String> highlights;
+
+  factory DailyBriefing.fromJson(Map<String, Object?> json) => DailyBriefing(
+    summary: json['summary'] as String? ?? '',
+    highlights: (json['highlights'] as List<Object?>? ?? const []).whereType<String>().toList(),
+  );
 }
 
 CampusApi createCampusApi() {
