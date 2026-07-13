@@ -101,6 +101,10 @@ export interface DashboardMetrics {
   sourceSuccessRate: number;
   sourcesNeedAuth: number;
   vectorPending: number;
+  aiPendingCount?: number;
+  aiProcessingCount?: number;
+  aiSuccessCount?: number;
+  aiFailedCount?: number;
 }
 
 export interface PageMetric {

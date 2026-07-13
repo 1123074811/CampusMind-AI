@@ -103,3 +103,13 @@ export async function updateAiConfig(session: AdminSession | null, payload: {
   });
   return readPayload<AiConfig>(response);
 }
+
+export async function fetchChangeLogs(session: AdminSession | null, size = 50) {
+  const response = await fetch(`/api/admin/change-logs?size=${size}`, {
+    headers: authHeaders(session)
+  });
+  return readPayload<Array<{
+    id: number; itemId: number; itemTitle: string; sourceName: string;
+    oldContentHash: string; newContentHash: string; changedFields: string; changedAt: string;
+  }>>(response);
+}

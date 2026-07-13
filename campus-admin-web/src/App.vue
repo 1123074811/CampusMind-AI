@@ -524,6 +524,7 @@ onMounted(() => {
       <AgentView
         v-else-if="activeNav === 'agent'"
         :events="reviewEvents"
+        :metrics="metrics"
         :ai-config="aiConfig"
         :config-loading="loading"
         :config-message="apiMessage"
@@ -564,6 +565,7 @@ onMounted(() => {
         :selected="selectedTable"
         :rows="databaseRows"
         :error="databaseError"
+        :session="session"
         @select="loadTable"
         @retry-ai="retryFailedAiProcessing"
       />

@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
-import type { AiConfig, ReviewEvent } from '../adminTypes';
+import type { AiConfig, DashboardMetrics, ReviewEvent } from '../adminTypes';
 
 const props = defineProps<{
   events: ReviewEvent[];
+  metrics: DashboardMetrics;
   aiConfig: AiConfig | null;
   configLoading: boolean;
   configMessage: string;
@@ -60,14 +61,23 @@ const successRate = computed(() => {
   return Math.round((successCount.value / totalCount.value) * 100);
 });
 
+/* ---- AI batch processing stats from dashboard metrics ---- */
+const aiPending = computed(() => props.metrics?.aiPendingCount ?? 0);
+const aiProcessing = computed(() => props.metrics?.aiProcessingCount ?? 0);
+const aiSuccess = computed(() => props.metrics?.aiSuccessCount ?? 0);
+const aiFailed = computed(() => props.metrics?.aiFailedCount ?? 0);
+const aiTotalCount = computed(() => aiPending.value + aiProcessing.value + aiSuccess.value + aiFailed.value);
+
 /* ---- Action suggestions ---- */
 const suggestions = computed(() => {
   const items: { text: string; type: 'warn' | 'info' | 'ok' }[] = [];
+  if (aiPending.value > 10) items.push({ text: `${aiPending.value} 条待 AI 处理，建议检查数据源`, type: 'warn' });
+  if (aiFailed.value > 0) items.push({ text: `${aiFailed.value} 条 AI 处理失败，建议重试`, type: 'warn' });
   if (pendingCount.value > 5) items.push({ text: `${pendingCount.value} 条待处理，建议尽快审核`, type: 'warn' });
   if (reviewCount.value > 0) items.push({ text: `${reviewCount.value} 条需复核，建议人工校验`, type: 'warn' });
   if (failedCount.value > 0) items.push({ text: `${failedCount.value} 条提取失败，建议检查数据源`, type: 'warn' });
   if (props.aiConfig?.mode === 'rule') items.push({ text: '当前为规则模式，切换 LLM 可提升质量', type: 'info' });
-  if (pendingCount.value === 0 && failedCount.value === 0) items.push({ text: '所有卡片处理完毕', type: 'ok' });
+  if (pendingCount.value === 0 && failedCount.value === 0 && aiPending.value === 0) items.push({ text: '所有卡片处理完毕', type: 'ok' });
   if (items.length === 0) items.push({ text: '暂无待操作事项', type: 'ok' });
   return items.slice(0, 3);
 });
@@ -105,6 +115,16 @@ const detailRows = computed(() => {
   <div class="agent-page">
     <!-- 顶部实用指标卡片 -->
     <section class="agent-metrics" aria-label="智能体指标">
+      <article class="metric-card">
+        <p class="eyebrow">AI 批处理状态</p>
+        <strong>{{ aiTotalCount }}</strong>
+        <div class="metric-sub">
+          <span class="metric-tag amber">{{ aiPending }} 待处理</span>
+          <span v-if="aiProcessing" class="metric-tag amber">{{ aiProcessing }} 处理中</span>
+          <span class="metric-tag green">{{ aiSuccess }} 成功</span>
+          <span v-if="aiFailed" class="metric-tag red">{{ aiFailed }} 失败</span>
+        </div>
+      </article>
       <article class="metric-card">
         <p class="eyebrow">处理概览</p>
         <strong>{{ pendingCount }}</strong>
@@ -234,7 +254,7 @@ const detailRows = computed(() => {
 /* Agent metrics cards */
 .agent-metrics {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 12px;
   width: min(100%, 1540px);
 }
@@ -413,6 +433,9 @@ const detailRows = computed(() => {
   color: #fffaf2;
 }
 
+@media (max-width: 1400px) {
+  .agent-metrics { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
 @media (max-width: 1180px) {
   .agent-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
