@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'app_theme.dart';
 import 'information_api.dart';
 
@@ -57,6 +59,16 @@ class _PrototypeDetailPageState extends State<PrototypeDetailPage> {
     }
   }
 
+  Future<void> _openOriginal() async {
+    final uri = _item.safeOriginalUri;
+    if (uri == null || !await launchUrl(uri, mode: LaunchMode.externalApplication)) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('原文链接不可用')),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -111,7 +123,7 @@ class _PrototypeDetailPageState extends State<PrototypeDetailPage> {
             // Title
             Text(_item.title, style: const TextStyle(fontSize: 21, fontWeight: FontWeight.w800, color: AppTheme.ink, height: 1.35, letterSpacing: -0.2)),
             const SizedBox(height: 16),
-            if (_item.aiSummary.trim().isNotEmpty) ...[
+            if (_item.hasValidAiSummary) ...[
               Container(
                 padding: const EdgeInsets.all(14),
                 decoration: BoxDecoration(
@@ -140,6 +152,50 @@ class _PrototypeDetailPageState extends State<PrototypeDetailPage> {
             Text(
               _item.detailContent.isNotEmpty ? _item.detailContent : _item.preview,
               style: const TextStyle(fontSize: 13, color: AppTheme.ink2, height: 1.7),
+            ),
+            const SizedBox(height: 20),
+            Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: AppTheme.surface,
+                borderRadius: BorderRadius.circular(AppTheme.radiusSm),
+                border: Border.all(color: AppTheme.line),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('来源与校验信息', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppTheme.ink)),
+                  const SizedBox(height: 10),
+                  Text('来源：${_item.sourceName}', style: const TextStyle(fontSize: 12, color: AppTheme.ink2)),
+                  const SizedBox(height: 5),
+                  Text('抓取时间：${_item.fetchedDisplayTime}', style: const TextStyle(fontSize: 12, color: AppTheme.ink2)),
+                  if (_item.contentHash.isNotEmpty) ...[
+                    const SizedBox(height: 5),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          child: SelectableText('内容哈希：${_item.contentHash}', style: const TextStyle(fontSize: 11, color: AppTheme.muted)),
+                        ),
+                        IconButton(
+                          visualDensity: VisualDensity.compact,
+                          tooltip: '复制内容哈希',
+                          onPressed: () => Clipboard.setData(ClipboardData(text: _item.contentHash)),
+                          icon: const Icon(Icons.copy, size: 15),
+                        ),
+                      ],
+                    ),
+                  ],
+                  if (_item.safeOriginalUri != null) ...[
+                    const SizedBox(height: 8),
+                    TextButton.icon(
+                      onPressed: _openOriginal,
+                      icon: const Icon(Icons.open_in_new, size: 16),
+                      label: const Text('查看原文'),
+                    ),
+                  ],
+                ],
+              ),
             ),
             const SizedBox(height: 22),
             // Related

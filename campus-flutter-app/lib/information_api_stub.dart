@@ -59,6 +59,8 @@ class InformationItem {
     required this.preview,
     this.detailContent = '',
     required this.originalUrl,
+    this.sourceUrl = '',
+    this.contentHash = '',
     required this.readStatus,
     required this.itemStatus,
     required this.fetchedAt,
@@ -75,6 +77,8 @@ class InformationItem {
   final String preview;
   final String detailContent;
   final String originalUrl;
+  final String sourceUrl;
+  final String contentHash;
   final String readStatus;
   final String itemStatus;
   final DateTime fetchedAt;
@@ -83,6 +87,19 @@ class InformationItem {
   final String aiSummary;
   final Map<String, Object?> aiCard;
   final DateTime? publishTime;
+
+  bool get hasValidAiSummary =>
+      aiSummary.trim().isNotEmpty &&
+      (aiStatus == 'SUCCESS' || aiStatus == 'REVIEW');
+
+  Uri? get safeOriginalUri {
+    final uri = Uri.tryParse(originalUrl.trim());
+    return uri != null &&
+            (uri.scheme == 'http' || uri.scheme == 'https') &&
+            uri.host.isNotEmpty
+        ? uri
+        : null;
+  }
 
   String get displayTime {
     final value = publishTime ?? fetchedAt;
@@ -101,6 +118,13 @@ class InformationItem {
         '${value.minute.toString().padLeft(2, '0')}';
   }
 
+  String get fetchedDisplayTime =>
+      '${fetchedAt.year.toString().padLeft(4, '0')}-'
+      '${fetchedAt.month.toString().padLeft(2, '0')}-'
+      '${fetchedAt.day.toString().padLeft(2, '0')} '
+      '${fetchedAt.hour.toString().padLeft(2, '0')}:'
+      '${fetchedAt.minute.toString().padLeft(2, '0')}';
+
   factory InformationItem.fromJson(Map<String, Object?> json) {
     return InformationItem(
       id: (json['id'] as num).toInt(),
@@ -109,6 +133,8 @@ class InformationItem {
       preview: (json['preview'] ?? json['detailContent']) as String? ?? '',
       detailContent: json['detailContent'] as String? ?? '',
       originalUrl: (json['originalUrl'] ?? json['itemUrl']) as String? ?? '',
+      sourceUrl: json['sourceUrl'] as String? ?? '',
+      contentHash: json['contentHash'] as String? ?? '',
       readStatus: json['readStatus'] as String? ?? 'NEW',
       itemStatus: json['itemStatus'] as String? ?? 'ACTIVE',
       fetchedAt: DateTime.parse(json['fetchedAt'] as String),
@@ -136,6 +162,8 @@ class InformationItem {
       preview: preview ?? this.preview,
       detailContent: detailContent ?? this.detailContent,
       originalUrl: originalUrl,
+      sourceUrl: sourceUrl,
+      contentHash: contentHash,
       readStatus: readStatus ?? this.readStatus,
       itemStatus: itemStatus ?? this.itemStatus,
       fetchedAt: fetchedAt,

@@ -10,6 +10,7 @@ dependencies:
   flutter:
     sdk: flutter
   flutter_markdown: ^0.7.6
+  url_launcher: ^6.3.2
 
 dev_dependencies:
   flutter_test:
@@ -18,4 +19,3 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
-
