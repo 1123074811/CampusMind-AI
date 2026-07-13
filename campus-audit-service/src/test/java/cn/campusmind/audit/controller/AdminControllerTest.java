@@ -19,7 +19,9 @@ import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Date;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -85,7 +87,29 @@ class AdminControllerTest {
                       ai_event_type VARCHAR(32),
                       ai_summary CLOB,
                       ai_card_json CLOB,
-                      ai_need_review BOOLEAN DEFAULT FALSE
+                      ai_need_review BOOLEAN DEFAULT FALSE,
+                      ai_error VARCHAR(1024),
+                      ai_processed_at TIMESTAMP
+                    )
+                    """);
+            statement.execute("""
+                    CREATE TABLE IF NOT EXISTS ai_processing_record (
+                      id BIGINT PRIMARY KEY,
+                      information_item_id BIGINT NOT NULL,
+                      content_hash CHAR(64) NOT NULL,
+                      task_type VARCHAR(32) NOT NULL,
+                      trigger_type VARCHAR(32) NOT NULL,
+                      status VARCHAR(32) NOT NULL,
+                      provider VARCHAR(64),
+                      model_version VARCHAR(128),
+                      prompt_version VARCHAR(64) NOT NULL,
+                      prompt_tokens INT,
+                      completion_tokens INT,
+                      error_message VARCHAR(1024),
+                      started_at TIMESTAMP,
+                      finished_at TIMESTAMP,
+                      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                     )
                     """);
             statement.execute("""
@@ -144,6 +168,7 @@ class AdminControllerTest {
             statement.execute("DELETE FROM event_source_ref");
             statement.execute("DELETE FROM campus_event");
             statement.execute("DELETE FROM information_item");
+            statement.execute("DELETE FROM ai_processing_record");
         }
         insertEvent(1001L, "人工智能主题讲座通知", "LECTURE", "PUBLIC_WEB", "AI_PUBLISHED", "图书馆报告厅", "[\"\u8f6f\u4ef6\u5b66\u9662\u672c\u79d1\u751f\"]", "[\"AI\",\"\u8bb2\u5ea7\",\"\u8f6f\u4ef6\u5b66\u9662\"]", null);
         insertEvent(1002L, "期末考试考场调整说明", "EXAM", "PUBLIC_WEB", "CORRECTED", "一号教学楼", "[\"2023\u7ea7\"]", "[\"\u8003\u8bd5\",\"\u6559\u52a1\"]", "vec-1002");
@@ -168,6 +193,8 @@ class AdminControllerTest {
         insertSourceRef(1002L, 2L);
         insertSourceRef(1003L, 3L);
         insertAuditLog(1002L, 9901L, "CORRECT", "修正考试地点");
+        insertAiProcessingRecord(7001L, 1001L, "FAILED");
+        insertAiProcessingRecord(7002L, 1002L, "SUCCEEDED");
     }
 
     @Test
@@ -249,6 +276,23 @@ class AdminControllerTest {
         mockMvc.perform(get("/api/admin/tables").header("Authorization", adminToken()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data[?(@.name=='ai_processing_record')].label").value("AI处理记录"));
+    }
+
+    @Test
+    void adminCanRetryOnlyFailedAiProcessing() throws Exception {
+        mockMvc.perform(post("/api/admin/ai-processing/7001/retry").header("Authorization", adminToken()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("PENDING"));
+
+        assertEquals("PENDING", queryString("SELECT status FROM ai_processing_record WHERE id = 7001"));
+        assertEquals("PENDING", queryString("SELECT ai_status FROM information_item WHERE id = 1001"));
+
+        mockMvc.perform(post("/api/admin/ai-processing/7002/retry").header("Authorization", adminToken()))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("AI_PROCESSING_NOT_RETRYABLE"));
+        mockMvc.perform(post("/api/admin/ai-processing/7001/retry")
+                        .header("Authorization", token("OPERATOR", 9902L)))
+                .andExpect(status().isForbidden());
     }
 
     private String adminToken() {
@@ -388,6 +432,31 @@ class AdminControllerTest {
             statement.setString(3, action);
             statement.setString(4, comment);
             statement.executeUpdate();
+        }
+    }
+
+    private void insertAiProcessingRecord(Long id, Long informationItemId, String status) throws Exception {
+        try (Connection connection = dataSource.getConnection();
+             PreparedStatement statement = connection.prepareStatement("""
+                     INSERT INTO ai_processing_record (
+                       id, information_item_id, content_hash, task_type, trigger_type,
+                       status, prompt_version, error_message, created_at, updated_at
+                     ) VALUES (?, ?, ?, 'SUMMARY', 'SCHEDULER', ?, 'prompt-v1', '模型调用失败', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                     """)) {
+            statement.setLong(1, id);
+            statement.setLong(2, informationItemId);
+            statement.setString(3, String.format("%064d", id));
+            statement.setString(4, status);
+            statement.executeUpdate();
+        }
+    }
+
+    private String queryString(String sql) throws Exception {
+        try (Connection connection = dataSource.getConnection();
+             Statement statement = connection.createStatement();
+             java.sql.ResultSet result = statement.executeQuery(sql)) {
+            result.next();
+            return result.getString(1);
         }
     }
 }

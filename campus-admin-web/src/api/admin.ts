@@ -85,6 +85,14 @@ export async function fetchAdminTableRows(session: AdminSession | null, table: s
   return readPayload<Array<Record<string, unknown>>>(response);
 }
 
+export async function retryAiProcessing(session: AdminSession | null, id: number) {
+  const response = await fetch(`/api/admin/ai-processing/${id}/retry`, {
+    method: 'POST',
+    headers: authHeaders(session)
+  });
+  return readPayload<{ id: number; status: string }>(response);
+}
+
 export async function updateAiConfig(session: AdminSession | null, payload: {
   mode: 'rule' | 'llm'; baseUrl: string; model: string; apiKey?: string;
 }) {

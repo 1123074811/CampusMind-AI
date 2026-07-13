@@ -5,7 +5,7 @@ defineProps<{
   rows: Array<Record<string, unknown>>;
   error: string;
 }>();
-defineEmits<{ select: [table: string] }>();
+defineEmits<{ select: [table: string]; retryAi: [id: number] }>();
 </script>
 
 <template>
@@ -14,7 +14,7 @@ defineEmits<{ select: [table: string] }>();
     <div class="filters">
       <button v-for="table in tables" :key="table.name" class="ghost-button" :class="{ active: selected === table.name }" @click="$emit('select', table.name)">{{ table.label }}</button>
     </div>
-    <div class="table-scroll"><table v-if="rows.length"><thead><tr><th v-for="key in Object.keys(rows[0])" :key="key">{{ key }}</th></tr></thead><tbody><tr v-for="(row, index) in rows" :key="index"><td v-for="key in Object.keys(rows[0])" :key="key">{{ row[key] ?? '-' }}</td></tr></tbody></table><p v-else>{{ error || '暂无数据' }}</p></div>
+    <div class="table-scroll"><table v-if="rows.length"><thead><tr><th v-for="key in Object.keys(rows[0])" :key="key">{{ key }}</th><th v-if="selected === 'ai_processing_record'">操作</th></tr></thead><tbody><tr v-for="(row, index) in rows" :key="index"><td v-for="key in Object.keys(rows[0])" :key="key">{{ row[key] ?? '-' }}</td><td v-if="selected === 'ai_processing_record'"><button v-if="row.status === 'FAILED'" type="button" class="ghost-button tiny" @click="$emit('retryAi', Number(row.id))">重试</button><span v-else>-</span></td></tr></tbody></table><p v-else>{{ error || '暂无数据' }}</p></div>
   </section>
 </template>
 

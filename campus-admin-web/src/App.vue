@@ -9,6 +9,7 @@ import {
   fetchAdminLogs,
   fetchAdminUsers,
   resetAdminUserPassword,
+  retryAiProcessing,
   updateAiConfig,
   updateAdminUserStatus
 } from './api/admin';
@@ -275,6 +276,17 @@ async function loadTable(table: string) {
   } catch (error) {
     databaseRows.value = [];
     databaseError.value = error instanceof Error ? error.message : '数据表加载失败';
+  }
+}
+
+async function retryFailedAiProcessing(id: number) {
+  if (!session.value || !isAdmin.value) return;
+  try {
+    await retryAiProcessing(session.value, id);
+    await loadTable('ai_processing_record');
+    apiMessage.value = 'AI失败任务已进入重试队列';
+  } catch (error) {
+    databaseError.value = error instanceof Error ? error.message : 'AI任务重试失败';
   }
 }
 
@@ -553,6 +565,7 @@ onMounted(() => {
         :rows="databaseRows"
         :error="databaseError"
         @select="loadTable"
+        @retry-ai="retryFailedAiProcessing"
       />
     </section>
   </main>

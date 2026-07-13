@@ -4,6 +4,7 @@ import cn.campusmind.common.exception.BusinessException;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import javax.sql.DataSource;
 import java.sql.Connection;
@@ -50,6 +51,33 @@ public class AdminTableService {
         }
         String columns = String.join(",", available.stream().map(column -> "`" + column + "`").toList());
         return jdbcTemplate.queryForList("SELECT " + columns + " FROM `" + table + "` ORDER BY `id` DESC LIMIT ?", Math.min(Math.max(size, 1), 100));
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public Map<String, Object> retryFailedAiProcessing(long id) {
+        int updated = jdbcTemplate.update("""
+                UPDATE ai_processing_record
+                SET status = 'PENDING', trigger_type = 'MANUAL', error_message = NULL,
+                    started_at = NULL, finished_at = NULL, updated_at = CURRENT_TIMESTAMP
+                WHERE id = ? AND status = 'FAILED'
+                """, id);
+        if (updated == 0) {
+            List<String> statuses = jdbcTemplate.queryForList(
+                    "SELECT status FROM ai_processing_record WHERE id = ?", String.class, id);
+            if (statuses.isEmpty()) {
+                throw new BusinessException("AI_PROCESSING_NOT_FOUND", "AI处理记录不存在", HttpStatus.NOT_FOUND);
+            }
+            throw new BusinessException("AI_PROCESSING_NOT_RETRYABLE", "只有失败的AI任务可以重试", HttpStatus.CONFLICT);
+        }
+        int itemUpdated = jdbcTemplate.update("""
+                UPDATE information_item
+                SET ai_status = 'PENDING', ai_error = NULL, ai_processed_at = NULL
+                WHERE id = (SELECT information_item_id FROM ai_processing_record WHERE id = ?)
+                """, id);
+        if (itemUpdated != 1) {
+            throw new BusinessException("AI_INFORMATION_ITEM_MISSING", "关联信息不存在，无法重试", HttpStatus.CONFLICT);
+        }
+        return Map.of("id", id, "status", "PENDING");
     }
 
     private Set<String> databaseColumns(String table) {

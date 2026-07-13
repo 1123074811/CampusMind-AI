@@ -52,6 +52,14 @@ public class AdminController {
         return ApiResponse.ok(adminTableService.rows(table, size));
     }
 
+    @PostMapping("/ai-processing/{id}/retry")
+    public ApiResponse<java.util.Map<String, Object>> retryAiProcessing(
+            @RequestHeader(value = "Authorization", required = false) String authorization,
+            @PathVariable long id) {
+        auditTokenService.requireAdmin(authorization);
+        return ApiResponse.ok(adminTableService.retryFailedAiProcessing(id));
+    }
+
     @GetMapping("/dashboard")
     public ApiResponse<AdminDashboardResponse> dashboard(
             @RequestHeader(value = "Authorization", required = false) String authorization) {
