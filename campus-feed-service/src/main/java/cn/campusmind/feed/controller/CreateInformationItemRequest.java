@@ -3,6 +3,8 @@ package cn.campusmind.feed.controller;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 
+import java.time.LocalDateTime;
+
 public record CreateInformationItemRequest(
         @NotBlank @Size(max = 512) String title,
         @NotBlank String detailContent,
@@ -10,6 +12,9 @@ public record CreateInformationItemRequest(
         @Size(max = 1024) String sourceUrl,
         @Size(max = 1024) String itemUrl,
         @NotBlank @Size(max = 64) String contentHash,
-        @Size(max = 64) String sourceType
+        @Size(max = 64) String sourceType,
+        LocalDateTime publishTime,
+        @Size(max = 128) String submittedBy,
+        Long submittedByUserId
 ) {
 }

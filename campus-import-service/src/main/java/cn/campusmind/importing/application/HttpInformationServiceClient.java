@@ -6,6 +6,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
+import java.time.LocalDateTime;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
@@ -29,7 +30,8 @@ public class HttpInformationServiceClient implements InformationServiceClient {
 
     @Override
     public Long createItem(String title, String detailContent, String sourceName,
-                           String sourceUrl, String itemUrl, String contentHash) {
+                           String sourceUrl, String itemUrl, String contentHash,
+                           LocalDateTime publishTime, String submittedBy, Long submittedByUserId) {
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("title", title);
         body.put("detailContent", detailContent);
@@ -37,6 +39,9 @@ public class HttpInformationServiceClient implements InformationServiceClient {
         body.put("sourceUrl", sourceUrl);
         body.put("itemUrl", itemUrl);
         body.put("contentHash", contentHash);
+        body.put("publishTime", publishTime);
+        body.put("submittedBy", submittedBy);
+        body.put("submittedByUserId", submittedByUserId);
 
         ApiResponse<Long> response;
         try {

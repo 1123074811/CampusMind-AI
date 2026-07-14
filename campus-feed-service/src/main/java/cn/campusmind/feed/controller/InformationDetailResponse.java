@@ -21,6 +21,8 @@ public record InformationDetailResponse(
         String eventType,
         String aiSummary,
         Boolean aiNeedReview,
-        Map<String, Object> aiCard
+        Map<String, Object> aiCard,
+        String submittedBy,
+        Long submittedByUserId
 ) {
 }

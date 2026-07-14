@@ -59,6 +59,8 @@ class InformationControllerTest {
                       ai_summary CLOB,
                       ai_card_json CLOB,
                       ai_need_review BOOLEAN DEFAULT FALSE,
+                      submitted_by VARCHAR(128),
+                      submitted_by_user_id BIGINT,
                       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                       updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                     )

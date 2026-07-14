@@ -97,7 +97,7 @@ public class ImportService {
         try {
             CognitionResult candidate = cognitionClient.extract("USER_TEXT", text);
             Long eventId = persistEvent(user, candidate, "USER_TEXT", contentHash, doc.getId(), null, false, text);
-            boolean infoCompensated = persistInformationItemWithCompensation(candidate, "用户文本提交", text, contentHash, eventId);
+            boolean infoCompensated = persistInformationItemWithCompensation(candidate, "用户文本提交", text, contentHash, eventId, user);
             succeedTask(task, eventId, candidate, infoCompensated);
             return response(task, "文本导入完成，已生成AI预测事件");
         } catch (Exception ex) {
@@ -150,7 +150,7 @@ public class ImportService {
             // 3. 调用认知服务生成事件
             CognitionResult candidate = cognitionClient.extract("USER_IMAGE", ocrText);
             Long eventId = persistEvent(user, candidate, "USER_IMAGE", contentHash, doc.getId(), null, true, ocrText);
-            boolean infoCompensated = persistInformationItemWithCompensation(candidate, "用户图片OCR", ocrText, contentHash, eventId);
+            boolean infoCompensated = persistInformationItemWithCompensation(candidate, "用户图片OCR", ocrText, contentHash, eventId, user);
             succeedTask(task, eventId, candidate, infoCompensated);
             return response(task, "图片OCR识别完成，已生成AI预测事件");
         } catch (BusinessException ex) {
@@ -197,7 +197,7 @@ public class ImportService {
 
             CognitionResult candidate = cognitionClient.extract("USER_FILE", text);
             Long eventId = persistEvent(user, candidate, "USER_FILE", contentHash, doc.getId(), null, false, text);
-            boolean infoCompensated = persistInformationItemWithCompensation(candidate, "用户文件上传", text, contentHash, eventId);
+            boolean infoCompensated = persistInformationItemWithCompensation(candidate, "用户文件上传", text, contentHash, eventId, user);
             succeedTask(task, eventId, candidate, infoCompensated);
             return response(task, "文件导入完成，已生成AI预测事件");
         } catch (Exception ex) {
@@ -370,9 +370,9 @@ public class ImportService {
      */
     private boolean persistInformationItemWithCompensation(
             CognitionResult candidate, String sourceName, String text,
-            String contentHash, Long eventId) {
+            String contentHash, Long eventId, CurrentUser user) {
         try {
-            if (persistInformationItem(candidate, sourceName, text, contentHash) == null) {
+            if (persistInformationItem(candidate, sourceName, text, contentHash, user) == null) {
                 throw new IllegalStateException("信息条目创建失败");
             }
             return false;
@@ -383,10 +383,17 @@ public class ImportService {
         }
     }
 
-    private Long persistInformationItem(CognitionResult candidate, String sourceName, String text, String contentHash) {
+    private Long persistInformationItem(CognitionResult candidate, String sourceName, String text,
+                                         String contentHash, CurrentUser user) {
         String title = StringUtils.hasText(candidate.title()) ? candidate.title() : "未命名信息";
         String content = StringUtils.hasText(candidate.summary()) ? candidate.summary() : text;
-        return informationServiceClient.createItem(title, content, sourceName, null, null, contentHash);
+        // 优先从 AI 提取的 startTime 解析为发布时间，解析失败则使用当前时间
+        LocalDateTime publishTime = parseDateTime(candidate.startTime());
+        if (publishTime == null) {
+            publishTime = LocalDateTime.now();
+        }
+        return informationServiceClient.createItem(title, content, sourceName, null, null, contentHash,
+                publishTime, user.username(), user.userId());
     }
 
     private RawDocument buildRawDocument(String sourceType, Long ownerUserId, String sourceUrl,

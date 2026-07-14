@@ -59,6 +59,12 @@ public class InformationItem {
     @TableField("ai_need_review")
     private Boolean aiNeedReview;
 
+    @TableField("submitted_by")
+    private String submittedBy;
+
+    @TableField("submitted_by_user_id")
+    private Long submittedByUserId;
+
     @TableField("created_at")
     private LocalDateTime createdAt;
 
@@ -123,6 +129,9 @@ public class InformationItem {
     public String getAiCardJson() { return aiCardJson; }
     public Boolean getAiNeedReview() { return aiNeedReview; }
 
+    public String getSubmittedBy() { return submittedBy; }
+    public Long getSubmittedByUserId() { return submittedByUserId; }
+
     public LocalDateTime getCreatedAt() {
         return createdAt;
     }
@@ -146,4 +155,7 @@ public class InformationItem {
     public void setAiEventType(String aiEventType) { this.aiEventType = aiEventType; }
     public void setAiCardJson(String aiCardJson) { this.aiCardJson = aiCardJson; }
     public void setAiNeedReview(Boolean aiNeedReview) { this.aiNeedReview = aiNeedReview; }
+    public void setSubmittedBy(String submittedBy) { this.submittedBy = submittedBy; }
+    public void setSubmittedByUserId(Long submittedByUserId) { this.submittedByUserId = submittedByUserId; }
+    public void setPublishTime(LocalDateTime publishTime) { this.publishTime = publishTime; }
 }

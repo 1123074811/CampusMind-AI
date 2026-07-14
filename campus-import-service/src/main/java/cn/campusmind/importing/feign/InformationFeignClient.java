@@ -21,7 +21,7 @@ public interface InformationFeignClient {
     /**
      * 幂等创建信息条目，返回信息条目 ID。
      *
-     * @param body 包含 title、detailContent、sourceName、sourceUrl、itemUrl、contentHash 的请求体
+     * @param body 包含 title、detailContent、sourceName、sourceUrl、itemUrl、contentHash、publishTime、submittedBy、submittedByUserId 的请求体
      */
     @PostMapping("/api/v1/information")
     ApiResponse<Long> createItem(@RequestBody Map<String, Object> body);

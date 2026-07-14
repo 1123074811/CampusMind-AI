@@ -133,7 +133,9 @@ public class InformationService {
                 item.getAiEventType(),
                 item.getAiSummary(),
                 item.getAiNeedReview(),
-                aiCard(item)
+                aiCard(item),
+                item.getSubmittedBy(),
+                item.getSubmittedByUserId()
         );
     }
 
@@ -168,6 +170,10 @@ public class InformationService {
         item.setItemStatus("ACTIVE");
         item.setParseStatus("DETAIL_SUCCESS");
         item.setAiStatus("PENDING");
+        // 上传时间：优先使用请求中指定的 publishTime，否则使用当前时间
+        item.setPublishTime(request.publishTime() != null ? request.publishTime() : now);
+        item.setSubmittedBy(request.submittedBy());
+        item.setSubmittedByUserId(request.submittedByUserId());
         informationItemMapper.insert(item);
         return item.getId();
     }

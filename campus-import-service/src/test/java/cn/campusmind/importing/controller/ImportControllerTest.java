@@ -95,7 +95,7 @@ class ImportControllerTest {
 
         // mock InformationServiceClient
         when(informationServiceClient.createItem(
-                any(), any(), any(), any(), any(), any()
+                any(), any(), any(), any(), any(), any(), any(), any(), any()
         )).thenReturn(200L);
 
         try (Connection connection = dataSource.getConnection();
@@ -179,14 +179,14 @@ class ImportControllerTest {
                 any(), any(), any(), any()
         );
         verify(informationServiceClient, times(1)).createItem(
-                any(), any(), any(), any(), any(), any()
+                any(), any(), any(), any(), any(), any(), any(), any(), any()
         );
     }
 
     @Test
     void textImportMarksInformationCompensationWhenItemCreationFails() throws Exception {
         when(cognitionClient.extract(eq("USER_TEXT"), anyString())).thenReturn(candidate());
-        when(informationServiceClient.createItem(any(), any(), any(), any(), any(), any())).thenReturn(null);
+        when(informationServiceClient.createItem(any(), any(), any(), any(), any(), any(), any(), any(), any())).thenReturn(null);
 
         mockMvc.perform(post("/api/v1/import/text")
                         .header(AUTHORIZATION, bearerToken(1L, "alice", "STUDENT"))
@@ -237,7 +237,7 @@ class ImportControllerTest {
                 any(), any(), any(), any()
         );
         verify(informationServiceClient, times(0)).createItem(
-                any(), any(), any(), any(), any(), any()
+                any(), any(), any(), any(), any(), any(), any(), any(), any()
         );
     }
 
