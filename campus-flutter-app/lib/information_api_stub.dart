@@ -283,6 +283,15 @@ class ImportedEventItem {
 abstract class CampusApi {
   Future<LoginSession> login(String username, String password);
 
+  Future<LoginSession> register(String username, String email, String password) =>
+      Future.error(UnsupportedError('当前实现不支持注册'));
+
+  Future<String?> forgotPassword(String account) =>
+      Future.error(UnsupportedError('当前实现不支持找回密码'));
+
+  Future<void> resetPassword(String token, String newPassword) =>
+      Future.error(UnsupportedError('当前实现不支持重置密码'));
+
   Future<void> logout(LoginSession session) => Future.value();
 
   Future<Map<String, Object?>> exportMyData(LoginSession session) =>
@@ -290,6 +299,14 @@ abstract class CampusApi {
 
   Future<void> deleteMyAccount(String password, LoginSession session) =>
       Future.error(UnsupportedError('当前实现不支持账号注销'));
+
+  Future<PrivacyStatus> fetchPrivacyStatus(LoginSession session) =>
+      Future.value(const PrivacyStatus(policyVersion: '', retentionDays: 365, consents: {}));
+
+  Future<PrivacyStatus> updateConsent(String type, bool granted, String policyVersion, LoginSession session) =>
+      Future.error(UnsupportedError('当前实现不支持隐私授权'));
+
+  Future<void> registerDevice(String deviceId, String platform, String? pushToken, LoginSession session) => Future.value();
 
   Future<List<InformationItem>> fetchInformationFeed(LoginSession? session);
 
@@ -395,6 +412,26 @@ abstract class CampusApi {
       fetchInformationFeed(session);
 }
 
+class PrivacyStatus {
+  const PrivacyStatus({required this.policyVersion, required this.retentionDays, required this.consents});
+  final String policyVersion;
+  final int retentionDays;
+  final Map<String, bool> consents;
+
+  factory PrivacyStatus.fromJson(Map<String, Object?> json) {
+    final values = <String, bool>{};
+    for (final raw in json['consents'] as List<Object?>? ?? const []) {
+      final item = raw as Map<String, Object?>;
+      values[item['consentType'] as String? ?? ''] = item['granted'] as bool? ?? false;
+    }
+    return PrivacyStatus(
+      policyVersion: json['currentPolicyVersion'] as String? ?? '',
+      retentionDays: (json['retentionDays'] as num?)?.toInt() ?? 365,
+      consents: values,
+    );
+  }
+}
+
 class AiChatResult {
   const AiChatResult({required this.sessionId, required this.answer});
   final String sessionId;
@@ -408,10 +445,12 @@ class AiChatResult {
 }
 
 class SearchResult {
-  const SearchResult({required this.items, required this.total, this.message});
+  const SearchResult({required this.items, required this.total, this.message, this.mode = 'FILTER', this.fallback = false});
   final List<SearchResultItem> items;
   final int total;
   final String? message;
+  final String mode;
+  final bool fallback;
   factory SearchResult.fromJson(Map<String, Object?> json) {
     final list = json['items'] as List<Object?>? ?? const [];
     return SearchResult(
@@ -421,6 +460,8 @@ class SearchResult {
           .toList(),
       total: (json['total'] as num?)?.toInt() ?? 0,
       message: json['message'] as String?,
+      mode: json['mode'] as String? ?? 'FILTER',
+      fallback: json['fallback'] as bool? ?? false,
     );
   }
 }

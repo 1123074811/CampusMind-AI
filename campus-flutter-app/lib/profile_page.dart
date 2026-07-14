@@ -45,6 +45,7 @@ class _PrototypeProfilePageState extends State<PrototypeProfilePage> {
   ];
   Set<String> _activeTags = {};
   double _sensitivity = 0.5;
+  PrivacyStatus? _privacy;
 
   @override
   void initState() {
@@ -52,6 +53,54 @@ class _PrototypeProfilePageState extends State<PrototypeProfilePage> {
     _loadStats();
     _loadProfile();
     _loadTags();
+    _loadPrivacy();
+  }
+
+  Future<void> _loadPrivacy() async {
+    try {
+      final privacy = await widget.api.fetchPrivacyStatus(widget.session);
+      if (mounted) setState(() => _privacy = privacy);
+    } catch (error) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('隐私设置加载失败：$error')));
+    }
+  }
+
+  Future<void> _showPrivacySettings() async {
+    var personalization = _privacy?.consents['PERSONALIZATION'] ?? true;
+    var notifications = _privacy?.consents['NOTIFICATION'] ?? true;
+    await showDialog<void>(context: context, builder: (context) => StatefulBuilder(builder: (context, setDialogState) => AlertDialog(
+      title: const Text('隐私与授权'),
+      content: Column(mainAxisSize: MainAxisSize.min, children: [
+        Text('当前政策版本：${_privacy?.policyVersion ?? '加载中'}\n运营数据保留：${_privacy?.retentionDays ?? 365} 天'),
+        SwitchListTile(
+          contentPadding: EdgeInsets.zero,
+          title: const Text('个性化画像与推荐'),
+          value: personalization,
+          onChanged: (value) => setDialogState(() => personalization = value),
+        ),
+        SwitchListTile(
+          contentPadding: EdgeInsets.zero,
+          title: const Text('消息通知'),
+          value: notifications,
+          onChanged: (value) => setDialogState(() => notifications = value),
+        ),
+      ]),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(context), child: const Text('取消')),
+        FilledButton(onPressed: () async {
+          try {
+            final version = _privacy?.policyVersion ?? '2026-07-01';
+            await widget.api.updateConsent('PERSONALIZATION', personalization, version, widget.session);
+            final updated = await widget.api.updateConsent('NOTIFICATION', notifications, version, widget.session);
+            if (!context.mounted) return;
+            Navigator.pop(context);
+            if (mounted) setState(() => _privacy = updated);
+          } catch (error) {
+            if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('授权更新失败：$error')));
+          }
+        }, child: const Text('保存')),
+      ],
+    )));
   }
 
   Future<void> _loadTags() async {
@@ -451,6 +500,10 @@ class _PrototypeProfilePageState extends State<PrototypeProfilePage> {
                       api: widget.api, session: widget.session),
                 )),
               ),
+              _MenuItem(
+                  icon: Icons.privacy_tip_outlined,
+                  label: '隐私与授权',
+                  onTap: _showPrivacySettings),
               _MenuItem(
                   icon: Icons.download_outlined,
                   label: '导出个人数据',

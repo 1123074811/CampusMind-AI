@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show defaultTargetPlatform, debugPrint;
 
 import 'information_api.dart';
 import 'app_theme.dart';
@@ -58,6 +59,12 @@ class _AppRootState extends State<AppRoot> {
 
   void _onLogin(LoginSession session) {
     setState(() => _session = session);
+    widget.api.registerDevice(
+      'campus-app-${session.user.id}',
+      defaultTargetPlatform.name,
+      null,
+      session,
+    ).catchError((error) { debugPrint('设备通知注册失败：$error'); });
   }
 
   void _onLogout() {

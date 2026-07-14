@@ -24,7 +24,8 @@ export 'information_api_stub.dart'
         RelatedItem,
         TrendingItem,
         UserProfileTags,
-        DailyBriefing;
+        DailyBriefing,
+        PrivacyStatus;
 
 const _apiBase = String.fromEnvironment(
   'CAMPUSMIND_API_BASE',
@@ -48,6 +49,24 @@ class IoCampusApi implements CampusApi {
       body: {'username': username, 'password': password},
     );
     return LoginSession.fromJson(_data(root));
+  }
+
+  @override
+  Future<LoginSession> register(String username, String email, String password) async {
+    final root = await _request('POST', '/api/v1/auth/register',
+        body: {'username': username, 'email': email, 'password': password});
+    return LoginSession.fromJson(_data(root));
+  }
+
+  @override
+  Future<String?> forgotPassword(String account) async {
+    final root = await _request('POST', '/api/v1/auth/password/forgot', body: {'account': account});
+    return _data(root)['developmentResetToken'] as String?;
+  }
+
+  @override
+  Future<void> resetPassword(String token, String newPassword) async {
+    await _request('POST', '/api/v1/auth/password/reset', body: {'token': token, 'newPassword': newPassword});
   }
 
   LoginSession _effective(LoginSession session) =>
@@ -216,6 +235,25 @@ class IoCampusApi implements CampusApi {
   Future<void> deleteMyAccount(String password, LoginSession session) async {
     await _request('DELETE', '/api/v1/users/me',
         session: session, body: {'password': password});
+  }
+
+  @override
+  Future<PrivacyStatus> fetchPrivacyStatus(LoginSession session) async {
+    final root = await _request('GET', '/api/v1/users/me/privacy', session: session);
+    return PrivacyStatus.fromJson(_data(root));
+  }
+
+  @override
+  Future<PrivacyStatus> updateConsent(String type, bool granted, String policyVersion, LoginSession session) async {
+    final root = await _request('POST', '/api/v1/users/me/privacy/consents', session: session,
+        body: {'consentType': type, 'granted': granted, 'policyVersion': policyVersion, 'source': 'APP'});
+    return PrivacyStatus.fromJson(_data(root));
+  }
+
+  @override
+  Future<void> registerDevice(String deviceId, String platform, String? pushToken, LoginSession session) async {
+    await _request('PUT', '/api/v1/information/notifications/devices', session: session,
+        body: {'deviceId': deviceId, 'platform': platform, 'pushToken': pushToken});
   }
 
   @override

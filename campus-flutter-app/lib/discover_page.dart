@@ -730,6 +730,8 @@ class _SearchPageState extends State<_SearchPage> {
   bool _loading = false;
   String? _error;
   int _total = 0;
+  String? _searchNotice;
+  bool _fallback = false;
 
   @override
   void dispose() {
@@ -750,6 +752,8 @@ class _SearchPageState extends State<_SearchPage> {
       setState(() {
         _results = result.items;
         _total = result.total;
+        _searchNotice = result.message;
+        _fallback = result.fallback;
         _loading = false;
       });
     } catch (e) {
@@ -836,10 +840,17 @@ class _SearchPageState extends State<_SearchPage> {
                                 if (i == 0) {
                                   return Padding(
                                     padding: const EdgeInsets.only(bottom: 12),
-                                    child: Text('找到 $_total 条结果',
-                                        style: const TextStyle(
-                                            fontSize: 12.5,
-                                            color: AppTheme.muted)),
+                                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                                      if (_fallback) Container(
+                                        width: double.infinity,
+                                        margin: const EdgeInsets.only(bottom: 10),
+                                        padding: const EdgeInsets.all(10),
+                                        decoration: BoxDecoration(color: const Color(0xFFFFF4D8), borderRadius: BorderRadius.circular(8)),
+                                        child: Text('AI 语义检索暂不可用，当前展示关键词匹配结果。${_searchNotice == null ? '' : ' $_searchNotice'}',
+                                          style: const TextStyle(fontSize: 12, color: Color(0xFF7A5200))),
+                                      ),
+                                      Text('找到 $_total 条结果', style: const TextStyle(fontSize: 12.5, color: AppTheme.muted)),
+                                    ]),
                                   );
                                 }
                                 final item = _results[i - 1];
