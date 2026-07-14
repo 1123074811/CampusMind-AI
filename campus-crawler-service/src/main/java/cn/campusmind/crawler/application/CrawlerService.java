@@ -64,6 +64,7 @@ public class CrawlerService {
     private final AiCardExtractor aiCardExtractor;
     private final AiProcessingRecordStore aiProcessingRecordStore;
     private final VectorPusher vectorPusher;
+    private final CrawlerRunLock crawlerRunLock;
 
     public CrawlerService(DataSourceMapper dataSourceMapper,
                           CrawlTaskMapper crawlTaskMapper,
@@ -78,7 +79,8 @@ public class CrawlerService {
                           JdbcTemplate jdbcTemplate,
                           AiCardExtractor aiCardExtractor,
                           AiProcessingRecordStore aiProcessingRecordStore,
-                          VectorPusher vectorPusher) {
+                          VectorPusher vectorPusher,
+                          CrawlerRunLock crawlerRunLock) {
         this.dataSourceMapper = dataSourceMapper;
         this.crawlTaskMapper = crawlTaskMapper;
         this.webCrawlItemMapper = webCrawlItemMapper;
@@ -93,6 +95,7 @@ public class CrawlerService {
         this.aiCardExtractor = aiCardExtractor;
         this.aiProcessingRecordStore = aiProcessingRecordStore;
         this.vectorPusher = vectorPusher;
+        this.crawlerRunLock = crawlerRunLock;
     }
 
     /**
@@ -115,9 +118,8 @@ public class CrawlerService {
         return pushed;
     }
 
-    @Transactional
     public CrawlSourceResult crawlSource(Long sourceId) {
-        return crawlSource(sourceId, new CrawlOptions(365, null, "MANUAL"));
+        return crawlSource(sourceId, new CrawlOptions(30, null, "MANUAL"));
     }
 
     public BatchCrawlResult crawlEnabledSources(CrawlOptions options) {
@@ -182,37 +184,47 @@ public class CrawlerService {
         return items.size();
     }
 
-    @Transactional
     public CrawlSourceResult crawlSource(Long sourceId, CrawlOptions options) {
         DataSource source = dataSourceMapper.selectById(sourceId);
         if (source == null) {
             throw new BusinessException("SOURCE_NOT_FOUND", "数据源不存在", HttpStatus.NOT_FOUND);
         }
-        CrawlTask previousTask = latestSuccessfulTask(sourceId);
-        CrawlTask task = newTask(source);
-        crawlTaskMapper.insert(task);
-        if (!isSupported(source)) {
-            return finish(task, source, "SKIPPED", null, null, 0, 0, List.of(), null,
-                    "仅支持启用的 PUBLIC_WEB/WEBMAGIC 数据源", options.normalizedTrigger());
-        }
-        if (intervalTooSmall(source)) {
-            return finish(task, source, "SKIPPED", null, null, 0, 0, List.of(), null,
-                    "采集间隔必须大于 " + crawlerProperties.getMinIntervalSeconds() + " 秒", options.normalizedTrigger());
+        CrawlerRunLock.Lease lease = crawlerRunLock.tryAcquire(sourceId);
+        if (lease == null) {
+            CrawlTask skipped = newTask(source);
+            crawlTaskMapper.insert(skipped);
+            return finish(skipped, source, "SKIPPED", null, null, 0, 0, List.of(), null,
+                    "该数据源已有采集任务在运行", options.normalizedTrigger());
         }
         try {
-            SelectorConfig selectorConfig = selectorConfigParser.parse(source.getSelectorConfig());
-            ListPageCrawl pageCrawl = crawlListPages(source, selectorConfig, options, previousTask);
-            List<CrawledLink> filteredLinks = filterRecentLinks(pageCrawl.links(), options);
-            int persistedCount = persistItems(task, source, selectorConfig, pageCrawl.parserVersion(), filteredLinks);
-            task.setHttpStatus(pageCrawl.httpStatus());
-            task.setEtag(pageCrawl.etag());
-            task.setLastModified(pageCrawl.lastModified());
-            source.setLastCrawledAt(LocalDateTime.now());
-            dataSourceMapper.updateById(source);
-            return finish(task, source, "SUCCESS", pageCrawl.httpStatus(), pageCrawl.parserVersion(),
-                    pageCrawl.links().size(), persistedCount, filteredLinks, null, null, options.normalizedTrigger());
-        } catch (Exception e) {
-            return finish(task, source, "FAILED", task.getHttpStatus(), null, 0, 0, List.of(), e.getMessage(), e.getMessage(), options.normalizedTrigger());
+            CrawlTask previousTask = latestSuccessfulTask(sourceId);
+            CrawlTask task = newTask(source);
+            crawlTaskMapper.insert(task);
+            if (!isSupported(source)) {
+                return finish(task, source, "SKIPPED", null, null, 0, 0, List.of(), null,
+                        "仅支持启用的 PUBLIC_WEB/WEBMAGIC 数据源", options.normalizedTrigger());
+            }
+            if (intervalTooSmall(source)) {
+                return finish(task, source, "SKIPPED", null, null, 0, 0, List.of(), null,
+                        "采集间隔必须大于 " + crawlerProperties.getMinIntervalSeconds() + " 秒", options.normalizedTrigger());
+            }
+            try {
+                SelectorConfig selectorConfig = selectorConfigParser.parse(source.getSelectorConfig());
+                ListPageCrawl pageCrawl = crawlListPages(source, selectorConfig, options, previousTask);
+                List<CrawledLink> filteredLinks = filterRecentLinks(pageCrawl.links(), options);
+                int persistedCount = persistItems(task, source, selectorConfig, pageCrawl.parserVersion(), filteredLinks);
+                task.setHttpStatus(pageCrawl.httpStatus());
+                task.setEtag(pageCrawl.etag());
+                task.setLastModified(pageCrawl.lastModified());
+                source.setLastCrawledAt(LocalDateTime.now());
+                dataSourceMapper.updateById(source);
+                return finish(task, source, "SUCCESS", pageCrawl.httpStatus(), pageCrawl.parserVersion(),
+                        pageCrawl.links().size(), persistedCount, filteredLinks, null, null, options.normalizedTrigger());
+            } catch (Exception e) {
+                return finish(task, source, "FAILED", task.getHttpStatus(), null, 0, 0, List.of(), e.getMessage(), e.getMessage(), options.normalizedTrigger());
+            }
+        } finally {
+            crawlerRunLock.release(lease);
         }
     }
 
@@ -435,6 +447,41 @@ public class CrawlerService {
                 INSERT INTO information_change_log (item_id, old_content_hash, new_content_hash, changed_fields, changed_at)
                 VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
                 """, itemId, oldHash, newHash, changedFieldsJson);
+        createChangeReminders(itemId, newHash);
+    }
+
+    private void createChangeReminders(Long itemId, String newHash) {
+        String title = jdbcTemplate.queryForObject(
+                "SELECT CONCAT('内容变更：', LEFT(title, 180), ' [', LEFT(?, 8), ']') FROM information_item WHERE id = ?",
+                String.class, newHash, itemId
+        );
+        jdbcTemplate.update("""
+                INSERT INTO user_action_item (user_id, information_item_id, title, due_at, original_url, status)
+                SELECT recipients.user_id, item.id, ?, CURRENT_TIMESTAMP, item.item_url, 'PENDING'
+                FROM information_item item
+                JOIN (
+                    SELECT state.user_id
+                    FROM user_information_state state
+                    WHERE state.item_id = ? AND state.favorited_at IS NOT NULL
+                    UNION
+                    SELECT subscription.user_id
+                    FROM user_source_subscription subscription
+                    JOIN information_item subscribed_item ON subscribed_item.source_id = subscription.source_id
+                    WHERE subscribed_item.id = ? AND subscription.enabled = 1
+                ) recipients ON 1 = 1
+                WHERE item.id = ?
+                ON DUPLICATE KEY UPDATE due_at = CURRENT_TIMESTAMP, status = 'PENDING'
+                """, title, itemId, itemId, itemId);
+        jdbcTemplate.update("""
+                INSERT INTO user_reminder (action_item_id, user_id, remind_at, status)
+                SELECT action.id, action.user_id, CURRENT_TIMESTAMP, 'PENDING'
+                FROM user_action_item action
+                WHERE action.information_item_id = ? AND action.title = ?
+                  AND NOT EXISTS (
+                    SELECT 1 FROM user_reminder reminder
+                    WHERE reminder.action_item_id = action.id AND reminder.status <> 'DISMISSED'
+                  )
+                """, itemId, title);
     }
 
     private void extractAiCard(InformationItem item) {

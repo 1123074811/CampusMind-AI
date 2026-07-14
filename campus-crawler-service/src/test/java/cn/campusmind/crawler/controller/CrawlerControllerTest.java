@@ -164,6 +164,32 @@ class CrawlerControllerTest {
                     )
                     """);
             statement.execute("""
+                    CREATE TABLE IF NOT EXISTS user_source_subscription (
+                      id BIGINT AUTO_INCREMENT PRIMARY KEY, user_id BIGINT NOT NULL, source_id BIGINT NOT NULL,
+                      enabled INT NOT NULL DEFAULT 1, UNIQUE KEY uk_user_source (user_id, source_id)
+                    )
+                    """);
+            statement.execute("""
+                    CREATE TABLE IF NOT EXISTS user_action_item (
+                      id BIGINT AUTO_INCREMENT PRIMARY KEY, user_id BIGINT NOT NULL, information_item_id BIGINT NOT NULL,
+                      title VARCHAR(255) NOT NULL, due_at TIMESTAMP, original_url VARCHAR(1024), status VARCHAR(32) NOT NULL,
+                      UNIQUE KEY uk_user_action (user_id, information_item_id, title)
+                    )
+                    """);
+            statement.execute("""
+                    CREATE TABLE IF NOT EXISTS user_reminder (
+                      id BIGINT AUTO_INCREMENT PRIMARY KEY, action_item_id BIGINT NOT NULL, user_id BIGINT NOT NULL,
+                      remind_at TIMESTAMP NOT NULL, status VARCHAR(32) NOT NULL, sent_at TIMESTAMP,
+                      UNIQUE KEY uk_action_time (action_item_id, remind_at)
+                    )
+                    """);
+            statement.execute("""
+                    CREATE TABLE IF NOT EXISTS information_change_log (
+                      id BIGINT AUTO_INCREMENT PRIMARY KEY, item_id BIGINT NOT NULL, old_content_hash CHAR(64),
+                      new_content_hash CHAR(64) NOT NULL, changed_fields CLOB, changed_at TIMESTAMP
+                    )
+                    """);
+            statement.execute("""
                     CREATE TABLE IF NOT EXISTS event_source_ref (
                       id BIGINT AUTO_INCREMENT PRIMARY KEY,
                       event_id BIGINT NOT NULL,
@@ -192,6 +218,10 @@ class CrawlerControllerTest {
             statement.execute("DELETE FROM information_item");
             statement.execute("DELETE FROM ai_processing_record");
             statement.execute("DELETE FROM user_information_state");
+            statement.execute("DELETE FROM user_reminder");
+            statement.execute("DELETE FROM user_action_item");
+            statement.execute("DELETE FROM user_source_subscription");
+            statement.execute("DELETE FROM information_change_log");
             statement.execute("DELETE FROM web_crawl_item");
             statement.execute("DELETE FROM crawl_task");
             statement.execute("DELETE FROM data_source");
@@ -290,6 +320,40 @@ class CrawlerControllerTest {
         mockMvc.perform(get("/api/admin/crawler/items").param("size", "10"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data[0].favoriteCount").value(1));
+    }
+
+    @Test
+    void contentChangeCreatesReminderForFavoriteOrSubscribedUsers() throws Exception {
+        mockMvc.perform(post("/api/admin/crawler/sources/9411/crawl"))
+                .andExpect(status().isOk());
+        try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
+            statement.execute("INSERT INTO user_information_state (user_id, item_id, first_seen_at, favorited_at) SELECT 7, id, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP FROM information_item");
+            statement.execute("INSERT INTO user_source_subscription (user_id, source_id, enabled) VALUES (8, 9411, 1)");
+        }
+        Mockito.when(publicWebFetcher.fetch("https://www.xju.edu.cn/xwzx/tzgg.htm", "\"etag-1\"",
+                        "Tue, 07 Jul 2026 07:57:55 GMT"))
+                .thenReturn(new PublicWebFetcher.FetchResult(200, "\"etag-2\"", null, """
+                        <ul class="list1"><li><div class="time flex-v-center"><span>07</span>2026/07</div>
+                        <a href="../info/1030/28464.htm" title="新疆大学2026年度拟新增本科专业公示">
+                        <div class="txt"><h4>新疆大学2026年度拟新增本科专业公示</h4><p>专业公示摘要</p></div></a></li></ul>
+                        """));
+        Mockito.when(publicWebFetcher.fetch("https://www.xju.edu.cn/info/1030/28464.htm"))
+                .thenReturn(new PublicWebFetcher.FetchResult(200, null, null, """
+                        <div class="arc-tit"><h1>新疆大学2026年度拟新增本科专业公示</h1></div>
+                        <div class="arc-info">信息日期：2026-07-07 15:57:55</div>
+                        <div id="vsb_content"><div class="v_news_content"><p>更新后的专业名单与申报要求。</p></div></div>
+                        """));
+
+        mockMvc.perform(post("/api/admin/crawler/sources/9411/crawl"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("SUCCESS"));
+
+        try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
+            try (var result = statement.executeQuery("SELECT COUNT(*) FROM user_reminder")) {
+                result.next();
+                org.assertj.core.api.Assertions.assertThat(result.getInt(1)).isEqualTo(2);
+            }
+        }
     }
 
     private void insertSource() throws Exception {

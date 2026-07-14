@@ -11,6 +11,8 @@ import cn.campusmind.user.controller.UpdateProfileTagsRequest;
 import cn.campusmind.user.controller.UpdateUserStatusRequest;
 import cn.campusmind.user.controller.UserMeResponse;
 import cn.campusmind.user.controller.UserProfileResponse;
+import cn.campusmind.user.controller.UserDataExportResponse;
+import cn.campusmind.user.controller.DeleteAccountRequest;
 import cn.campusmind.user.domain.UserAccount;
 import cn.campusmind.user.domain.UserProfile;
 import cn.campusmind.user.infrastructure.mapper.UserAccountMapper;
@@ -26,8 +28,13 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.data.redis.core.StringRedisTemplate;
 
+import java.time.Instant;
 import java.util.List;
+import java.util.UUID;
+import java.time.Duration;
 
 @Service
 public class UserService {
@@ -39,15 +46,21 @@ public class UserService {
     private final UserProfileMapper userProfileMapper;
     private final ObjectMapper objectMapper;
     private final PasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
+    private final JdbcTemplate jdbcTemplate;
+    private final StringRedisTemplate redisTemplate;
 
     public UserService(
             UserAccountMapper userAccountMapper,
             UserProfileMapper userProfileMapper,
-            ObjectMapper objectMapper
+            ObjectMapper objectMapper,
+            JdbcTemplate jdbcTemplate,
+            StringRedisTemplate redisTemplate
     ) {
         this.userAccountMapper = userAccountMapper;
         this.userProfileMapper = userProfileMapper;
         this.objectMapper = objectMapper;
+        this.jdbcTemplate = jdbcTemplate;
+        this.redisTemplate = redisTemplate;
     }
 
     @Transactional(readOnly = true)
@@ -86,6 +99,49 @@ public class UserService {
             userProfileMapper.updateById(profile);
         }
         return toProfileResponse(findProfile(currentUser.userId()));
+    }
+
+    @Transactional(readOnly = true)
+    public UserDataExportResponse exportMyData(CurrentUser currentUser) {
+        UserAccount account = requireAccount(currentUser.userId());
+        Long userId = account.getId();
+        return new UserDataExportResponse(
+                Instant.now(),
+                new UserDataExportResponse.Account(
+                        account.getId(), account.getUsername(), account.getPhone(), account.getRole(),
+                        account.getStatus(), account.getCreatedAt(), account.getUpdatedAt()
+                ),
+                toProfileResponse(findProfile(userId)),
+                jdbcTemplate.queryForList("SELECT * FROM user_information_state WHERE user_id = ?", userId),
+                jdbcTemplate.queryForList("SELECT * FROM user_source_subscription WHERE user_id = ?", userId),
+                jdbcTemplate.queryForList("SELECT * FROM user_action_item WHERE user_id = ?", userId),
+                jdbcTemplate.queryForList("SELECT * FROM user_reminder WHERE user_id = ?", userId),
+                jdbcTemplate.queryForList("SELECT * FROM campus_event WHERE owner_user_id = ?", userId)
+        );
+    }
+
+    @Transactional
+    public void deleteMyAccount(CurrentUser currentUser, DeleteAccountRequest request) {
+        UserAccount account = requireAccount(currentUser.userId());
+        if (!passwordEncoder.matches(request.password(), account.getPasswordHash())) {
+            throw new BusinessException("INVALID_CREDENTIALS", "密码错误", HttpStatus.UNAUTHORIZED);
+        }
+        Long userId = account.getId();
+        jdbcTemplate.update("DELETE FROM user_reminder WHERE user_id = ?", userId);
+        jdbcTemplate.update("DELETE FROM user_action_item WHERE user_id = ?", userId);
+        jdbcTemplate.update("DELETE FROM user_information_state WHERE user_id = ?", userId);
+        jdbcTemplate.update("DELETE FROM user_source_subscription WHERE user_id = ?", userId);
+        jdbcTemplate.update("DELETE FROM campus_event WHERE owner_user_id = ?", userId);
+        userProfileMapper.delete(new LambdaQueryWrapper<UserProfile>().eq(UserProfile::getUserId, userId));
+
+        account.setUsername("deleted_" + userId + "_" + UUID.randomUUID().toString().substring(0, 8));
+        account.setPhone(null);
+        account.setPasswordHash(passwordEncoder.encode(UUID.randomUUID().toString()));
+        account.setStatus(0);
+        userAccountMapper.updateById(account);
+        // MyBatis-Plus 默认跳过 null 更新，隐私字段必须显式清空。
+        jdbcTemplate.update("UPDATE `user` SET phone = NULL WHERE id = ?", userId);
+        redisTemplate.opsForValue().set("auth:user-revoked:" + userId, "1", Duration.ofDays(30));
     }
 
     @Transactional(readOnly = true)

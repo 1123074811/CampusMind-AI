@@ -7,6 +7,7 @@ import cn.campusmind.audit.controller.AdminDataSourceResponse;
 import cn.campusmind.audit.controller.AdminEventResponse;
 import cn.campusmind.audit.controller.AdminTaskResponse;
 import cn.campusmind.audit.controller.MetricsResponse;
+import cn.campusmind.audit.controller.UpsertDataSourceRequest;
 import cn.campusmind.audit.domain.CrawlTask;
 import cn.campusmind.audit.domain.DataSource;
 import cn.campusmind.audit.domain.EventAuditLog;
@@ -235,6 +236,101 @@ public class AdminDashboardService {
                 .toList();
     }
 
+    @Transactional
+    public AdminDataSourceResponse createSource(Long operatorId, UpsertDataSourceRequest request) {
+        validateSelectorConfig(request.selectorConfig());
+        ensureUniqueBaseUrl(null, request.baseUrl());
+        DataSource source = new DataSource();
+        applySource(source, request);
+        if (source.getEnabled() == null) source.setEnabled(1);
+        dataSourceMapper.insert(source);
+        writeSourceAudit(operatorId, "SOURCE_CREATE", null, source);
+        return toSource(source, List.of());
+    }
+
+    @Transactional
+    public AdminDataSourceResponse updateSource(Long sourceId, Long operatorId, UpsertDataSourceRequest request) {
+        DataSource source = requireSource(sourceId);
+        String before = writeJson(sourceSnapshot(source));
+        validateSelectorConfig(request.selectorConfig());
+        ensureUniqueBaseUrl(sourceId, request.baseUrl());
+        applySource(source, request);
+        dataSourceMapper.updateById(source);
+        writeSourceAudit(operatorId, "SOURCE_UPDATE", before, source);
+        return toSource(source, List.of());
+    }
+
+    @Transactional
+    public AdminDataSourceResponse setSourceEnabled(Long sourceId, Long operatorId, boolean enabled) {
+        DataSource source = requireSource(sourceId);
+        String before = writeJson(sourceSnapshot(source));
+        source.setEnabled(enabled ? 1 : 0);
+        dataSourceMapper.updateById(source);
+        writeSourceAudit(operatorId, enabled ? "SOURCE_ENABLE" : "SOURCE_PAUSE", before, source);
+        return toSource(source, List.of());
+    }
+
+    private DataSource requireSource(Long sourceId) {
+        DataSource source = dataSourceMapper.selectById(sourceId);
+        if (source == null) {
+            throw new BusinessException("SOURCE_NOT_FOUND", "数据源不存在", HttpStatus.NOT_FOUND);
+        }
+        return source;
+    }
+
+    private void ensureUniqueBaseUrl(Long sourceId, String baseUrl) {
+        LambdaQueryWrapper<DataSource> query = new LambdaQueryWrapper<DataSource>()
+                .eq(DataSource::getBaseUrl, baseUrl)
+                .ne(sourceId != null, DataSource::getId, sourceId);
+        if (dataSourceMapper.selectCount(query) > 0) {
+            throw new BusinessException("SOURCE_URL_EXISTS", "该数据源地址已存在", HttpStatus.CONFLICT);
+        }
+    }
+
+    private void validateSelectorConfig(String selectorConfig) {
+        if (!StringUtils.hasText(selectorConfig)) return;
+        try {
+            objectMapper.readTree(selectorConfig);
+        } catch (JsonProcessingException ex) {
+            throw new BusinessException("INVALID_SELECTOR_CONFIG", "选择器配置必须是合法 JSON", HttpStatus.BAD_REQUEST);
+        }
+    }
+
+    private static void applySource(DataSource source, UpsertDataSourceRequest request) {
+        source.setName(request.name().trim());
+        source.setSourceType(request.sourceType().trim().toUpperCase());
+        source.setBaseUrl(request.baseUrl().trim());
+        source.setRobotsUrl(StringUtils.hasText(request.robotsUrl()) ? request.robotsUrl().trim() : null);
+        source.setCrawlIntervalSeconds(request.crawlIntervalSeconds() == null ? 3600 : request.crawlIntervalSeconds());
+        source.setParserType(request.parserType().trim().toUpperCase());
+        source.setSelectorConfig(StringUtils.hasText(request.selectorConfig()) ? request.selectorConfig().trim() : null);
+        if (request.enabled() != null) source.setEnabled(request.enabled() ? 1 : 0);
+    }
+
+    private void writeSourceAudit(Long operatorId, String action, String before, DataSource source) {
+        EventAuditLog log = new EventAuditLog();
+        log.setEventId(null);
+        log.setOperatorId(operatorId == null ? 9901L : operatorId);
+        log.setAction(action);
+        log.setBeforeSnapshot(before);
+        log.setAfterSnapshot(writeJson(sourceSnapshot(source)));
+        log.setComment("数据源#" + source.getId() + "：" + source.getName());
+        eventAuditLogMapper.insert(log);
+    }
+
+    private static Map<String, Object> sourceSnapshot(DataSource source) {
+        Map<String, Object> values = new java.util.LinkedHashMap<>();
+        values.put("name", source.getName());
+        values.put("sourceType", source.getSourceType());
+        values.put("baseUrl", source.getBaseUrl());
+        values.put("robotsUrl", source.getRobotsUrl());
+        values.put("crawlIntervalSeconds", source.getCrawlIntervalSeconds());
+        values.put("parserType", source.getParserType());
+        values.put("selectorConfig", source.getSelectorConfig());
+        values.put("enabled", source.getEnabled());
+        return values;
+    }
+
     private MetricsResponse buildMetrics(List<InformationItem> events, List<DataSource> sources, List<CrawlTask> tasks) {
         long reviewCount = events.stream().filter(event -> !"OFFLINE".equals(event.getItemStatus())).count();
         long urgentCount = events.stream()
@@ -357,6 +453,11 @@ public class AdminDashboardService {
                 source.getName(),
                 source.getBaseUrl(),
                 source.getSourceType(),
+                source.getRobotsUrl(),
+                source.getCrawlIntervalSeconds(),
+                source.getParserType(),
+                source.getSelectorConfig(),
+                source.getEnabled() == null || source.getEnabled() == 1,
                 sourceStatus(source, tasks),
                 relativeTime(source.getLastCrawledAt()),
                 successRate,

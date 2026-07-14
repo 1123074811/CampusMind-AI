@@ -1,5 +1,6 @@
 package cn.campusmind.feed.controller;
 
+import cn.campusmind.feed.application.ReminderScheduler;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -30,6 +31,9 @@ class InformationControllerTest {
 
     @Autowired
     private DataSource dataSource;
+
+    @Autowired
+    private ReminderScheduler reminderScheduler;
 
     @BeforeEach
     void setUp() throws Exception {
@@ -350,6 +354,23 @@ class InformationControllerTest {
                         .content("{\"title\":\"完成报名\"}"))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code").value("ACTION_NOT_CONFIRMABLE"));
+    }
+
+    @Test
+    void dueReminderRecordsInAppDeliveryTime() throws Exception {
+        try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
+            statement.execute("INSERT INTO user_action_item (id, user_id, information_item_id, title, status) VALUES (900, 1, 1, '测试提醒', 'CONFIRMED')");
+            statement.execute("INSERT INTO user_reminder (action_item_id, user_id, remind_at, status) VALUES (900, 1, CURRENT_TIMESTAMP, 'PENDING')");
+        }
+
+        reminderScheduler.markDueReminders();
+
+        try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement();
+             var result = statement.executeQuery("SELECT status, sent_at FROM user_reminder WHERE action_item_id = 900")) {
+            result.next();
+            org.junit.jupiter.api.Assertions.assertEquals("DUE", result.getString("status"));
+            org.junit.jupiter.api.Assertions.assertNotNull(result.getTimestamp("sent_at"));
+        }
     }
 
     private void insertInformationItem(Long id, String title, String itemStatus, String parseStatus, String fetchedAt)

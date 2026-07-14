@@ -17,9 +17,15 @@ public class DataSource {
     private String sourceType;
     @TableField("base_url")
     private String baseUrl;
+    @TableField("robots_url")
+    private String robotsUrl;
+    @TableField("crawl_interval_seconds")
+    private Integer crawlIntervalSeconds;
     @TableField("parser_type")
     private String parserType;
     private Integer enabled;
+    @TableField("selector_config")
+    private String selectorConfig;
     @TableField("last_crawled_at")
     private LocalDateTime lastCrawledAt;
 
@@ -50,4 +56,16 @@ public class DataSource {
     public LocalDateTime getLastCrawledAt() {
         return lastCrawledAt;
     }
+
+    public String getRobotsUrl() { return robotsUrl; }
+    public Integer getCrawlIntervalSeconds() { return crawlIntervalSeconds; }
+    public String getSelectorConfig() { return selectorConfig; }
+    public void setName(String name) { this.name = name; }
+    public void setSourceType(String sourceType) { this.sourceType = sourceType; }
+    public void setBaseUrl(String baseUrl) { this.baseUrl = baseUrl; }
+    public void setRobotsUrl(String robotsUrl) { this.robotsUrl = robotsUrl; }
+    public void setCrawlIntervalSeconds(Integer crawlIntervalSeconds) { this.crawlIntervalSeconds = crawlIntervalSeconds; }
+    public void setParserType(String parserType) { this.parserType = parserType; }
+    public void setSelectorConfig(String selectorConfig) { this.selectorConfig = selectorConfig; }
+    public void setEnabled(Integer enabled) { this.enabled = enabled; }
 }

@@ -6,6 +6,7 @@ import cn.campusmind.user.application.CurrentUser;
 import cn.campusmind.user.application.UserService;
 import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
@@ -31,6 +32,24 @@ public class UserController {
     public ApiResponse<UserMeResponse> me(@RequestHeader(value = "Authorization", required = false) String authorization) {
         CurrentUser currentUser = authTokenService.parseBearerToken(authorization);
         return ApiResponse.ok(userService.getMe(currentUser));
+    }
+
+    @GetMapping("/me/export")
+    public ApiResponse<UserDataExportResponse> exportMyData(
+            @RequestHeader(value = "Authorization", required = false) String authorization
+    ) {
+        CurrentUser currentUser = authTokenService.parseBearerToken(authorization);
+        return ApiResponse.ok(userService.exportMyData(currentUser));
+    }
+
+    @DeleteMapping("/me")
+    public ApiResponse<Void> deleteMyAccount(
+            @RequestHeader(value = "Authorization", required = false) String authorization,
+            @Valid @RequestBody DeleteAccountRequest request
+    ) {
+        CurrentUser currentUser = authTokenService.parseBearerToken(authorization);
+        userService.deleteMyAccount(currentUser, request);
+        return ApiResponse.ok(null);
     }
 
     @PutMapping("/me/profile")

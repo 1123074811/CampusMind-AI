@@ -14,6 +14,12 @@ spring:
     url: ${CRAWLER_DB_URL:jdbc:mysql://localhost:3306/campusmind?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai}
     username: ${CRAWLER_DB_USERNAME}
     password: ${CRAWLER_DB_PASSWORD}
+  data:
+    redis:
+      host: ${CRAWLER_REDIS_HOST:localhost}
+      port: ${CRAWLER_REDIS_PORT:6379}
+      password: ${CRAWLER_REDIS_PASSWORD:}
+      database: ${CRAWLER_REDIS_DATABASE:0}
 
 campus:
   ai:

@@ -47,3 +47,26 @@ CREATE TABLE IF NOT EXISTS user_information_state (
   CONSTRAINT fk_user_information_state_user FOREIGN KEY (user_id) REFERENCES user (id) ON DELETE CASCADE,
   CONSTRAINT fk_user_information_state_item FOREIGN KEY (item_id) REFERENCES information_item (id) ON DELETE RESTRICT
 ) COMMENT='用户信息条目阅读与收藏状态表';
+
+DELIMITER //
+
+CREATE PROCEDURE add_web_crawl_item_information_fk_if_missing()
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.tables
+    WHERE table_schema = DATABASE() AND table_name = 'web_crawl_item'
+  ) AND NOT EXISTS (
+    SELECT 1 FROM information_schema.referential_constraints
+    WHERE constraint_schema = DATABASE()
+      AND constraint_name = 'fk_web_crawl_item_info'
+  ) THEN
+    ALTER TABLE web_crawl_item
+      ADD CONSTRAINT fk_web_crawl_item_info
+      FOREIGN KEY (information_item_id) REFERENCES information_item (id) ON DELETE SET NULL;
+  END IF;
+END//
+
+DELIMITER ;
+
+CALL add_web_crawl_item_information_fk_if_missing();
+DROP PROCEDURE add_web_crawl_item_information_fk_if_missing;

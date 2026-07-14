@@ -67,6 +67,35 @@ public class AdminController {
         return ApiResponse.ok(adminDashboardService.dashboard(operator.userId(), operator.role()));
     }
 
+    @PostMapping("/sources")
+    public ApiResponse<AdminDataSourceResponse> createSource(
+            @RequestHeader(value = "Authorization", required = false) String authorization,
+            @Valid @RequestBody UpsertDataSourceRequest request
+    ) {
+        Long operatorId = auditTokenService.requireAdmin(authorization);
+        return ApiResponse.ok(adminDashboardService.createSource(operatorId, request));
+    }
+
+    @PutMapping("/sources/{id}")
+    public ApiResponse<AdminDataSourceResponse> updateSource(
+            @PathVariable Long id,
+            @RequestHeader(value = "Authorization", required = false) String authorization,
+            @Valid @RequestBody UpsertDataSourceRequest request
+    ) {
+        Long operatorId = auditTokenService.requireAdmin(authorization);
+        return ApiResponse.ok(adminDashboardService.updateSource(id, operatorId, request));
+    }
+
+    @PutMapping("/sources/{id}/enabled")
+    public ApiResponse<AdminDataSourceResponse> setSourceEnabled(
+            @PathVariable Long id,
+            @RequestHeader(value = "Authorization", required = false) String authorization,
+            @Valid @RequestBody UpdateDataSourceEnabledRequest request
+    ) {
+        Long operatorId = auditTokenService.requireAdmin(authorization);
+        return ApiResponse.ok(adminDashboardService.setSourceEnabled(id, operatorId, request.enabled()));
+    }
+
     @GetMapping("/logs")
     public ApiResponse<AdminAuditLogListResponse> logs(
             @RequestHeader(value = "Authorization", required = false) String authorization,

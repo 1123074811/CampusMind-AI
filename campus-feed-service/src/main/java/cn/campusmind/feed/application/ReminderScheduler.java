@@ -6,8 +6,7 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 /**
- * 定时扫描到期提醒，将 PENDING 状态更新为 DUE，供前端轮询展示。
- * 后续可接入推送通道（WebSocket / APNs / FCM）。
+ * 定时扫描到期提醒，将 PENDING 状态更新为 DUE 并记录站内送达时间，供前端轮询展示。
  */
 @Component
 public class ReminderScheduler {
@@ -23,7 +22,7 @@ public class ReminderScheduler {
     public void markDueReminders() {
         int updated = jdbcTemplate.update("""
                 UPDATE user_reminder
-                SET status = 'DUE'
+                SET status = 'DUE', sent_at = COALESCE(sent_at, CURRENT_TIMESTAMP)
                 WHERE status = 'PENDING' AND remind_at <= NOW()
                 """);
         if (updated > 0) {
