@@ -15,14 +15,16 @@ import {
   createDataSource,
   updateDataSource,
   setDataSourceEnabled
+  ,fetchDataSourceVersions,
+  rollbackDataSource
 } from './api/admin';
-import { clearSession, loadSession, logoutRemote } from './api/auth';
+import { clearSession, loadSession, logoutRemote, restoreSession } from './api/auth';
 import type { DataSourcePayload } from './api/admin';
 import { crawlEnabledSources, crawlSource, fetchCrawlItems } from './api/crawler';
 import AdminSidebar from './components/AdminSidebar.vue';
 import AdminTopbar from './components/AdminTopbar.vue';
 import MetricsBand from './components/MetricsBand.vue';
-import type { AdminAuditLog, AdminManagedUser, AdminSession, AiConfig, CrawlItem, CrawlTask, DashboardMetrics, DataSource, NavItem, NavKey, PageMetric, ReviewEvent } from './adminTypes';
+import type { AdminAuditLog, AdminManagedUser, AdminSession, AiConfig, CrawlItem, CrawlTask, DashboardMetrics, DataSource, DataSourceVersion, NavItem, NavKey, PageMetric, ReviewEvent } from './adminTypes';
 import LoginView from './views/LoginView.vue';
 import ReviewView from './views/ReviewView.vue';
 import SourcesView from './views/SourcesView.vue';
@@ -38,6 +40,7 @@ const activeNav = ref<NavKey>('review');
 const selectedId = ref(0);
 const reviewEvents = ref<ReviewEvent[]>([]);
 const dataSources = ref<DataSource[]>([]);
+const sourceVersions = ref<DataSourceVersion[]>([]);
 const crawlTasks = ref<CrawlTask[]>([]);
 const crawlItems = ref<CrawlItem[]>([]);
 const adminUsers = ref<AdminManagedUser[]>([]);
@@ -483,6 +486,28 @@ async function toggleSource(source: DataSource) {
   }
 }
 
+async function loadSourceVersions(id: number) {
+  if (!session.value || !isAdmin.value) return;
+  try {
+    sourceVersions.value = await fetchDataSourceVersions(session.value, id);
+  } catch (error) {
+    sourceVersions.value = [];
+    apiMessage.value = error instanceof Error ? error.message : '版本历史加载失败';
+  }
+}
+
+async function rollbackSource(id: number, versionNo: number) {
+  if (!session.value || !isAdmin.value) return;
+  try {
+    await rollbackDataSource(session.value, id, versionNo);
+    apiMessage.value = `数据源已回滚到 v${versionNo}`;
+    await loadDashboard();
+    await loadSourceVersions(id);
+  } catch (error) {
+    apiMessage.value = error instanceof Error ? error.message : '数据源回滚失败';
+  }
+}
+
 function updateTempCrawlerTask(id: number, status: 'SUCCESS' | 'FAILED', note: string) {
   const task = crawlTasks.value.find((item) => item.id === id);
   if (!task) {
@@ -514,9 +539,11 @@ async function logout() {
   aiConfig.value = null;
 }
 
-onMounted(() => {
-  if (session.value) {
-    loadDashboard();
+onMounted(async () => {
+  const restored = await restoreSession();
+  if (restored) {
+    session.value = restored;
+    await loadDashboard();
   }
 });
 </script>
@@ -567,10 +594,13 @@ onMounted(() => {
         :data-sources="visibleDataSources"
         :crawling-source-id="crawlingSourceId"
         :can-manage="isAdmin"
+        :versions="sourceVersions"
         @crawl="crawlSelectedSource"
         @create="createSource"
         @update="updateSource"
         @toggle="toggleSource"
+        @history="loadSourceVersions"
+        @rollback="rollbackSource"
       />
       <TasksView
         v-else-if="activeNav === 'tasks'"

@@ -94,6 +94,7 @@ const detailRows = computed(() => {
     ['地点', cardValue('location') || selected.value.location],
     ['主办方', cardValue('organizer') || selected.value.organizer],
     ['适用对象', cardValue('targetScopes') || selected.value.scope],
+    ['提交用户', selected.value.submittedBy || ''],
     ['关键日期', cardValue('keyDates')],
     ['需办理事项', cardValue('requiredActions')],
     ['附件', cardValue('attachments')]

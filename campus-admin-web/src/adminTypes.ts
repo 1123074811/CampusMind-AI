@@ -29,6 +29,8 @@ export interface ReviewEvent {
   aiStatus: 'PENDING' | 'SUCCESS' | 'REVIEW' | 'FAILED';
   aiNeedReview: boolean;
   aiCard: Record<string, unknown>;
+  submittedBy: string | null;
+  submittedByUserId: number | null;
 }
 
 export interface DataSource {
@@ -45,6 +47,16 @@ export interface DataSource {
   lastSync: string;
   successRate: number;
   pending: number;
+}
+
+export interface DataSourceVersion {
+  id: number;
+  sourceId: number;
+  versionNo: number;
+  action: 'CREATE' | 'UPDATE' | 'ENABLE' | 'DISABLE' | 'ROLLBACK';
+  snapshot: Record<string, unknown>;
+  operatorId: number | null;
+  createdAt: string;
 }
 
 export interface CrawlTask {
@@ -149,13 +161,9 @@ export interface LoginResponse {
 }
 
 export interface AdminSession {
-  accessToken: string;
-  tokenType: string;
   expiresAt: string;
-  refreshToken: string;
-  refreshExpiresAt: string;
+  refreshExpiresAt: string | null;
   user: AdminUser;
-  demo?: boolean;
 }
 
 export interface AdminManagedUser {

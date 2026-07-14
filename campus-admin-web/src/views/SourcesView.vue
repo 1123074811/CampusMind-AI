@@ -1,13 +1,14 @@
 <script setup lang="ts">
-import { computed, reactive, ref } from 'vue';
+import { computed, reactive, ref, watch } from 'vue';
 import StatusPill from '../components/StatusPill.vue';
-import type { DataSource, SourceStatus } from '../adminTypes';
+import type { DataSource, DataSourceVersion, SourceStatus } from '../adminTypes';
 import type { DataSourcePayload } from '../api/admin';
 
 const props = defineProps<{
   dataSources: DataSource[];
   crawlingSourceId: number | null;
   canManage: boolean;
+  versions: DataSourceVersion[];
 }>();
 
 const emit = defineEmits<{
@@ -15,6 +16,8 @@ const emit = defineEmits<{
   create: [payload: DataSourcePayload];
   update: [id: number, payload: DataSourcePayload];
   toggle: [source: DataSource];
+  history: [id: number];
+  rollback: [id: number, versionNo: number];
 }>();
 
 const statusFilter = ref<'ALL' | SourceStatus>('ALL');
@@ -36,6 +39,10 @@ const filteredSources = computed(() => {
 const selectedSource = computed(() => {
   return props.dataSources.find((source) => source.id === selectedSourceId.value) ?? props.dataSources[0];
 });
+
+watch(selectedSource, (source) => {
+  if (source && props.canManage) emit('history', source.id);
+}, { immediate: true });
 
 function sourceChannelLabel(channel: string) {
   return {
@@ -186,6 +193,16 @@ function saveSource() {
           {{ selectedSource.enabled ? '暂停' : '恢复' }}
         </button>
       </div>
+      <section v-if="props.canManage" class="source-history" aria-label="数据源版本历史">
+        <p class="eyebrow">Version History</p>
+        <article v-for="version in props.versions" :key="version.id" class="history-entry">
+          <div><strong>v{{ version.versionNo }} · {{ version.action }}</strong><small>{{ version.createdAt }}</small></div>
+          <pre>{{ JSON.stringify(version.snapshot, null, 2) }}</pre>
+          <button v-if="version.versionNo !== props.versions[0]?.versionNo" type="button" class="ghost-button"
+                  @click="emit('rollback', selectedSource.id, version.versionNo)">回滚到此版本</button>
+        </article>
+        <p v-if="props.versions.length === 0" class="empty-note">暂无版本记录</p>
+      </section>
     </aside>
   </section>
 </template>

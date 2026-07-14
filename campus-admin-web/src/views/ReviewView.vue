@@ -144,6 +144,10 @@ function openDetail() {
           <dt>对象</dt>
           <dd>{{ selectedEvent.scope }}</dd>
         </div>
+        <div v-if="selectedEvent.submittedBy">
+          <dt>提交用户</dt>
+          <dd>{{ selectedEvent.submittedBy }}<template v-if="selectedEvent.submittedByUserId"> (ID: {{ selectedEvent.submittedByUserId }})</template></dd>
+        </div>
         <div>
           <dt>状态说明</dt>
           <dd>{{ selectedEvent.risk }}</dd>
@@ -177,6 +181,7 @@ function openDetail() {
           <div><dt>发布时间</dt><dd>{{ selectedEvent.startTime }}</dd></div>
           <div><dt>发布单位</dt><dd>{{ selectedEvent.organizer }}</dd></div>
           <div><dt>适用对象</dt><dd>{{ selectedEvent.scope }}</dd></div>
+          <div v-if="selectedEvent.submittedBy"><dt>提交用户</dt><dd>{{ selectedEvent.submittedBy }}<template v-if="selectedEvent.submittedByUserId"> (ID: {{ selectedEvent.submittedByUserId }})</template></dd></div>
         </dl>
         <p class="summary-text dialog-content">{{ selectedEvent.summary }}</p>
         <a v-if="selectedEvent.sourceUrl" class="source-url" :href="selectedEvent.sourceUrl" target="_blank" rel="noreferrer">打开原文</a>

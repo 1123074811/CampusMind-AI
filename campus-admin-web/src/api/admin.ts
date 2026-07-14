@@ -127,3 +127,15 @@ export async function setDataSourceEnabled(session: AdminSession | null, id: num
   }, session);
   return readPayload<import('../adminTypes').DataSource>(response);
 }
+
+export async function fetchDataSourceVersions(session: AdminSession | null, id: number) {
+  const response = await authorizedFetch(`/api/admin/sources/${id}/versions`, {}, session);
+  return readPayload<import('../adminTypes').DataSourceVersion[]>(response);
+}
+
+export async function rollbackDataSource(session: AdminSession | null, id: number, versionNo: number) {
+  const response = await authorizedFetch(`/api/admin/sources/${id}/rollback`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ versionNo })
+  }, session);
+  return readPayload<import('../adminTypes').DataSource>(response);
+}
