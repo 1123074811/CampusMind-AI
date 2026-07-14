@@ -14,7 +14,8 @@ import org.springframework.security.web.SecurityFilterChain;
 
 @Configuration
 @Profile("sso")
-@EnableConfigurationProperties({AuthProperties.class, SsoProperties.class})
+@EnableConfigurationProperties({AuthProperties.class, SsoProperties.class,
+        SessionCookieProperties.class, PasswordRecoveryProperties.class})
 public class SsoSecurityConfig {
 
     @Bean

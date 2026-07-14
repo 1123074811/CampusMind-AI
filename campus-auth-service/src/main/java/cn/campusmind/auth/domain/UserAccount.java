@@ -15,12 +15,15 @@ public class UserAccount {
 
     private String username;
 
+    private String email;
+
     @TableField("password_hash")
     private String passwordHash;
 
     private UserRole role;
 
-    private Integer status;
+    @TableField("status")
+    private Integer statusCode;
 
     @TableField("created_at")
     private LocalDateTime createdAt;
@@ -39,6 +42,8 @@ public class UserAccount {
         return username;
     }
 
+    public String getEmail() { return email; }
+
     public String getPasswordHash() {
         return passwordHash;
     }
@@ -48,6 +53,14 @@ public class UserAccount {
     }
 
     public UserStatus getStatus() {
-        return UserStatus.fromCode(status == null ? 0 : status);
+        return UserStatus.fromCode(statusCode == null ? 0 : statusCode);
     }
+
+    public Integer getStatusCode() { return statusCode; }
+
+    public void setUsername(String username) { this.username = username; }
+    public void setEmail(String email) { this.email = email; }
+    public void setPasswordHash(String passwordHash) { this.passwordHash = passwordHash; }
+    public void setRole(UserRole role) { this.role = role; }
+    public void setStatus(Integer status) { this.statusCode = status; }
 }

@@ -20,6 +20,11 @@ spring:
       port: ${AUTH_REDIS_PORT:6379}
       password: ${AUTH_REDIS_PASSWORD:}
       database: ${AUTH_REDIS_DATABASE:0}
+  mail:
+    host: ${AUTH_MAIL_HOST:localhost}
+    port: ${AUTH_MAIL_PORT:25}
+    username: ${AUTH_MAIL_USERNAME:}
+    password: ${AUTH_MAIL_PASSWORD:}
 
 campus:
   auth:
@@ -28,8 +33,19 @@ campus:
       secret: ${AUTH_JWT_SECRET}
       access-token-ttl-minutes: ${AUTH_JWT_ACCESS_TTL_MINUTES:15}
       refresh-token-ttl-days: ${AUTH_JWT_REFRESH_TTL_DAYS:30}
+    cookie:
+      secure: ${AUTH_COOKIE_SECURE:false}
+    password-recovery:
+      mail-enabled: ${AUTH_MAIL_ENABLED:false}
+      expose-token: ${AUTH_DEV_EXPOSE_RESET_TOKEN:false}
+      from: ${AUTH_MAIL_FROM:no-reply@campusmind.local}
+      reset-url: ${AUTH_RESET_URL:http://localhost:5173/reset-password}
+      token-ttl-minutes: ${AUTH_RESET_TOKEN_TTL_MINUTES:30}
 
 management:
+  health:
+    mail:
+      enabled: ${AUTH_MAIL_ENABLED:false}
   endpoints:
     web:
       exposure:

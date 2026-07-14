@@ -14,7 +14,7 @@ import org.springframework.context.annotation.Profile;
 
 @Configuration
 @EnableWebSecurity
-@EnableConfigurationProperties(AuthProperties.class)
+@EnableConfigurationProperties({AuthProperties.class, SessionCookieProperties.class, PasswordRecoveryProperties.class})
 @Profile("!sso")
 public class SecurityConfig {
 
@@ -25,6 +25,7 @@ public class SecurityConfig {
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/api/v1/auth/login", "/api/v1/auth/refresh", "/api/v1/auth/logout",
+                                "/api/v1/auth/register", "/api/v1/auth/password/**", "/api/v1/auth/web/**",
                                 "/api/v1/auth/sso/exchange",
                                 "/actuator/health", "/actuator/info").permitAll()
                         .anyRequest().authenticated())

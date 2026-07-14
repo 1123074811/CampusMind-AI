@@ -15,6 +15,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 import io.jsonwebtoken.Claims;
+import cn.campusmind.auth.controller.RegisterRequest;
 
 @Service
 public class AuthService {
@@ -56,12 +57,47 @@ public class AuthService {
 
     @Transactional(readOnly = true)
     public LoginResponse refresh(RefreshTokenRequest request) {
-        AuthSessionService.Session session = authSessionService.rotate(request.refreshToken());
+        return refresh(request.refreshToken());
+    }
+
+    @Transactional(readOnly = true)
+    public LoginResponse refresh(String refreshToken) {
+        AuthSessionService.Session session = authSessionService.rotate(refreshToken);
         UserAccount user = userAccountMapper.selectById(session.userId());
         if (user == null || user.getStatus() != UserStatus.ENABLED) {
             throw new BusinessException("USER_DISABLED", "账号不存在或已被禁用", HttpStatus.FORBIDDEN);
         }
         return issueSession(user, session);
+    }
+
+    @Transactional
+    public LoginResponse register(RegisterRequest request) {
+        String username = request.username().trim();
+        String email = request.email().trim().toLowerCase(java.util.Locale.ROOT);
+        Long duplicates = userAccountMapper.selectCount(new LambdaQueryWrapper<UserAccount>()
+                .nested(w -> w.eq(UserAccount::getUsername, username).or().eq(UserAccount::getEmail, email)));
+        if (duplicates > 0) {
+            throw new BusinessException("ACCOUNT_EXISTS", "用户名或邮箱已注册", HttpStatus.CONFLICT);
+        }
+        UserAccount user = new UserAccount();
+        user.setUsername(username);
+        user.setEmail(email);
+        user.setPasswordHash(passwordEncoder.encode(request.password()));
+        user.setRole(cn.campusmind.auth.domain.UserRole.STUDENT);
+        user.setStatus(1);
+        userAccountMapper.insert(user);
+        return issueSession(user, authSessionService.create(user.getId()));
+    }
+
+    @Transactional(readOnly = true)
+    public LoginResponse current(String accessToken) {
+        Claims claims = jwtTokenService.parse(accessToken);
+        UserAccount user = userAccountMapper.selectById(Long.parseLong(claims.getSubject()));
+        if (user == null || user.getStatus() != UserStatus.ENABLED) {
+            throw new BusinessException("USER_DISABLED", "账号不存在或已被禁用", HttpStatus.FORBIDDEN);
+        }
+        return new LoginResponse(accessToken, "Bearer", claims.getExpiration().toInstant(), null, null,
+                new LoginResponse.UserPrincipal(user.getId(), user.getUsername(), user.getRole().name()));
     }
 
     @Transactional(readOnly = true)

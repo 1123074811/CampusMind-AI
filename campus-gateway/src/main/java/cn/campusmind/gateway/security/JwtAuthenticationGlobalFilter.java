@@ -85,6 +85,12 @@ public class JwtAuthenticationGlobalFilter implements GlobalFilter, Ordered {
         }
 
         String authorization = request.getHeaders().getFirst(HttpHeaders.AUTHORIZATION);
+        if (!StringUtils.hasText(authorization)) {
+            var accessCookie = request.getCookies().getFirst("campusmind_access");
+            if (accessCookie != null && StringUtils.hasText(accessCookie.getValue())) {
+                authorization = BEARER_PREFIX + accessCookie.getValue();
+            }
+        }
         if (!StringUtils.hasText(authorization) || !authorization.startsWith(BEARER_PREFIX)) {
             return Mono.error(new GatewayAuthenticationException("缺少访问令牌"));
         }
@@ -106,6 +112,7 @@ public class JwtAuthenticationGlobalFilter implements GlobalFilter, Ordered {
             requireRouteRole(path, role);
             ServerHttpRequest authenticatedRequest = request.mutate()
                     .headers(headers -> {
+                        headers.set(HttpHeaders.AUTHORIZATION, BEARER_PREFIX + token);
                         headers.set("X-User-Id", userId);
                         headers.set("X-User-Role", role);
                     })
@@ -118,7 +125,10 @@ public class JwtAuthenticationGlobalFilter implements GlobalFilter, Ordered {
                 Mono<Boolean> sessionRevoked = sessionId == null
                         ? Mono.just(false)
                         : redisTemplate.hasKey("auth:revoked:" + sessionId);
-                Mono<Boolean> userRevoked = redisTemplate.hasKey("auth:user-revoked:" + userId);
+                Mono<Boolean> userRevoked = redisTemplate.opsForValue().get("auth:user-revoked:" + userId)
+                        .map(value -> "1".equals(value) || claims.getIssuedAt() == null
+                                || claims.getIssuedAt().toInstant().toEpochMilli() <= Long.parseLong(value))
+                        .defaultIfEmpty(false);
                 revoked = Mono.zip(sessionRevoked, userRevoked).map(flags -> flags.getT1() || flags.getT2());
             }
             ServerWebExchange authenticatedExchange = exchange.mutate().request(authenticatedRequest).build();

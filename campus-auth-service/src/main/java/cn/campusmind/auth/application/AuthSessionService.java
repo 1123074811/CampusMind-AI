@@ -19,6 +19,7 @@ import java.util.UUID;
 public class AuthSessionService {
 
     public static final String REVOKED_SESSION_PREFIX = "auth:revoked:";
+    public static final String USER_REVOKED_PREFIX = "auth:user-revoked:";
     private static final String REFRESH_TOKEN_PREFIX = "auth:refresh:";
 
     private final StringRedisTemplate redisTemplate;
@@ -36,7 +37,7 @@ public class AuthSessionService {
         Instant expiresAt = Instant.now().plus(Duration.ofDays(properties.refreshTokenTtlDays()));
         redisTemplate.opsForValue().set(
                 REFRESH_TOKEN_PREFIX + hash(refreshToken),
-                userId + ":" + sessionId,
+                userId + ":" + sessionId + ":" + Instant.now().toEpochMilli(),
                 Duration.ofDays(properties.refreshTokenTtlDays())
         );
         return new Session(userId, sessionId, refreshToken, expiresAt);
@@ -48,8 +49,14 @@ public class AuthSessionService {
         if (stored == null) {
             throw new BusinessException("INVALID_REFRESH_TOKEN", "刷新令牌无效或已过期", HttpStatus.UNAUTHORIZED);
         }
-        String[] values = stored.split(":", 2);
-        return create(Long.parseLong(values[0]));
+        String[] values = stored.split(":", 3);
+        Long userId = Long.parseLong(values[0]);
+        String cutoff = redisTemplate.opsForValue().get(USER_REVOKED_PREFIX + userId);
+        long issuedAt = values.length == 3 ? Long.parseLong(values[2]) : 0L;
+        if (cutoff != null && ("1".equals(cutoff) || issuedAt <= Long.parseLong(cutoff))) {
+            throw new BusinessException("INVALID_REFRESH_TOKEN", "刷新令牌已被撤销", HttpStatus.UNAUTHORIZED);
+        }
+        return create(userId);
     }
 
     public void revoke(String sessionId, Instant accessTokenExpiresAt, String refreshToken) {
@@ -62,6 +69,14 @@ public class AuthSessionService {
         if (refreshToken != null && !refreshToken.isBlank()) {
             redisTemplate.delete(REFRESH_TOKEN_PREFIX + hash(refreshToken));
         }
+    }
+
+    public void revokeUserSessions(Long userId) {
+        redisTemplate.opsForValue().set(
+                USER_REVOKED_PREFIX + userId,
+                String.valueOf(Instant.now().toEpochMilli()),
+                Duration.ofDays(properties.refreshTokenTtlDays())
+        );
     }
 
     private String randomToken() {
