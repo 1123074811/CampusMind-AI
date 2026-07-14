@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue';
 import StatusPill from '../components/StatusPill.vue';
-import type { DataSource, DataSourceVersion, SourceStatus } from '../adminTypes';
+import type { CrawlItem, CrawlTask, DataSource, DataSourceVersion, SourceStatus } from '../adminTypes';
 import type { DataSourcePayload } from '../api/admin';
 
 const props = defineProps<{
@@ -9,6 +9,8 @@ const props = defineProps<{
   crawlingSourceId: number | null;
   canManage: boolean;
   versions: DataSourceVersion[];
+  tasks?: CrawlTask[];
+  crawlItems?: CrawlItem[];
 }>();
 
 const emit = defineEmits<{
@@ -38,6 +40,27 @@ const filteredSources = computed(() => {
 
 const selectedSource = computed(() => {
   return props.dataSources.find((source) => source.id === selectedSourceId.value) ?? props.dataSources[0];
+});
+
+const sourceTimeline = computed(() => {
+  if (!selectedSource.value) return [];
+  const source = selectedSource.value;
+  const entries: Array<{ time: string; label: string; type: 'version' | 'task' | 'error' }> = [];
+  for (const v of props.versions) {
+    entries.push({ time: v.createdAt, label: `v${v.versionNo} · ${v.action}`, type: 'version' });
+  }
+  const matchedTasks = (props.tasks ?? []).filter((t) => t.name.startsWith(source.name)).slice(0, 5);
+  for (const t of matchedTasks) {
+    entries.push({ time: t.time, label: `采集: ${t.status} · ${t.note.slice(0, 60)}`, type: t.status === 'FAILED' ? 'error' : 'task' });
+  }
+  const failedItems = (props.crawlItems ?? [])
+    .filter((item) => item.sourceId === source.id && item.parseStatus === 'PARSE_FAILED')
+    .slice(0, 3);
+  for (const item of failedItems) {
+    entries.push({ time: item.fetchedAt, label: `解析失败: ${item.parseError ?? item.title}`, type: 'error' });
+  }
+  entries.sort((a, b) => (b.time > a.time ? 1 : -1));
+  return entries.slice(0, 12);
 });
 
 watch(selectedSource, (source) => {
@@ -193,6 +216,16 @@ function saveSource() {
           {{ selectedSource.enabled ? '暂停' : '恢复' }}
         </button>
       </div>
+      <section class="source-history" aria-label="数据源健康时间线">
+        <p class="eyebrow">Health Timeline</p>
+        <ol class="health-timeline">
+          <li v-for="(entry, idx) in sourceTimeline" :key="idx" :class="'timeline-' + entry.type">
+            <time>{{ entry.time?.slice(0, 16) ?? '-' }}</time>
+            <span>{{ entry.label }}</span>
+          </li>
+        </ol>
+        <p v-if="sourceTimeline.length === 0" class="empty-note">暂无时间线记录</p>
+      </section>
       <section v-if="props.canManage" class="source-history" aria-label="数据源版本历史">
         <p class="eyebrow">Version History</p>
         <article v-for="version in props.versions" :key="version.id" class="history-entry">
@@ -206,3 +239,45 @@ function saveSource() {
     </aside>
   </section>
 </template>
+
+<style scoped>
+.health-timeline {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 8px;
+}
+.health-timeline li {
+  display: grid;
+  grid-template-columns: 100px 1fr;
+  gap: 10px;
+  align-items: start;
+  padding: 8px 10px;
+  border-radius: 12px;
+  background: #f6f7f4;
+  font-size: 13px;
+  line-height: 1.4;
+}
+.health-timeline time {
+  font-family: "Cascadia Mono", Consolas, monospace;
+  font-size: 11px;
+  font-weight: 800;
+  color: var(--ink-muted, #66736f);
+}
+.health-timeline .timeline-version {
+  border-left: 3px solid var(--green, #16845f);
+}
+.health-timeline .timeline-task {
+  border-left: 3px solid var(--accent, #f26b45);
+}
+.health-timeline .timeline-error {
+  border-left: 3px solid var(--danger, #c8472f);
+  background: #fde5df;
+}
+.empty-note {
+  color: var(--ink-muted, #66736f);
+  font-size: 13px;
+  font-weight: 700;
+}
+</style>

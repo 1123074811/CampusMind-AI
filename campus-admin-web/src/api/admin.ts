@@ -4,7 +4,9 @@ import type {
   AdminSession,
   AiConfig,
   AdminUserListResponse,
-  ApiResponse
+  ApiResponse,
+  DeliveryStats,
+  DeliveryRecord
 } from '../adminTypes';
 import { authorizedFetch } from './auth';
 
@@ -138,4 +140,31 @@ export async function rollbackDataSource(session: AdminSession | null, id: numbe
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ versionNo })
   }, session);
   return readPayload<import('../adminTypes').DataSource>(response);
+}
+
+// ─── 通知运营 ────────────────────────────────────────────────
+
+export async function fetchDeliveryStats(session: AdminSession | null) {
+  const response = await authorizedFetch('/api/admin/notifications/stats', {}, session);
+  return readPayload<DeliveryStats>(response);
+}
+
+export async function fetchDeliveries(session: AdminSession | null, status: string, page: number, size: number) {
+  const params = new URLSearchParams({ status, page: String(page), size: String(size) });
+  const response = await authorizedFetch(`/api/admin/notifications/deliveries?${params}`, {}, session);
+  return readPayload<DeliveryRecord[]>(response);
+}
+
+export async function retryDelivery(session: AdminSession | null, id: number) {
+  const response = await authorizedFetch(`/api/admin/notifications/deliveries/${id}/retry`, {
+    method: 'POST'
+  }, session);
+  return readPayload<void>(response);
+}
+
+export async function withdrawDelivery(session: AdminSession | null, id: number) {
+  const response = await authorizedFetch(`/api/admin/notifications/deliveries/${id}/withdraw`, {
+    method: 'POST'
+  }, session);
+  return readPayload<void>(response);
 }

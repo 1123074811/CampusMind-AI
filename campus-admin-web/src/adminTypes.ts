@@ -1,4 +1,4 @@
-export type NavKey = 'review' | 'agent' | 'sources' | 'tasks' | 'users' | 'logs' | 'database';
+export type NavKey = 'review' | 'agent' | 'sources' | 'tasks' | 'users' | 'logs' | 'database' | 'notifications' | 'operations';
 
 export type ReviewStatus = 'AI_PUBLISHED' | 'CORRECTED' | 'REVIEWED' | 'REJECTED' | 'OFFLINE';
 export type EventType = 'NOTICE' | 'COURSE' | 'EXAM' | 'HOMEWORK' | 'ACTIVITY' | 'LECTURE' | 'COMPETITION' | 'SERVICE' | 'OTHER';
@@ -31,6 +31,14 @@ export interface ReviewEvent {
   aiCard: Record<string, unknown>;
   submittedBy: string | null;
   submittedByUserId: number | null;
+}
+
+export interface EventImpact {
+  eventId: number;
+  pendingReminders: number;
+  dueReminders: number;
+  activeDeliveries: number;
+  affectedUsers: number;
 }
 
 export interface DataSource {
@@ -203,4 +211,27 @@ export interface AiConfig {
   model: string;
   apiKeyConfigured: boolean;
   restartRequired: boolean;
+}
+
+export interface DeliveryStats {
+  total: number;
+  pending: number;
+  sending: number;
+  sent: number;
+  retry: number;
+  failed: number;
+  withdrawn: number;
+}
+
+export interface DeliveryRecord {
+  id: number;
+  reminderId: number;
+  userId: number;
+  channel: string;
+  status: string;
+  attemptCount: number;
+  lastError: string | null;
+  sentAt: string | null;
+  withdrawnAt: string | null;
+  createdAt: string;
 }

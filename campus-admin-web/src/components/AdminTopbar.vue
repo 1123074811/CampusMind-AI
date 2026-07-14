@@ -21,7 +21,9 @@ const titles: Record<NavKey, { title: string; subtitle: string }> = {
   tasks: { title: '采集任务', subtitle: '跟踪爬虫、导入和解析任务的执行状态' },
   users: { title: '用户管理', subtitle: '维护后台账号、用户状态和初始密码' },
   logs: { title: '日志管理', subtitle: '追踪审核操作、操作人和变更前后状态' },
-  database: { title: '受控数据表管理', subtitle: '仅管理员可查看的业务数据表，不包含凭据和原始个人数据' }
+  database: { title: '受控数据表管理', subtitle: '仅管理员可查看的业务数据表，不包含凭据和原始个人数据' },
+  notifications: { title: '通知运营', subtitle: '监控投递状态、失败重试与撤回审计' },
+  operations: { title: '运营大盘', subtitle: '采集、审核、AI、通知等全链路运营指标' }
 };
 
 function roleLabel(role: string) {

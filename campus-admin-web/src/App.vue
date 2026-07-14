@@ -1,6 +1,15 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue';
-import { fetchDashboard, reviewEvent, updateEvent, deleteEvent, batchDeleteEvents } from './api/dashboard';
+import { computed, onMounted, ref, watch, type Component } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
+import {
+  fetchDashboard,
+  reviewEvent,
+  updateEvent,
+  deleteEvent,
+  batchDeleteEvents,
+  batchReviewEvents,
+  fetchEventImpact
+} from './api/dashboard';
 import {
   createAdminUser,
   fetchAiConfig,
@@ -24,7 +33,22 @@ import { crawlEnabledSources, crawlSource, fetchCrawlItems } from './api/crawler
 import AdminSidebar from './components/AdminSidebar.vue';
 import AdminTopbar from './components/AdminTopbar.vue';
 import MetricsBand from './components/MetricsBand.vue';
-import type { AdminAuditLog, AdminManagedUser, AdminSession, AiConfig, CrawlItem, CrawlTask, DashboardMetrics, DataSource, DataSourceVersion, NavItem, NavKey, PageMetric, ReviewEvent } from './adminTypes';
+import type {
+  AdminAuditLog,
+  AdminManagedUser,
+  AdminSession,
+  AiConfig,
+  CrawlItem,
+  CrawlTask,
+  DashboardMetrics,
+  DataSource,
+  DataSourceVersion,
+  EventImpact,
+  NavItem,
+  NavKey,
+  PageMetric,
+  ReviewEvent
+} from './adminTypes';
 import LoginView from './views/LoginView.vue';
 import ReviewView from './views/ReviewView.vue';
 import SourcesView from './views/SourcesView.vue';
@@ -33,12 +57,98 @@ import UsersView from './views/UsersView.vue';
 import LogsView from './views/LogsView.vue';
 import AgentView from './views/AgentView.vue';
 import DatabaseView from './views/DatabaseView.vue';
+import NotificationView from './views/NotificationView.vue';
+import OperationsView from './views/OperationsView.vue';
 import { buildReviewMetrics, dashboardConnectionMessage } from './pageLogic';
 
+const route = useRoute();
+const router = useRouter();
 const session = ref<AdminSession | null>(loadSession());
-const activeNav = ref<NavKey>('review');
+const activeNav = computed<NavKey>(() => (route.meta.nav as NavKey) ?? 'review');
+
+const viewComponentMap: Record<string, Component> = {
+  review: ReviewView,
+  agent: AgentView,
+  sources: SourcesView,
+  tasks: TasksView,
+  users: UsersView,
+  logs: LogsView,
+  database: DatabaseView,
+  notifications: NotificationView,
+  operations: OperationsView,
+};
+
+const currentView = computed(() => viewComponentMap[activeNav.value] ?? null);
+
+const currentViewProps = computed(() => {
+  const nav = activeNav.value;
+  switch (nav) {
+    case 'review':
+      return { events: reviewEvents.value, selectedId: selectedId.value, impact: eventImpact.value, impactLoading: eventImpactLoading.value };
+    case 'agent':
+      return { events: reviewEvents.value, metrics: metrics.value, aiConfig: aiConfig.value, configLoading: loading.value, configMessage: apiMessage.value };
+    case 'sources':
+      return { dataSources: visibleDataSources.value, crawlingSourceId: crawlingSourceId.value, canManage: isAdmin.value, versions: sourceVersions.value, tasks: visibleCrawlTasks.value, crawlItems: crawlItems.value };
+    case 'tasks':
+      return { tasks: visibleCrawlTasks.value, crawlItems: crawlItems.value, crawlerRunning: crawlerRunning.value };
+    case 'users':
+      return { users: adminUsers.value, loading: loading.value };
+    case 'logs':
+      return { logs: auditLogs.value };
+    case 'database':
+      return { tables: databaseTables.value, selected: selectedTable.value, rows: databaseRows.value, error: databaseError.value, session: session.value };
+    case 'notifications':
+      return { session: session.value };
+    case 'operations':
+      return { session: session.value, events: reviewEvents.value, sources: visibleDataSources.value, tasks: visibleCrawlTasks.value, metrics: dashboardMetrics.value };
+    default:
+      return {};
+  }
+});
+
+const currentViewEvents = computed(() => {
+  const nav = activeNav.value;
+  switch (nav) {
+    case 'review':
+      return {
+        select: selectEvent, approve: approveSelected, reject: rejectSelected,
+        unarchive: approveSelected, archive: rejectSelected, refresh: loadDashboard,
+        edit: editEvent, delete: deleteEventById, 'batch-review': batchReviewSelected,
+        'request-impact': loadEventImpact,
+      };
+    case 'agent':
+      return { refresh: loadDashboard, refreshConfig: loadAiConfig, saveConfig: saveAiConfig };
+    case 'sources':
+      return { crawl: crawlSelectedSource, create: createSource, update: updateSource, toggle: toggleSource, history: loadSourceVersions, rollback: rollbackSource };
+    case 'tasks':
+      return { runNow: runCrawlerNow };
+    case 'users':
+      return { refresh: loadUsers, create: createUser, toggle: toggleUser, resetPassword: resetUserPassword };
+    case 'logs':
+      return { refresh: loadLogs };
+    case 'database':
+      return { select: loadTable, retryAi: retryFailedAiProcessing };
+    default:
+      return {};
+  }
+});
+
+function navigateTo(key: NavKey) {
+  router.push({ name: key });
+}
+
+watch(() => route.params.id, (id) => {
+  if (id) {
+    const numId = Number(id);
+    if (!Number.isNaN(numId) && numId !== selectedId.value) {
+      selectedId.value = numId;
+    }
+  }
+});
 const selectedId = ref(0);
 const reviewEvents = ref<ReviewEvent[]>([]);
+const eventImpact = ref<EventImpact | null>(null);
+const eventImpactLoading = ref(false);
 const dataSources = ref<DataSource[]>([]);
 const sourceVersions = ref<DataSourceVersion[]>([]);
 const crawlTasks = ref<CrawlTask[]>([]);
@@ -72,6 +182,8 @@ const navItems = computed<NavItem[]>(() => [
   { key: 'sources', label: '数据源', count: visibleDataSources.value.length },
   { key: 'tasks', label: '采集任务', count: visibleCrawlTasks.value.length },
   { key: 'logs', label: '日志管理', count: auditLogs.value.length },
+  { key: 'notifications', label: '通知运营', count: 0 },
+  { key: 'operations', label: '运营大盘', count: 0 },
   ...(isAdmin.value ? [
     { key: 'agent' as const, label: '智能体', count: reviewEvents.value.filter((item) => item.aiStatus !== 'SUCCESS').length },
     { key: 'users' as const, label: '用户管理', count: adminUsers.value.length },
@@ -167,6 +279,21 @@ const pageMetrics = computed<PageMetric[]>(() => {
 
 function selectEvent(id: number) {
   selectedId.value = id;
+}
+
+async function loadEventImpact(id: number) {
+  if (!session.value || !id || apiMode.value !== 'live') {
+    eventImpact.value = null;
+    return;
+  }
+  eventImpactLoading.value = true;
+  try {
+    eventImpact.value = await fetchEventImpact(session.value, id);
+  } catch {
+    eventImpact.value = null;
+  } finally {
+    eventImpactLoading.value = false;
+  }
 }
 
 async function loadDashboard() {
@@ -332,6 +459,15 @@ async function resetUserPassword(user: AdminManagedUser) {
   }
 }
 
+function recomputeReviewMetrics() {
+  dashboardMetrics.value.reviewCount = reviewEvents.value.filter(
+    (item) => item.status === 'AI_PUBLISHED' || item.status === 'CORRECTED' || item.aiNeedReview
+  ).length;
+  dashboardMetrics.value.urgentCount = reviewEvents.value.filter(
+    (item) => item.aiNeedReview || item.status === 'CORRECTED'
+  ).length;
+}
+
 async function reviewSelected(status: 'REVIEWED' | 'REJECTED' | 'CORRECTED' | 'OFFLINE', comment: string) {
   const event = reviewEvents.value.find((item) => item.id === selectedId.value);
   if (!event) {
@@ -346,20 +482,41 @@ async function reviewSelected(status: 'REVIEWED' | 'REJECTED' | 'CORRECTED' | 'O
   try {
     const updated = await reviewEvent(session.value, event.id, status, comment);
     Object.assign(event, updated);
-    dashboardMetrics.value.reviewCount = reviewEvents.value.filter((item) => item.status === 'AI_PUBLISHED' || item.status === 'CORRECTED').length;
-    dashboardMetrics.value.urgentCount = reviewEvents.value.filter((item) => item.status === 'CORRECTED').length;
+    recomputeReviewMetrics();
     apiMessage.value = '事件状态已更新';
+    await loadEventImpact(event.id);
   } catch (error) {
     apiMessage.value = '事件状态写入失败，页面状态未改变';
   }
 }
 
 function approveSelected() {
-  reviewSelected('REVIEWED', '恢复展示');
+  reviewSelected('REVIEWED', '审核通过');
 }
 
 function rejectSelected() {
-  reviewSelected('OFFLINE', '管理员下线');
+  reviewSelected('OFFLINE', '管理员驳回下线');
+}
+
+async function batchReviewSelected(ids: number[], status: 'REVIEWED' | 'OFFLINE', comment: string) {
+  if (!ids.length) return;
+  if (apiMode.value !== 'live') {
+    apiMessage.value = '后端未连接，无法批量审核';
+    return;
+  }
+  try {
+    const updatedList = await batchReviewEvents(session.value, ids, status, comment);
+    const map = new Map(updatedList.map((item) => [item.id, item]));
+    reviewEvents.value = reviewEvents.value.map((item) => {
+      const updated = map.get(item.id);
+      return updated ? { ...item, ...updated } : item;
+    });
+    recomputeReviewMetrics();
+    apiMessage.value = `已批量处理 ${updatedList.length} 条`;
+    if (selectedId.value) await loadEventImpact(selectedId.value);
+  } catch (error) {
+    apiMessage.value = error instanceof Error ? error.message : '批量审核失败';
+  }
 }
 
 async function editEvent(id: number, data: { title?: string; summary?: string; eventType?: string }) {
@@ -412,7 +569,7 @@ async function runCrawlerNow() {
     },
     ...crawlTasks.value
   ];
-  activeNav.value = 'tasks';
+  router.push({ name: 'tasks' });
   crawlerRunning.value = true;
   try {
     const sourceIds = visibleDataSources.value
@@ -444,7 +601,7 @@ async function crawlSelectedSource(sourceId: number) {
     return;
   }
   crawlingSourceId.value = sourceId;
-  activeNav.value = 'sources';
+  router.push({ name: 'sources' });
   try {
     const result = await crawlSource(session.value, sourceId);
     apiMessage.value = `${result.sourceName} 采集完成，新增或更新 ${result.persistedCount} 条`;
@@ -552,7 +709,7 @@ onMounted(async () => {
   <LoginView v-if="!session" @authenticated="handleAuthenticated" />
 
   <main v-else class="admin-shell">
-    <AdminSidebar :items="navItems" :active-key="activeNav" @select="activeNav = $event" />
+    <AdminSidebar :items="navItems" :active-key="activeNav" @select="navigateTo" />
 
     <section class="workspace">
       <AdminTopbar
@@ -567,71 +724,11 @@ onMounted(async () => {
       />
       <MetricsBand v-if="activeNav !== 'agent'" :items="pageMetrics" />
 
-      <ReviewView
-        v-if="activeNav === 'review'"
-        :events="reviewEvents"
-        :selected-id="selectedId"
-        @select="selectEvent"
-        @unarchive="approveSelected"
-        @archive="rejectSelected"
-        @refresh="loadDashboard"
-        @edit="editEvent"
-        @delete="deleteEventById"
-      />
-      <AgentView
-        v-else-if="activeNav === 'agent'"
-        :events="reviewEvents"
-        :metrics="metrics"
-        :ai-config="aiConfig"
-        :config-loading="loading"
-        :config-message="apiMessage"
-        @refresh="loadDashboard"
-        @refresh-config="loadAiConfig"
-        @save-config="saveAiConfig"
-      />
-      <SourcesView
-        v-else-if="activeNav === 'sources'"
-        :data-sources="visibleDataSources"
-        :crawling-source-id="crawlingSourceId"
-        :can-manage="isAdmin"
-        :versions="sourceVersions"
-        @crawl="crawlSelectedSource"
-        @create="createSource"
-        @update="updateSource"
-        @toggle="toggleSource"
-        @history="loadSourceVersions"
-        @rollback="rollbackSource"
-      />
-      <TasksView
-        v-else-if="activeNav === 'tasks'"
-        :tasks="visibleCrawlTasks"
-        :crawl-items="crawlItems"
-        :crawler-running="crawlerRunning"
-        @run-now="runCrawlerNow"
-      />
-      <UsersView
-        v-else-if="activeNav === 'users'"
-        :users="adminUsers"
-        :loading="loading"
-        @refresh="loadUsers"
-        @create="createUser"
-        @toggle="toggleUser"
-        @reset-password="resetUserPassword"
-      />
-      <LogsView
-        v-else-if="activeNav === 'logs'"
-        :logs="auditLogs"
-        @refresh="loadLogs"
-      />
-      <DatabaseView
-        v-else-if="activeNav === 'database'"
-        :tables="databaseTables"
-        :selected="selectedTable"
-        :rows="databaseRows"
-        :error="databaseError"
-        :session="session"
-        @select="loadTable"
-        @retry-ai="retryFailedAiProcessing"
+      <component
+        v-if="currentView"
+        :is="currentView"
+        v-bind="currentViewProps"
+        v-on="currentViewEvents"
       />
     </section>
   </main>
@@ -1226,6 +1323,179 @@ h3 {
 
 .decision-actions button {
   flex: 1;
+}
+
+.review-workbench .queue-hint {
+  margin-top: 6px;
+  color: var(--ink-muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.queue-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 12px 18px 0;
+}
+
+.queue-tabs button {
+  min-height: 34px;
+  border: 1px solid var(--line);
+  background: var(--paper-soft);
+  color: var(--ink);
+  padding: 0 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 800;
+}
+
+.queue-tabs button.active {
+  background: var(--ink);
+  color: #fff9ed;
+  border-color: var(--ink);
+}
+
+.queue-tabs strong {
+  font-size: 12px;
+}
+
+.workbench-filters {
+  padding: 12px 18px;
+  flex-wrap: wrap;
+}
+
+.workbench-filters select,
+.workbench-filters input {
+  min-width: 140px;
+}
+
+.batch-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  padding: 0 18px 12px;
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.batch-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.batch-count {
+  color: var(--ink-muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.workbench-row {
+  grid-template-columns: 28px minmax(0, 1fr) 86px auto;
+}
+
+.event-pick {
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr) 86px auto;
+  align-items: center;
+  gap: 10px;
+  text-align: left;
+  padding: 0;
+}
+
+.row-check {
+  display: grid;
+  place-items: center;
+}
+
+.need-review-flag {
+  font-size: 11px;
+  font-weight: 900;
+  color: #9a6b00;
+  background: #fff0c4;
+  border: 1px solid #d4b75c;
+  padding: 2px 6px;
+}
+
+.empty-queue {
+  padding: 28px 18px;
+  color: var(--ink-muted);
+  font-weight: 700;
+}
+
+.diff-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.diff-grid article {
+  border: 1px solid var(--line-soft);
+  background: #fffdf8;
+  padding: 12px;
+  display: grid;
+  gap: 8px;
+  align-content: start;
+}
+
+.diff-grid h4,
+.impact-box h4 {
+  margin: 0;
+  font-size: 13px;
+}
+
+.diff-grid p,
+.impact-box p,
+.diff-grid li {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.55;
+  color: #314044;
+}
+
+.diff-grid ul {
+  margin: 0;
+  padding-left: 0;
+  list-style: none;
+  display: grid;
+  gap: 6px;
+}
+
+.diff-grid li strong {
+  display: inline-block;
+  min-width: 48px;
+  margin-right: 6px;
+  color: var(--ink-muted);
+}
+
+.impact-box {
+  border: 1px dashed #d4b75c;
+  background: #fff8e4;
+  padding: 12px;
+  display: grid;
+  gap: 6px;
+}
+
+.muted {
+  color: var(--ink-muted);
+}
+
+@media (max-width: 1180px) {
+  .diff-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .event-pick {
+    grid-template-columns: 56px minmax(0, 1fr);
+  }
 }
 
 .segmented-control {
