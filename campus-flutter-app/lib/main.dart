@@ -115,8 +115,11 @@ class _CampusShellState extends State<CampusShell> {
           ..clear()
           ..addAll(items);
       });
-    } catch (_) {
+    } catch (error) {
       if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('信息流加载失败：$error')),
+      );
     }
   }
 
@@ -167,11 +170,18 @@ class _CampusShellState extends State<CampusShell> {
         session: widget.session,
         onItemUpdated: _replaceItem,
       ),
-      PrototypeDiscoverPage(onOpenImport: _openImport, api: widget.api, session: widget.session),
+      PrototypeDiscoverPage(
+          onOpenImport: _openImport, api: widget.api, session: widget.session),
       PrototypeAssistantPage(api: widget.api, session: widget.session),
       PrototypeProfilePage(
         userName: widget.session.user.username,
-        onLogout: widget.onLogout,
+        onLogout: () async {
+          try {
+            await widget.api.logout(widget.session);
+          } finally {
+            widget.onLogout();
+          }
+        },
         api: widget.api,
         session: widget.session,
       ),

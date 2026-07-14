@@ -1,6 +1,6 @@
 import 'dart:io';
 
-import 'package:file_picker/file_picker.dart';
+import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 
 import 'app_theme.dart';
@@ -15,6 +15,7 @@ class ImportPage extends StatefulWidget {
   @override
   State<ImportPage> createState() => _ImportPageState();
 }
+
 class _ImportPageState extends State<ImportPage>
     with SingleTickerProviderStateMixin {
   late final TabController _tabCtrl;
@@ -118,13 +119,14 @@ class _ImportPageState extends State<ImportPage>
 
   Future<void> _pickFile() async {
     try {
-      final result = await FilePicker.platform.pickFiles(
-        type: FileType.custom,
-        allowedExtensions: ['pdf', 'docx', 'txt', 'xlsx'],
+      const documentTypes = XTypeGroup(
+        label: '支持的文档',
+        extensions: ['pdf', 'docx', 'txt', 'xlsx'],
       );
-      if (result != null && result.files.single.path != null) {
+      final file = await openFile(acceptedTypeGroups: [documentTypes]);
+      if (file != null) {
         if (!mounted) return;
-        setState(() => _pickedFilePath = result.files.single.path!);
+        setState(() => _pickedFilePath = file.path);
       }
     } catch (e) {
       if (!mounted) return;
@@ -144,12 +146,15 @@ class _ImportPageState extends State<ImportPage>
         backgroundColor: AppTheme.bg,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new, size: 20, color: AppTheme.ink),
+          icon: const Icon(Icons.arrow_back_ios_new,
+              size: 20, color: AppTheme.ink),
           onPressed: () => Navigator.of(context).pop(),
         ),
         title: const Text('导入信息',
             style: TextStyle(
-                fontSize: 17, fontWeight: FontWeight.w700, color: AppTheme.ink)),
+                fontSize: 17,
+                fontWeight: FontWeight.w700,
+                color: AppTheme.ink)),
         centerTitle: true,
       ),
       body: Column(
@@ -173,7 +178,8 @@ class _ImportPageState extends State<ImportPage>
               dividerColor: Colors.transparent,
               labelColor: Colors.white,
               unselectedLabelColor: AppTheme.ink2,
-              labelStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
+              labelStyle:
+                  const TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
               unselectedLabelStyle:
                   const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
               tabs: _tabs.map((t) => Tab(text: t)).toList(),
@@ -221,7 +227,8 @@ class _ImportPageState extends State<ImportPage>
                 controller: _textCtrl,
                 maxLines: 14,
                 maxLength: 20000,
-                style: const TextStyle(fontSize: 14, color: AppTheme.ink, height: 1.6),
+                style: const TextStyle(
+                    fontSize: 14, color: AppTheme.ink, height: 1.6),
                 decoration: const InputDecoration(
                   border: InputBorder.none,
                   hintText: '在此粘贴通知文本内容…\n\n支持粘贴教务通知、学院公告、课程安排、考试通知、活动信息等。',
@@ -231,7 +238,8 @@ class _ImportPageState extends State<ImportPage>
                 ),
               ),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                 decoration: const BoxDecoration(
                   border: Border(top: BorderSide(color: AppTheme.line)),
                 ),
@@ -240,7 +248,8 @@ class _ImportPageState extends State<ImportPage>
                   children: [
                     Text(
                       '${_textCtrl.text.length} / 20000',
-                      style: const TextStyle(fontSize: 12, color: AppTheme.muted),
+                      style:
+                          const TextStyle(fontSize: 12, color: AppTheme.muted),
                     ),
                     GestureDetector(
                       onTap: () => _textCtrl.clear(),
@@ -326,7 +335,8 @@ class _ImportPageState extends State<ImportPage>
                 ),
                 GestureDetector(
                   onTap: () => setState(() => _pickedFilePath = null),
-                  child: const Icon(Icons.close, color: AppTheme.muted, size: 20),
+                  child:
+                      const Icon(Icons.close, color: AppTheme.muted, size: 20),
                 ),
               ],
             ),
@@ -351,7 +361,8 @@ class _ImportPageState extends State<ImportPage>
               Expanded(
                 child: Text(
                   '支持格式：PDF (.pdf)、Word (.docx)、文本 (.txt)、Excel (.xlsx)',
-                  style: TextStyle(fontSize: 12, color: AppTheme.info, height: 1.5),
+                  style: TextStyle(
+                      fontSize: 12, color: AppTheme.info, height: 1.5),
                 ),
               ),
             ],
@@ -385,11 +396,13 @@ class _ImportPageState extends State<ImportPage>
             return GestureDetector(
               onTap: () => setState(() => _rainDataType = t),
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                 decoration: BoxDecoration(
                   color: active ? AppTheme.brand : AppTheme.surface,
                   borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: active ? AppTheme.brand : AppTheme.line),
+                  border: Border.all(
+                      color: active ? AppTheme.brand : AppTheme.line),
                 ),
                 child: Text(
                   _rainTypeLabel(t),
@@ -414,7 +427,10 @@ class _ImportPageState extends State<ImportPage>
             controller: _rainJsonCtrl,
             maxLines: 12,
             style: const TextStyle(
-                fontSize: 13, color: AppTheme.ink, fontFamily: 'monospace', height: 1.5),
+                fontSize: 13,
+                color: AppTheme.ink,
+                fontFamily: 'monospace',
+                height: 1.5),
             decoration: const InputDecoration(
               border: InputBorder.none,
               hintText: '{"data":{"list":[...]}}',
@@ -477,8 +493,10 @@ class _ImportPageState extends State<ImportPage>
                   ),
                   if (_tabCtrl.index == 2 && _lastResult!.status == 'SUCCESS')
                     TextButton(
-                      onPressed: () => Navigator.of(context).push(MaterialPageRoute(
-                        builder: (_) => MyImportedEventsPage(api: widget.api, session: widget.session),
+                      onPressed: () =>
+                          Navigator.of(context).push(MaterialPageRoute(
+                        builder: (_) => MyImportedEventsPage(
+                            api: widget.api, session: widget.session),
                       )),
                       child: const Text('查看'),
                     ),
@@ -544,13 +562,13 @@ class _ImportPageState extends State<ImportPage>
       _ => t,
     };
   }
-
 }
 
 // ─── 子组件 ─────────────────────────────────
 
 class _SectionHint extends StatelessWidget {
-  const _SectionHint({required this.icon, required this.title, required this.desc});
+  const _SectionHint(
+      {required this.icon, required this.title, required this.desc});
   final IconData icon;
   final String title;
   final String desc;
@@ -576,7 +594,9 @@ class _SectionHint extends StatelessWidget {
             children: [
               Text(title,
                   style: const TextStyle(
-                      fontSize: 14, fontWeight: FontWeight.w700, color: AppTheme.ink)),
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                      color: AppTheme.ink)),
               const SizedBox(height: 2),
               Text(desc,
                   style: const TextStyle(
@@ -590,7 +610,8 @@ class _SectionHint extends StatelessWidget {
 }
 
 class _PickButton extends StatelessWidget {
-  const _PickButton({required this.icon, required this.label, required this.onTap});
+  const _PickButton(
+      {required this.icon, required this.label, required this.onTap});
   final IconData icon;
   final String label;
   final VoidCallback onTap;
@@ -643,7 +664,9 @@ class _EmptyPlaceholder extends StatelessWidget {
           const SizedBox(height: 10),
           Text(text,
               style: const TextStyle(
-                  fontSize: 14, fontWeight: FontWeight.w600, color: AppTheme.muted)),
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: AppTheme.muted)),
         ],
       ),
     );

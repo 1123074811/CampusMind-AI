@@ -3,7 +3,8 @@ import 'app_theme.dart';
 import 'information_api.dart';
 
 class MySubscriptionsPage extends StatefulWidget {
-  const MySubscriptionsPage({super.key, required this.api, required this.session});
+  const MySubscriptionsPage(
+      {super.key, required this.api, required this.session});
   final CampusApi api;
   final LoginSession session;
 
@@ -25,17 +26,24 @@ class _MySubscriptionsPageState extends State<MySubscriptionsPage> {
     try {
       final items = await widget.api.fetchSubscriptions(widget.session);
       if (!mounted) return;
-      setState(() { _items = items; _loading = false; });
+      setState(() {
+        _items = items;
+        _loading = false;
+      });
     } catch (_) {
       if (!mounted) return;
       setState(() => _loading = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('订阅列表加载失败，请重试')),
+      );
     }
   }
 
   Future<void> _toggle(SubscriptionItem item) async {
     final newEnabled = !item.enabled;
     try {
-      await widget.api.updateSubscription(item.sourceId, newEnabled, widget.session);
+      await widget.api
+          .updateSubscription(item.sourceId, newEnabled, widget.session);
       if (!mounted) return;
       setState(() {
         final idx = _items.indexWhere((e) => e.sourceId == item.sourceId);
@@ -49,28 +57,45 @@ class _MySubscriptionsPageState extends State<MySubscriptionsPage> {
           );
         }
       });
-    } catch (_) {}
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('订阅状态未改变，请重试')),
+      );
+    }
   }
 
   String _sourceTypeLabel(String type) {
     switch (type) {
-      case 'PUBLIC_WEB': return '自动抓取';
-      case 'RAIN_CLASSROOM': return '雨课堂';
-      case 'USER_TEXT': return '手动提交';
-      case 'USER_IMAGE': return '截图识别';
-      case 'USER_FILE': return '文件上传';
-      default: return type;
+      case 'PUBLIC_WEB':
+        return '自动抓取';
+      case 'RAIN_CLASSROOM':
+        return '雨课堂';
+      case 'USER_TEXT':
+        return '手动提交';
+      case 'USER_IMAGE':
+        return '截图识别';
+      case 'USER_FILE':
+        return '文件上传';
+      default:
+        return type;
     }
   }
 
   IconData _sourceTypeIcon(String type) {
     switch (type) {
-      case 'PUBLIC_WEB': return Icons.language;
-      case 'RAIN_CLASSROOM': return Icons.school_outlined;
-      case 'USER_TEXT': return Icons.article_outlined;
-      case 'USER_IMAGE': return Icons.image_outlined;
-      case 'USER_FILE': return Icons.attach_file;
-      default: return Icons.rss_feed;
+      case 'PUBLIC_WEB':
+        return Icons.language;
+      case 'RAIN_CLASSROOM':
+        return Icons.school_outlined;
+      case 'USER_TEXT':
+        return Icons.article_outlined;
+      case 'USER_IMAGE':
+        return Icons.image_outlined;
+      case 'USER_FILE':
+        return Icons.attach_file;
+      default:
+        return Icons.rss_feed;
     }
   }
 
@@ -89,13 +114,22 @@ class _MySubscriptionsPageState extends State<MySubscriptionsPage> {
                   GestureDetector(
                     onTap: () => Navigator.of(context).pop(),
                     child: Container(
-                      width: 36, height: 36,
-                      decoration: BoxDecoration(color: AppTheme.surface, borderRadius: BorderRadius.circular(11), border: Border.all(color: AppTheme.line)),
-                      child: const Icon(Icons.arrow_back_ios_new, size: 17, color: AppTheme.ink2),
+                      width: 36,
+                      height: 36,
+                      decoration: BoxDecoration(
+                          color: AppTheme.surface,
+                          borderRadius: BorderRadius.circular(11),
+                          border: Border.all(color: AppTheme.line)),
+                      child: const Icon(Icons.arrow_back_ios_new,
+                          size: 17, color: AppTheme.ink2),
                     ),
                   ),
                   const SizedBox(width: 12),
-                  const Text('我的订阅', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: AppTheme.ink)),
+                  const Text('我的订阅',
+                      style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w800,
+                          color: AppTheme.ink)),
                 ],
               ),
             ),
@@ -107,40 +141,56 @@ class _MySubscriptionsPageState extends State<MySubscriptionsPage> {
                       : ListView.separated(
                           padding: const EdgeInsets.symmetric(horizontal: 20),
                           itemCount: _items.length,
-                          separatorBuilder: (_, __) => const SizedBox(height: 10),
+                          separatorBuilder: (_, __) =>
+                              const SizedBox(height: 10),
                           itemBuilder: (context, i) {
                             final item = _items[i];
                             return Container(
                               padding: const EdgeInsets.all(14),
                               decoration: BoxDecoration(
                                 color: AppTheme.surface,
-                                borderRadius: BorderRadius.circular(AppTheme.radiusSm),
+                                borderRadius:
+                                    BorderRadius.circular(AppTheme.radiusSm),
                                 border: Border.all(color: AppTheme.line),
                               ),
                               child: Row(
                                 children: [
                                   Container(
-                                    width: 42, height: 42,
+                                    width: 42,
+                                    height: 42,
                                     decoration: BoxDecoration(
-                                      color: item.enabled ? AppTheme.brandSoft : AppTheme.surface2,
+                                      color: item.enabled
+                                          ? AppTheme.brandSoft
+                                          : AppTheme.surface2,
                                       borderRadius: BorderRadius.circular(12),
                                     ),
                                     child: Icon(
                                       _sourceTypeIcon(item.sourceType),
                                       size: 20,
-                                      color: item.enabled ? AppTheme.brandInk : AppTheme.muted,
+                                      color: item.enabled
+                                          ? AppTheme.brandInk
+                                          : AppTheme.muted,
                                     ),
                                   ),
                                   const SizedBox(width: 12),
                                   Expanded(
                                     child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
                                       children: [
-                                        Text(item.sourceName, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: AppTheme.ink)),
+                                        Text(item.sourceName,
+                                            style: const TextStyle(
+                                                fontSize: 14,
+                                                fontWeight: FontWeight.w700,
+                                                color: AppTheme.ink)),
                                         const SizedBox(height: 3),
                                         Text(
                                           '${_sourceTypeLabel(item.sourceType)} · ${item.enabled ? "已启用" : "已暂停"}',
-                                          style: TextStyle(fontSize: 12, color: item.enabled ? AppTheme.muted : AppTheme.rose),
+                                          style: TextStyle(
+                                              fontSize: 12,
+                                              color: item.enabled
+                                                  ? AppTheme.muted
+                                                  : AppTheme.rose),
                                         ),
                                       ],
                                     ),
@@ -148,19 +198,27 @@ class _MySubscriptionsPageState extends State<MySubscriptionsPage> {
                                   GestureDetector(
                                     onTap: () => _toggle(item),
                                     child: AnimatedContainer(
-                                      duration: const Duration(milliseconds: 200),
-                                      width: 44, height: 24,
+                                      duration:
+                                          const Duration(milliseconds: 200),
+                                      width: 44,
+                                      height: 24,
                                       decoration: BoxDecoration(
-                                        color: item.enabled ? AppTheme.brand : AppTheme.surface2,
+                                        color: item.enabled
+                                            ? AppTheme.brand
+                                            : AppTheme.surface2,
                                         borderRadius: BorderRadius.circular(12),
                                       ),
                                       child: Padding(
                                         padding: const EdgeInsets.all(2),
                                         child: AnimatedAlign(
-                                          duration: const Duration(milliseconds: 200),
-                                          alignment: item.enabled ? Alignment.centerRight : Alignment.centerLeft,
+                                          duration:
+                                              const Duration(milliseconds: 200),
+                                          alignment: item.enabled
+                                              ? Alignment.centerRight
+                                              : Alignment.centerLeft,
                                           child: Container(
-                                            width: 20, height: 20,
+                                            width: 20,
+                                            height: 20,
                                             decoration: const BoxDecoration(
                                               color: Colors.white,
                                               shape: BoxShape.circle,
@@ -187,11 +245,17 @@ class _MySubscriptionsPageState extends State<MySubscriptionsPage> {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(Icons.rss_feed, size: 48, color: AppTheme.muted.withValues(alpha: 0.5)),
+          Icon(Icons.rss_feed,
+              size: 48, color: AppTheme.muted.withValues(alpha: 0.5)),
           const SizedBox(height: 12),
-          const Text('暂无订阅', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppTheme.muted)),
+          const Text('暂无订阅',
+              style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: AppTheme.muted)),
           const SizedBox(height: 6),
-          const Text('系统已自动为你订阅所有启用的数据源', style: TextStyle(fontSize: 12, color: AppTheme.muted)),
+          const Text('系统已自动为你订阅所有启用的数据源',
+              style: TextStyle(fontSize: 12, color: AppTheme.muted)),
         ],
       ),
     );

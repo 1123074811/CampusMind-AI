@@ -75,6 +75,9 @@ class _PrototypeHomePageState extends State<PrototypeHomePage> {
       // 回退：从本地 items 生成
       if (!mounted) return;
       setState(() {});
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('AI 日报暂不可用，已根据当前真实信息生成概览')),
+      );
     }
   }
 
@@ -82,10 +85,14 @@ class _PrototypeHomePageState extends State<PrototypeHomePage> {
     try {
       final reminders = await widget.api.fetchReminders(widget.session);
       if (!mounted) return;
-      final pending = reminders.where((r) => !r.isDismissed && !r.isExpired).length;
+      final pending =
+          reminders.where((r) => !r.isDismissed && !r.isExpired).length;
       setState(() => _reminderCount = pending);
     } catch (_) {
-      // 静默失败，不影响首页展示
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('提醒数量暂时无法同步')),
+      );
     }
   }
 
@@ -93,7 +100,8 @@ class _PrototypeHomePageState extends State<PrototypeHomePage> {
     final isFav = item.readStatus == 'FAVORITED';
     final newStatus = isFav ? 'READ' : 'FAVORITED';
     try {
-      final updated = await widget.api.updateReadStatus(item.id, newStatus, widget.session);
+      final updated =
+          await widget.api.updateReadStatus(item.id, newStatus, widget.session);
       if (!mounted) return;
       widget.onItemUpdated?.call(updated);
       ScaffoldMessenger.of(context).showSnackBar(
@@ -112,7 +120,12 @@ class _PrototypeHomePageState extends State<PrototypeHomePage> {
     final items = _filteredItems;
     final urgentCount = items.where((e) => e.readStatus == 'NEW').length;
     // 动态计算相关度
-    final relevance = items.isEmpty ? 0 : ((items.where((e) => e.recommendReasons.isNotEmpty).length / items.length) * 100).round();
+    final relevance = items.isEmpty
+        ? 0
+        : ((items.where((e) => e.recommendReasons.isNotEmpty).length /
+                    items.length) *
+                100)
+            .round();
     // 动态生成日报摘要
     final briefingText = _briefingSummary.isNotEmpty
         ? _briefingSummary
@@ -132,11 +145,14 @@ class _PrototypeHomePageState extends State<PrototypeHomePage> {
           reminderCount: _reminderCount,
           onImport: widget.onOpenImport,
           onOpenReminders: () {
-            Navigator.of(context).push(
-              MaterialPageRoute(
-                builder: (_) => RemindersPage(api: widget.api, session: widget.session),
-              ),
-            ).then((_) => _loadReminderCount());
+            Navigator.of(context)
+                .push(
+                  MaterialPageRoute(
+                    builder: (_) =>
+                        RemindersPage(api: widget.api, session: widget.session),
+                  ),
+                )
+                .then((_) => _loadReminderCount());
           },
         ),
         const SizedBox(height: 18),
@@ -187,23 +203,35 @@ class _PrototypeHomePageState extends State<PrototypeHomePage> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text('排序方式', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: AppTheme.ink)),
+              const Text('排序方式',
+                  style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w800,
+                      color: AppTheme.ink)),
               const SizedBox(height: 12),
               ..._sortOptions.entries.map((entry) => ListTile(
-                contentPadding: EdgeInsets.zero,
-                leading: Icon(
-                  entry.key == _sortMode ? Icons.radio_button_checked : Icons.radio_button_off,
-                  color: entry.key == _sortMode ? AppTheme.brand : AppTheme.muted,
-                ),
-                title: Text(entry.value, style: TextStyle(
-                  fontSize: 14, fontWeight: FontWeight.w600,
-                  color: entry.key == _sortMode ? AppTheme.brandInk : AppTheme.ink,
-                )),
-                onTap: () {
-                  Navigator.of(ctx).pop();
-                  setState(() => _sortMode = entry.key);
-                },
-              )),
+                    contentPadding: EdgeInsets.zero,
+                    leading: Icon(
+                      entry.key == _sortMode
+                          ? Icons.radio_button_checked
+                          : Icons.radio_button_off,
+                      color: entry.key == _sortMode
+                          ? AppTheme.brand
+                          : AppTheme.muted,
+                    ),
+                    title: Text(entry.value,
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          color: entry.key == _sortMode
+                              ? AppTheme.brandInk
+                              : AppTheme.ink,
+                        )),
+                    onTap: () {
+                      Navigator.of(ctx).pop();
+                      setState(() => _sortMode = entry.key);
+                    },
+                  )),
             ],
           ),
         ),
@@ -216,13 +244,15 @@ class _PrototypeHomePageState extends State<PrototypeHomePage> {
     final titles = items.take(3).map((e) => e.title).toList();
     if (titles.length == 1) return titles.first;
     final joined = titles.take(2).join('、');
-    return titles.length > 2 ? '$joined 等 ${items.length} 条信息值得关注。' : '$joined。';
+    return titles.length > 2
+        ? '$joined 等 ${items.length} 条信息值得关注。'
+        : '$joined。';
   }
 
   void _shareItem(InformationItem item) {
     final url = item.safeOriginalUri?.toString() ?? '';
     final text = '${item.title}${url.isNotEmpty ? '\n$url' : ''}';
-    Share.share(text, subject: item.title);
+    SharePlus.instance.share(ShareParams(text: text, subject: item.title));
   }
 }
 
@@ -233,16 +263,29 @@ class _AppHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final hour = DateTime.now().hour;
-    final greeting = hour < 12 ? '上午好' : hour < 18 ? '下午好' : '晚上好';
+    final greeting = hour < 12
+        ? '上午好'
+        : hour < 18
+            ? '下午好'
+            : '晚上好';
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
         Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(greeting, style: const TextStyle(fontSize: 13, color: AppTheme.muted, fontWeight: FontWeight.w500)),
+            Text(greeting,
+                style: const TextStyle(
+                    fontSize: 13,
+                    color: AppTheme.muted,
+                    fontWeight: FontWeight.w500)),
             const SizedBox(height: 2),
-            Text(userName, style: const TextStyle(fontSize: 21, fontWeight: FontWeight.w800, color: AppTheme.ink, letterSpacing: -0.2)),
+            Text(userName,
+                style: const TextStyle(
+                    fontSize: 21,
+                    fontWeight: FontWeight.w800,
+                    color: AppTheme.ink,
+                    letterSpacing: -0.2)),
           ],
         ),
         Container(
@@ -251,12 +294,20 @@ class _AppHeader extends StatelessWidget {
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(14),
             gradient: AppTheme.brandGradient,
-            boxShadow: [BoxShadow(color: AppTheme.brand.withValues(alpha: 0.35), blurRadius: 16, offset: const Offset(0, 6))],
+            boxShadow: [
+              BoxShadow(
+                  color: AppTheme.brand.withValues(alpha: 0.35),
+                  blurRadius: 16,
+                  offset: const Offset(0, 6))
+            ],
           ),
           child: Center(
             child: Text(
               userName.isNotEmpty ? userName[0] : '我',
-              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 15),
+              style: const TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 15),
             ),
           ),
         ),
@@ -298,18 +349,29 @@ class _AiHeroPanel extends StatelessWidget {
             children: [
               const Icon(Icons.auto_awesome, color: Colors.white, size: 15),
               const SizedBox(width: 7),
-              Text('AI 智能日报 · 已为你筛选', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: Colors.white.withValues(alpha: 0.95))),
+              Text('AI 智能日报 · 已为你筛选',
+                  style: TextStyle(
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.white.withValues(alpha: 0.95))),
             ],
           ),
           const SizedBox(height: 10),
           Text(
             '今天有 $urgent 条信息需要你优先处理',
-            style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: Colors.white, height: 1.35),
+            style: const TextStyle(
+                fontSize: 17,
+                fontWeight: FontWeight.w700,
+                color: Colors.white,
+                height: 1.35),
           ),
           const SizedBox(height: 6),
           Text(
             briefingSummary.isNotEmpty ? briefingSummary : '暂无新的校园信息。',
-            style: TextStyle(fontSize: 13, color: Colors.white.withValues(alpha: 0.9), height: 1.55),
+            style: TextStyle(
+                fontSize: 13,
+                color: Colors.white.withValues(alpha: 0.9),
+                height: 1.55),
           ),
           const SizedBox(height: 14),
           Row(
@@ -326,7 +388,8 @@ class _AiHeroPanel extends StatelessWidget {
             GestureDetector(
               onTap: onOpenReminders,
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                 decoration: BoxDecoration(
                   color: const Color(0xFFBE123C).withValues(alpha: 0.25),
                   borderRadius: BorderRadius.circular(10),
@@ -334,12 +397,17 @@ class _AiHeroPanel extends StatelessWidget {
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Icon(Icons.notifications_active, color: Colors.white, size: 15),
+                    const Icon(Icons.notifications_active,
+                        color: Colors.white, size: 15),
                     const SizedBox(width: 6),
                     Text('待处理提醒 $reminderCount 条',
-                        style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: Colors.white)),
+                        style: const TextStyle(
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.w700,
+                            color: Colors.white)),
                     const SizedBox(width: 4),
-                    const Icon(Icons.chevron_right, color: Colors.white, size: 16),
+                    const Icon(Icons.chevron_right,
+                        color: Colors.white, size: 16),
                   ],
                 ),
               ),
@@ -385,8 +453,14 @@ class _StatItem extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(value, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: Colors.white)),
-        Text(label, style: TextStyle(fontSize: 11, color: Colors.white.withValues(alpha: 0.8))),
+        Text(value,
+            style: const TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.w800,
+                color: Colors.white)),
+        Text(label,
+            style: TextStyle(
+                fontSize: 11, color: Colors.white.withValues(alpha: 0.8))),
       ],
     );
   }
@@ -417,7 +491,8 @@ class _CategoryChips extends StatelessWidget {
             decoration: BoxDecoration(
               color: selectedIndex == i ? AppTheme.ink : AppTheme.surface,
               borderRadius: BorderRadius.circular(999),
-              border: Border.all(color: selectedIndex == i ? AppTheme.ink : AppTheme.line),
+              border: Border.all(
+                  color: selectedIndex == i ? AppTheme.ink : AppTheme.line),
             ),
             alignment: Alignment.center,
             child: Text(
@@ -446,11 +521,19 @@ class _SectionTitle extends StatelessWidget {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        Text(title, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: AppTheme.ink)),
+        Text(title,
+            style: const TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.w700,
+                color: AppTheme.ink)),
         if (action != null)
           GestureDetector(
             onTap: onAction,
-            child: Text(action!, style: const TextStyle(fontSize: 12.5, color: AppTheme.brandInk, fontWeight: FontWeight.w600)),
+            child: Text(action!,
+                style: const TextStyle(
+                    fontSize: 12.5,
+                    color: AppTheme.brandInk,
+                    fontWeight: FontWeight.w600)),
           ),
       ],
     );
@@ -458,7 +541,8 @@ class _SectionTitle extends StatelessWidget {
 }
 
 class _FeedCard extends StatelessWidget {
-  const _FeedCard({required this.item, required this.onTap, this.onFavorite, this.onShare});
+  const _FeedCard(
+      {required this.item, required this.onTap, this.onFavorite, this.onShare});
   final InformationItem item;
   final VoidCallback onTap;
   final VoidCallback? onFavorite;
@@ -486,25 +570,47 @@ class _FeedCard extends StatelessWidget {
                 const SizedBox(width: 8),
                 _ImportanceBadge(level: isNew ? 'urgent' : 'mid'),
                 const SizedBox(width: 6),
-                Container(width: 3, height: 3, decoration: const BoxDecoration(color: AppTheme.muted, shape: BoxShape.circle)),
+                Container(
+                    width: 3,
+                    height: 3,
+                    decoration: const BoxDecoration(
+                        color: AppTheme.muted, shape: BoxShape.circle)),
                 const SizedBox(width: 6),
-                Text(item.displayTime, style: const TextStyle(fontSize: 11.5, color: AppTheme.muted, fontWeight: FontWeight.w500)),
+                Text(item.displayTime,
+                    style: const TextStyle(
+                        fontSize: 11.5,
+                        color: AppTheme.muted,
+                        fontWeight: FontWeight.w500)),
               ],
             ),
             const SizedBox(height: 9),
-            Text(item.title, maxLines: 2, overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: AppTheme.ink, height: 1.4, letterSpacing: -0.15)),
+            Text(item.title,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                    color: AppTheme.ink,
+                    height: 1.4,
+                    letterSpacing: -0.15)),
             if (item.preview.isNotEmpty) ...[
               const SizedBox(height: 9),
               Container(
                 width: double.infinity,
                 padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(color: AppTheme.surface2, borderRadius: BorderRadius.circular(9)),
+                decoration: BoxDecoration(
+                    color: AppTheme.surface2,
+                    borderRadius: BorderRadius.circular(9)),
                 child: Text.rich(
                   TextSpan(
-                    style: const TextStyle(fontSize: 12.5, color: AppTheme.ink2, height: 1.55),
+                    style: const TextStyle(
+                        fontSize: 12.5, color: AppTheme.ink2, height: 1.55),
                     children: [
-                      const TextSpan(text: 'AI 摘要：', style: TextStyle(color: AppTheme.brandInk, fontWeight: FontWeight.w700)),
+                      const TextSpan(
+                          text: 'AI 摘要：',
+                          style: TextStyle(
+                              color: AppTheme.brandInk,
+                              fontWeight: FontWeight.w700)),
                       TextSpan(text: item.preview),
                     ],
                   ),
@@ -517,15 +623,23 @@ class _FeedCard extends StatelessWidget {
             if (item.recommendReasons.isNotEmpty) ...[
               const SizedBox(height: 8),
               Wrap(
-                spacing: 6, runSpacing: 4,
-                children: item.recommendReasons.map((reason) => Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-                  decoration: BoxDecoration(
-                    color: AppTheme.brandSoft,
-                    borderRadius: BorderRadius.circular(5),
-                  ),
-                  child: Text(reason, style: const TextStyle(fontSize: 11, color: AppTheme.brandInk, fontWeight: FontWeight.w500)),
-                )).toList(),
+                spacing: 6,
+                runSpacing: 4,
+                children: item.recommendReasons
+                    .map((reason) => Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 7, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: AppTheme.brandSoft,
+                            borderRadius: BorderRadius.circular(5),
+                          ),
+                          child: Text(reason,
+                              style: const TextStyle(
+                                  fontSize: 11,
+                                  color: AppTheme.brandInk,
+                                  fontWeight: FontWeight.w500)),
+                        ))
+                    .toList(),
               ),
             ],
             const SizedBox(height: 10),
@@ -541,12 +655,20 @@ class _FeedCard extends StatelessWidget {
                 Row(children: [
                   GestureDetector(
                     onTap: onFavorite,
-                    child: Text('收藏', style: TextStyle(fontSize: 11.5, color: item.readStatus == 'FAVORITED' ? AppTheme.brand : AppTheme.muted, fontWeight: FontWeight.w600)),
+                    child: Text('收藏',
+                        style: TextStyle(
+                            fontSize: 11.5,
+                            color: item.readStatus == 'FAVORITED'
+                                ? AppTheme.brand
+                                : AppTheme.muted,
+                            fontWeight: FontWeight.w600)),
                   ),
                   const SizedBox(width: 14),
                   GestureDetector(
                     onTap: onShare,
-                    child: Text('转发', style: TextStyle(fontSize: 11.5, color: AppTheme.muted)),
+                    child: Text('转发',
+                        style:
+                            TextStyle(fontSize: 11.5, color: AppTheme.muted)),
                   ),
                 ]),
               ],
@@ -571,7 +693,11 @@ class _SrcTag extends StatelessWidget {
         color: primary ? AppTheme.brandSoft : AppTheme.surface2,
         borderRadius: BorderRadius.circular(6),
       ),
-      child: Text(text, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: primary ? AppTheme.brandInk : AppTheme.ink2)),
+      child: Text(text,
+          style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              color: primary ? AppTheme.brandInk : AppTheme.ink2)),
     );
   }
 }
@@ -587,21 +713,33 @@ class _ImportanceBadge extends StatelessWidget {
     final String label;
     switch (level) {
       case 'urgent':
-        fg = const Color(0xFFBE123C); bg = AppTheme.roseSoft; label = '紧急';
+        fg = const Color(0xFFBE123C);
+        bg = AppTheme.roseSoft;
+        label = '紧急';
       case 'high':
-        fg = const Color(0xFFB45309); bg = AppTheme.accentSoft; label = '重要';
+        fg = const Color(0xFFB45309);
+        bg = AppTheme.accentSoft;
+        label = '重要';
       default:
-        fg = AppTheme.brandInk; bg = AppTheme.brandSoft; label = '一般';
+        fg = AppTheme.brandInk;
+        bg = AppTheme.brandSoft;
+        label = '一般';
     }
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-      decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(6)),
+      decoration:
+          BoxDecoration(color: bg, borderRadius: BorderRadius.circular(6)),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Container(width: 6, height: 6, decoration: BoxDecoration(color: fg, shape: BoxShape.circle)),
+          Container(
+              width: 6,
+              height: 6,
+              decoration: BoxDecoration(color: fg, shape: BoxShape.circle)),
           const SizedBox(width: 4),
-          Text(label, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: fg)),
+          Text(label,
+              style: TextStyle(
+                  fontSize: 11, fontWeight: FontWeight.w700, color: fg)),
         ],
       ),
     );
@@ -614,11 +752,18 @@ class _EmptyFeed extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.all(40),
-      decoration: BoxDecoration(color: AppTheme.surface, borderRadius: BorderRadius.circular(AppTheme.radiusSm), border: Border.all(color: AppTheme.line)),
+      decoration: BoxDecoration(
+          color: AppTheme.surface,
+          borderRadius: BorderRadius.circular(AppTheme.radiusSm),
+          border: Border.all(color: AppTheme.line)),
       child: const Column(children: [
         Icon(Icons.inbox_outlined, size: 40, color: AppTheme.muted),
         SizedBox(height: 12),
-        Text('暂无新信息', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppTheme.muted)),
+        Text('暂无新信息',
+            style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: AppTheme.muted)),
       ]),
     );
   }

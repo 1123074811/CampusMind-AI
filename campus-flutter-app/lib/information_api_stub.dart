@@ -32,12 +32,16 @@ class LoginSession {
     required this.tokenType,
     required this.expiresAt,
     required this.user,
+    this.refreshToken = '',
+    this.refreshExpiresAt,
   });
 
   final String accessToken;
   final String tokenType;
   final DateTime expiresAt;
   final CampusUser user;
+  final String refreshToken;
+  final DateTime? refreshExpiresAt;
 
   factory LoginSession.fromJson(Map<String, Object?> json) {
     return LoginSession(
@@ -45,6 +49,9 @@ class LoginSession {
       tokenType: json['tokenType'] as String? ?? 'Bearer',
       expiresAt: DateTime.tryParse(json['expiresAt'] as String? ?? '') ??
           DateTime.now().add(const Duration(hours: 2)),
+      refreshToken: json['refreshToken'] as String? ?? '',
+      refreshExpiresAt:
+          DateTime.tryParse(json['refreshExpiresAt'] as String? ?? ''),
       user: CampusUser.fromJson(
           json['user'] as Map<String, Object?>? ?? const {}),
     );
@@ -158,7 +165,8 @@ class InformationItem {
           ? null
           : DateTime.tryParse(json['publishTime'] as String),
       recommendReasons: (json['recommendReasons'] as List<Object?>? ?? const [])
-          .whereType<String>().toList(),
+          .whereType<String>()
+          .toList(),
     );
   }
 
@@ -187,6 +195,7 @@ class InformationItem {
       aiCard: aiCard,
       aiNeedReview: aiNeedReview,
       publishTime: publishTime,
+      recommendReasons: recommendReasons,
     );
   }
 }
@@ -261,7 +270,8 @@ class ImportedEventItem {
   final String eventType;
   final String sourceType;
 
-  factory ImportedEventItem.fromJson(Map<String, Object?> json) => ImportedEventItem(
+  factory ImportedEventItem.fromJson(Map<String, Object?> json) =>
+      ImportedEventItem(
         id: (json['id'] as num?)?.toInt() ?? 0,
         title: json['title'] as String? ?? '未命名课程信息',
         summary: json['summary'] as String? ?? '',
@@ -272,6 +282,14 @@ class ImportedEventItem {
 
 abstract class CampusApi {
   Future<LoginSession> login(String username, String password);
+
+  Future<void> logout(LoginSession session) => Future.value();
+
+  Future<Map<String, Object?>> exportMyData(LoginSession session) =>
+      Future.error(UnsupportedError('当前实现不支持数据导出'));
+
+  Future<void> deleteMyAccount(String password, LoginSession session) =>
+      Future.error(UnsupportedError('当前实现不支持账号注销'));
 
   Future<List<InformationItem>> fetchInformationFeed(LoginSession? session);
 
@@ -312,7 +330,8 @@ abstract class CampusApi {
   Future<List<ImportedEventItem>> fetchRainEvents(LoginSession session);
 
   /// AI 对话
-  Future<AiChatResult> aiChat(String sessionId, String message, LoginSession session);
+  Future<AiChatResult> aiChat(
+      String sessionId, String message, LoginSession session);
 
   /// 搜索
   Future<SearchResult> search(String query, LoginSession session);
@@ -333,7 +352,8 @@ abstract class CampusApi {
   Future<List<SubscriptionItem>> fetchSubscriptions(LoginSession session);
 
   /// 更新订阅状态
-  Future<SubscriptionItem> updateSubscription(int sourceId, bool enabled, LoginSession session);
+  Future<SubscriptionItem> updateSubscription(
+      int sourceId, bool enabled, LoginSession session);
 
   /// 获取行动列表
   Future<List<ActionItem>> fetchActions(LoginSession session) =>
@@ -348,7 +368,8 @@ abstract class CampusApi {
       Future.error(UnsupportedError('当前实现不支持消除提醒'));
 
   /// 获取相关信息（去重融合）
-  Future<List<RelatedItem>> fetchRelatedItems(int itemId, LoginSession session) =>
+  Future<List<RelatedItem>> fetchRelatedItems(
+          int itemId, LoginSession session) =>
       Future.value(const []);
 
   /// 获取热门/趋势信息
@@ -360,7 +381,8 @@ abstract class CampusApi {
       Future.value(const UserProfileTags(tags: [], sensitivity: 0.5));
 
   /// 更新用户信息画像标签
-  Future<UserProfileTags> updateProfileTags(List<String> tags, double sensitivity, LoginSession session) =>
+  Future<UserProfileTags> updateProfileTags(
+          List<String> tags, double sensitivity, LoginSession session) =>
       Future.value(const UserProfileTags(tags: [], sensitivity: 0.5));
 
   /// 获取 AI 日报摘要
@@ -368,7 +390,8 @@ abstract class CampusApi {
       Future.value(const DailyBriefing(summary: '', highlights: []));
 
   /// 带排序的 Feed
-  Future<List<InformationItem>> fetchInformationFeedSorted(String sort, LoginSession? session) =>
+  Future<List<InformationItem>> fetchInformationFeedSorted(
+          String sort, LoginSession? session) =>
       fetchInformationFeed(session);
 }
 
@@ -392,7 +415,10 @@ class SearchResult {
   factory SearchResult.fromJson(Map<String, Object?> json) {
     final list = json['items'] as List<Object?>? ?? const [];
     return SearchResult(
-      items: list.cast<Map<String, Object?>>().map(SearchResultItem.fromJson).toList(),
+      items: list
+          .cast<Map<String, Object?>>()
+          .map(SearchResultItem.fromJson)
+          .toList(),
       total: (json['total'] as num?)?.toInt() ?? 0,
       message: json['message'] as String?,
     );
@@ -400,7 +426,12 @@ class SearchResult {
 }
 
 class SearchResultItem {
-  const SearchResultItem({required this.id, required this.title, required this.snippet, this.sourceName, this.eventType});
+  const SearchResultItem(
+      {required this.id,
+      required this.title,
+      required this.snippet,
+      this.sourceName,
+      this.eventType});
   final int id;
   final String title;
   final String snippet;
@@ -410,27 +441,35 @@ class SearchResultItem {
     return SearchResultItem(
       id: (json['id'] as num?)?.toInt() ?? 0,
       title: json['title'] as String? ?? '',
-      snippet: json['snippet'] as String? ?? json['summary'] as String? ?? json['highlight'] as String? ?? '',
+      snippet: json['snippet'] as String? ??
+          json['summary'] as String? ??
+          json['highlight'] as String? ??
+          '',
       sourceName: json['sourceName'] as String?,
       eventType: json['eventType'] as String?,
     );
   }
 
   InformationItem toInformationItem() => InformationItem(
-    id: id,
-    title: title,
-    sourceName: sourceName ?? '未知来源',
-    preview: snippet,
-    originalUrl: '',
-    readStatus: 'NEW',
-    itemStatus: 'ACTIVE',
-    fetchedAt: DateTime.now(),
-    eventType: eventType ?? 'OTHER',
-  );
+        id: id,
+        title: title,
+        sourceName: sourceName ?? '未知来源',
+        preview: snippet,
+        originalUrl: '',
+        readStatus: 'NEW',
+        itemStatus: 'ACTIVE',
+        fetchedAt: DateTime.now(),
+        eventType: eventType ?? 'OTHER',
+      );
 }
 
 class UserProfile {
-  const UserProfile({required this.id, required this.username, this.nickname, this.email, this.role});
+  const UserProfile(
+      {required this.id,
+      required this.username,
+      this.nickname,
+      this.email,
+      this.role});
   final int id;
   final String username;
   final String? nickname;
@@ -449,7 +488,10 @@ class UserProfile {
 
 /// 用户统计
 class UserStats {
-  const UserStats({required this.readCount, required this.favoriteCount, required this.subscriptionCount});
+  const UserStats(
+      {required this.readCount,
+      required this.favoriteCount,
+      required this.subscriptionCount});
   final int readCount;
   final int favoriteCount;
   final int subscriptionCount;
@@ -489,18 +531,26 @@ class ActionItem {
   final List<String> requiredMaterials;
 
   bool get isExpired => dueAt != null && dueAt!.isBefore(DateTime.now());
-  bool get isDueSoon => dueAt != null && !isExpired && dueAt!.difference(DateTime.now()).inDays <= 3;
+  bool get isDueSoon =>
+      dueAt != null &&
+      !isExpired &&
+      dueAt!.difference(DateTime.now()).inDays <= 3;
 
   factory ActionItem.fromJson(Map<String, Object?> json) {
-    final materialsRaw = json['requiredMaterials'] as List<Object?>? ?? const [];
+    final materialsRaw =
+        json['requiredMaterials'] as List<Object?>? ?? const [];
     return ActionItem(
       id: (json['id'] as num).toInt(),
       informationItemId: (json['informationItemId'] as num).toInt(),
       title: json['title'] as String? ?? '',
-      dueAt: json['dueAt'] == null ? null : DateTime.tryParse(json['dueAt'] as String),
+      dueAt: json['dueAt'] == null
+          ? null
+          : DateTime.tryParse(json['dueAt'] as String),
       originalUrl: json['originalUrl'] as String?,
       status: json['status'] as String? ?? 'CONFIRMED',
-      createdAt: json['createdAt'] == null ? null : DateTime.tryParse(json['createdAt'] as String),
+      createdAt: json['createdAt'] == null
+          ? null
+          : DateTime.tryParse(json['createdAt'] as String),
       sourceTitle: json['sourceTitle'] as String?,
       sourceName: json['sourceName'] as String?,
       requiredMaterials: materialsRaw.whereType<String>().toList(),
@@ -548,10 +598,16 @@ class ReminderItem {
       actionTitle: json['actionTitle'] as String? ?? '',
       sourceTitle: json['sourceTitle'] as String?,
       originalUrl: json['originalUrl'] as String?,
-      remindAt: json['remindAt'] == null ? null : DateTime.tryParse(json['remindAt'] as String),
-      dueAt: json['dueAt'] == null ? null : DateTime.tryParse(json['dueAt'] as String),
+      remindAt: json['remindAt'] == null
+          ? null
+          : DateTime.tryParse(json['remindAt'] as String),
+      dueAt: json['dueAt'] == null
+          ? null
+          : DateTime.tryParse(json['dueAt'] as String),
       status: json['status'] as String? ?? 'PENDING',
-      sentAt: json['sentAt'] == null ? null : DateTime.tryParse(json['sentAt'] as String),
+      sentAt: json['sentAt'] == null
+          ? null
+          : DateTime.tryParse(json['sentAt'] as String),
     );
   }
 }
@@ -599,12 +655,12 @@ class RelatedItem {
   final String fuseNote;
 
   factory RelatedItem.fromJson(Map<String, Object?> json) => RelatedItem(
-    id: (json['id'] as num?)?.toInt() ?? 0,
-    title: json['title'] as String? ?? '',
-    sourceName: json['sourceName'] as String? ?? '',
-    displayTime: json['displayTime'] as String? ?? '',
-    fuseNote: json['fuseNote'] as String? ?? '',
-  );
+        id: (json['id'] as num?)?.toInt() ?? 0,
+        title: json['title'] as String? ?? '',
+        sourceName: json['sourceName'] as String? ?? '',
+        displayTime: json['displayTime'] as String? ?? '',
+        fuseNote: json['fuseNote'] as String? ?? '',
+      );
 }
 
 /// 热门/趋势条目
@@ -621,11 +677,11 @@ class TrendingItem {
   final String heatLabel;
 
   factory TrendingItem.fromJson(Map<String, Object?> json) => TrendingItem(
-    id: (json['id'] as num?)?.toInt() ?? 0,
-    rank: json['rank'] as String? ?? '',
-    title: json['title'] as String? ?? '',
-    heatLabel: json['heatLabel'] as String? ?? '',
-  );
+        id: (json['id'] as num?)?.toInt() ?? 0,
+        rank: json['rank'] as String? ?? '',
+        title: json['title'] as String? ?? '',
+        heatLabel: json['heatLabel'] as String? ?? '',
+      );
 }
 
 /// 用户画像标签
@@ -634,10 +690,13 @@ class UserProfileTags {
   final List<String> tags;
   final double sensitivity;
 
-  factory UserProfileTags.fromJson(Map<String, Object?> json) => UserProfileTags(
-    tags: (json['tags'] as List<Object?>? ?? const []).whereType<String>().toList(),
-    sensitivity: (json['sensitivity'] as num?)?.toDouble() ?? 0.5,
-  );
+  factory UserProfileTags.fromJson(Map<String, Object?> json) =>
+      UserProfileTags(
+        tags: (json['tags'] as List<Object?>? ?? const [])
+            .whereType<String>()
+            .toList(),
+        sensitivity: (json['sensitivity'] as num?)?.toDouble() ?? 0.5,
+      );
 }
 
 /// AI 日报
@@ -647,9 +706,11 @@ class DailyBriefing {
   final List<String> highlights;
 
   factory DailyBriefing.fromJson(Map<String, Object?> json) => DailyBriefing(
-    summary: json['summary'] as String? ?? '',
-    highlights: (json['highlights'] as List<Object?>? ?? const []).whereType<String>().toList(),
-  );
+        summary: json['summary'] as String? ?? '',
+        highlights: (json['highlights'] as List<Object?>? ?? const [])
+            .whereType<String>()
+            .toList(),
+      );
 }
 
 CampusApi createCampusApi() {

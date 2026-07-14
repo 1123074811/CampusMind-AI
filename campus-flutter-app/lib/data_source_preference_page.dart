@@ -3,12 +3,14 @@ import 'app_theme.dart';
 import 'information_api.dart';
 
 class DataSourcePreferencePage extends StatefulWidget {
-  const DataSourcePreferencePage({super.key, required this.api, required this.session});
+  const DataSourcePreferencePage(
+      {super.key, required this.api, required this.session});
   final CampusApi api;
   final LoginSession session;
 
   @override
-  State<DataSourcePreferencePage> createState() => _DataSourcePreferencePageState();
+  State<DataSourcePreferencePage> createState() =>
+      _DataSourcePreferencePageState();
 }
 
 class _DataSourcePreferencePageState extends State<DataSourcePreferencePage> {
@@ -25,10 +27,16 @@ class _DataSourcePreferencePageState extends State<DataSourcePreferencePage> {
     try {
       final items = await widget.api.fetchSubscriptions(widget.session);
       if (!mounted) return;
-      setState(() { _items = items; _loading = false; });
+      setState(() {
+        _items = items;
+        _loading = false;
+      });
     } catch (_) {
       if (!mounted) return;
       setState(() => _loading = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('数据源偏好加载失败，请重试')),
+      );
     }
   }
 
@@ -36,7 +44,8 @@ class _DataSourcePreferencePageState extends State<DataSourcePreferencePage> {
     final item = _items[index];
     final newEnabled = !item.enabled;
     try {
-      await widget.api.updateSubscription(item.sourceId, newEnabled, widget.session);
+      await widget.api
+          .updateSubscription(item.sourceId, newEnabled, widget.session);
       if (!mounted) return;
       setState(() {
         _items[index] = SubscriptionItem(
@@ -57,17 +66,23 @@ class _DataSourcePreferencePageState extends State<DataSourcePreferencePage> {
 
   String _typeLabel(String type) {
     switch (type) {
-      case 'PUBLIC_WEB': return '公开网页';
-      case 'RAIN_CLASSROOM': return '雨课堂';
-      default: return type;
+      case 'PUBLIC_WEB':
+        return '公开网页';
+      case 'RAIN_CLASSROOM':
+        return '雨课堂';
+      default:
+        return type;
     }
   }
 
   IconData _typeIcon(String type) {
     switch (type) {
-      case 'PUBLIC_WEB': return Icons.language;
-      case 'RAIN_CLASSROOM': return Icons.school_outlined;
-      default: return Icons.rss_feed;
+      case 'PUBLIC_WEB':
+        return Icons.language;
+      case 'RAIN_CLASSROOM':
+        return Icons.school_outlined;
+      default:
+        return Icons.rss_feed;
     }
   }
 
@@ -78,19 +93,30 @@ class _DataSourcePreferencePageState extends State<DataSourcePreferencePage> {
       appBar: AppBar(
         backgroundColor: AppTheme.bg,
         elevation: 0,
-        title: const Text('数据源偏好', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: AppTheme.ink)),
+        title: const Text('数据源偏好',
+            style: TextStyle(
+                fontSize: 17,
+                fontWeight: FontWeight.w700,
+                color: AppTheme.ink)),
         iconTheme: const IconThemeData(color: AppTheme.ink),
       ),
       body: _loading
-          ? const Center(child: SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2)))
+          ? const Center(
+              child: SizedBox(
+                  width: 24,
+                  height: 24,
+                  child: CircularProgressIndicator(strokeWidth: 2)))
           : _items.isEmpty
               ? Center(
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      const Icon(Icons.inbox_outlined, size: 48, color: AppTheme.muted),
+                      const Icon(Icons.inbox_outlined,
+                          size: 48, color: AppTheme.muted),
                       const SizedBox(height: 12),
-                      const Text('暂无订阅数据源', style: TextStyle(fontSize: 14, color: AppTheme.muted)),
+                      const Text('暂无订阅数据源',
+                          style:
+                              TextStyle(fontSize: 14, color: AppTheme.muted)),
                       const SizedBox(height: 8),
                       TextButton(
                         onPressed: () => Navigator.of(context).pop(),
@@ -110,19 +136,27 @@ class _DataSourcePreferencePageState extends State<DataSourcePreferencePage> {
                       ),
                       child: Row(
                         children: [
-                          const Icon(Icons.info_outline, color: AppTheme.brandInk, size: 18),
+                          const Icon(Icons.info_outline,
+                              color: AppTheme.brandInk, size: 18),
                           const SizedBox(width: 8),
                           Expanded(
                             child: Text(
                               '开启的数据源将参与信息采集和 AI 分析，关闭后不再抓取新内容。',
-                              style: const TextStyle(fontSize: 12, color: AppTheme.brandInk, height: 1.5),
+                              style: const TextStyle(
+                                  fontSize: 12,
+                                  color: AppTheme.brandInk,
+                                  height: 1.5),
                             ),
                           ),
                         ],
                       ),
                     ),
                     const SizedBox(height: 16),
-                    Text('已订阅数据源 (${_items.length})', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppTheme.ink2)),
+                    Text('已订阅数据源 (${_items.length})',
+                        style: const TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700,
+                            color: AppTheme.ink2)),
                     const SizedBox(height: 10),
                     Container(
                       decoration: BoxDecoration(
@@ -136,48 +170,78 @@ class _DataSourcePreferencePageState extends State<DataSourcePreferencePage> {
                           return Column(
                             children: [
                               Padding(
-                                padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 13),
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 15, vertical: 13),
                                 child: Row(
                                   children: [
                                     Container(
-                                      width: 36, height: 36,
+                                      width: 36,
+                                      height: 36,
                                       decoration: BoxDecoration(
-                                        color: item.enabled ? AppTheme.brandSoft : AppTheme.surface2,
+                                        color: item.enabled
+                                            ? AppTheme.brandSoft
+                                            : AppTheme.surface2,
                                         borderRadius: BorderRadius.circular(10),
                                       ),
-                                      child: Icon(_typeIcon(item.sourceType), color: item.enabled ? AppTheme.brandInk : AppTheme.muted, size: 18),
+                                      child: Icon(_typeIcon(item.sourceType),
+                                          color: item.enabled
+                                              ? AppTheme.brandInk
+                                              : AppTheme.muted,
+                                          size: 18),
                                     ),
                                     const SizedBox(width: 12),
                                     Expanded(
                                       child: Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
                                         children: [
-                                          Text(item.sourceName, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppTheme.ink)),
-                                          Text(_typeLabel(item.sourceType), style: const TextStyle(fontSize: 11, color: AppTheme.muted)),
+                                          Text(item.sourceName,
+                                              style: const TextStyle(
+                                                  fontSize: 14,
+                                                  fontWeight: FontWeight.w600,
+                                                  color: AppTheme.ink)),
+                                          Text(_typeLabel(item.sourceType),
+                                              style: const TextStyle(
+                                                  fontSize: 11,
+                                                  color: AppTheme.muted)),
                                         ],
                                       ),
                                     ),
                                     GestureDetector(
                                       onTap: () => _toggle(i),
                                       child: AnimatedContainer(
-                                        duration: const Duration(milliseconds: 200),
-                                        width: 42, height: 24,
+                                        duration:
+                                            const Duration(milliseconds: 200),
+                                        width: 42,
+                                        height: 24,
                                         padding: const EdgeInsets.all(3),
                                         decoration: BoxDecoration(
-                                          color: item.enabled ? AppTheme.brand : AppTheme.surface2,
-                                          borderRadius: BorderRadius.circular(99),
+                                          color: item.enabled
+                                              ? AppTheme.brand
+                                              : AppTheme.surface2,
+                                          borderRadius:
+                                              BorderRadius.circular(99),
                                         ),
                                         child: AnimatedAlign(
-                                          duration: const Duration(milliseconds: 200),
-                                          alignment: item.enabled ? Alignment.centerRight : Alignment.centerLeft,
-                                          child: Container(width: 18, height: 18, decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle)),
+                                          duration:
+                                              const Duration(milliseconds: 200),
+                                          alignment: item.enabled
+                                              ? Alignment.centerRight
+                                              : Alignment.centerLeft,
+                                          child: Container(
+                                              width: 18,
+                                              height: 18,
+                                              decoration: const BoxDecoration(
+                                                  color: Colors.white,
+                                                  shape: BoxShape.circle)),
                                         ),
                                       ),
                                     ),
                                   ],
                                 ),
                               ),
-                              if (i < _items.length - 1) const Divider(height: 1, color: AppTheme.line),
+                              if (i < _items.length - 1)
+                                const Divider(height: 1, color: AppTheme.line),
                             ],
                           );
                         }),

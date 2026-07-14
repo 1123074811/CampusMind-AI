@@ -31,10 +31,16 @@ class _MyReadHistoryPageState extends State<MyReadHistoryPage> {
     try {
       final items = await widget.api.fetchReadHistory(widget.session);
       if (!mounted) return;
-      setState(() { _items = items; _loading = false; });
+      setState(() {
+        _items = items;
+        _loading = false;
+      });
     } catch (_) {
       if (!mounted) return;
       setState(() => _loading = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('阅读历史加载失败，请重试')),
+      );
     }
   }
 
@@ -52,15 +58,26 @@ class _MyReadHistoryPageState extends State<MyReadHistoryPage> {
                   GestureDetector(
                     onTap: () => Navigator.of(context).pop(),
                     child: Container(
-                      width: 36, height: 36,
-                      decoration: BoxDecoration(color: AppTheme.surface, borderRadius: BorderRadius.circular(11), border: Border.all(color: AppTheme.line)),
-                      child: const Icon(Icons.arrow_back_ios_new, size: 17, color: AppTheme.ink2),
+                      width: 36,
+                      height: 36,
+                      decoration: BoxDecoration(
+                          color: AppTheme.surface,
+                          borderRadius: BorderRadius.circular(11),
+                          border: Border.all(color: AppTheme.line)),
+                      child: const Icon(Icons.arrow_back_ios_new,
+                          size: 17, color: AppTheme.ink2),
                     ),
                   ),
                   const SizedBox(width: 12),
-                  const Text('阅读历史', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: AppTheme.ink)),
+                  const Text('阅读历史',
+                      style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w800,
+                          color: AppTheme.ink)),
                   const Spacer(),
-                  Text('${_items.length} 条', style: const TextStyle(fontSize: 13, color: AppTheme.muted)),
+                  Text('${_items.length} 条',
+                      style:
+                          const TextStyle(fontSize: 13, color: AppTheme.muted)),
                 ],
               ),
             ),
@@ -74,7 +91,9 @@ class _MyReadHistoryPageState extends State<MyReadHistoryPage> {
                           itemCount: _items.length,
                           itemBuilder: (context, i) => Padding(
                             padding: const EdgeInsets.only(bottom: 12),
-                            child: _HistoryCard(item: _items[i], onTap: () => widget.onOpenDetail(_items[i])),
+                            child: _HistoryCard(
+                                item: _items[i],
+                                onTap: () => widget.onOpenDetail(_items[i])),
                           ),
                         ),
             ),
@@ -89,11 +108,17 @@ class _MyReadHistoryPageState extends State<MyReadHistoryPage> {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(Icons.access_time, size: 48, color: AppTheme.muted.withValues(alpha: 0.5)),
+          Icon(Icons.access_time,
+              size: 48, color: AppTheme.muted.withValues(alpha: 0.5)),
           const SizedBox(height: 12),
-          const Text('暂无阅读记录', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppTheme.muted)),
+          const Text('暂无阅读记录',
+              style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: AppTheme.muted)),
           const SizedBox(height: 6),
-          const Text('浏览信息后将自动记录', style: TextStyle(fontSize: 12, color: AppTheme.muted)),
+          const Text('浏览信息后将自动记录',
+              style: TextStyle(fontSize: 12, color: AppTheme.muted)),
         ],
       ),
     );
@@ -122,17 +147,35 @@ class _HistoryCard extends StatelessWidget {
             Row(
               children: [
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                  decoration: BoxDecoration(color: AppTheme.surface2, borderRadius: BorderRadius.circular(6)),
-                  child: Text(item.sourceName, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: AppTheme.ink2)),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                      color: AppTheme.surface2,
+                      borderRadius: BorderRadius.circular(6)),
+                  child: Text(item.sourceName,
+                      style: const TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: AppTheme.ink2)),
                 ),
                 const SizedBox(width: 8),
-                Text(item.displayTime, style: const TextStyle(fontSize: 11.5, color: AppTheme.muted, fontWeight: FontWeight.w500)),
+                Text(item.displayTime,
+                    style: const TextStyle(
+                        fontSize: 11.5,
+                        color: AppTheme.muted,
+                        fontWeight: FontWeight.w500)),
                 const Spacer(),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-                  decoration: BoxDecoration(color: AppTheme.surface2, borderRadius: BorderRadius.circular(6)),
-                  child: const Text('已读', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: AppTheme.muted)),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                  decoration: BoxDecoration(
+                      color: AppTheme.surface2,
+                      borderRadius: BorderRadius.circular(6)),
+                  child: const Text('已读',
+                      style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w600,
+                          color: AppTheme.muted)),
                 ),
               ],
             ),
@@ -141,7 +184,11 @@ class _HistoryCard extends StatelessWidget {
               item.title,
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w700, color: AppTheme.ink, height: 1.4),
+              style: const TextStyle(
+                  fontSize: 14.5,
+                  fontWeight: FontWeight.w700,
+                  color: AppTheme.ink,
+                  height: 1.4),
             ),
             if (item.preview.isNotEmpty) ...[
               const SizedBox(height: 8),
@@ -149,7 +196,8 @@ class _HistoryCard extends StatelessWidget {
                 item.preview,
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
-                style: const TextStyle(fontSize: 12.5, color: AppTheme.ink2, height: 1.5),
+                style: const TextStyle(
+                    fontSize: 12.5, color: AppTheme.ink2, height: 1.5),
               ),
             ],
           ],

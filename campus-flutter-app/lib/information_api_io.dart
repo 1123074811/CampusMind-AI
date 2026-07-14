@@ -4,9 +4,27 @@ import 'dart:io';
 import 'information_api_stub.dart';
 
 export 'information_api_stub.dart'
-    show CampusApi, CampusUser, InformationItem, LoginSession, ImportResult, ImportTaskItem, ImportedEventItem, SessionExpiredException,
-         AiChatResult, SearchResult, SearchResultItem, UserProfile, UserStats, SubscriptionItem, ActionItem, ReminderItem,
-         RelatedItem, TrendingItem, UserProfileTags, DailyBriefing;
+    show
+        CampusApi,
+        CampusUser,
+        InformationItem,
+        LoginSession,
+        ImportResult,
+        ImportTaskItem,
+        ImportedEventItem,
+        SessionExpiredException,
+        AiChatResult,
+        SearchResult,
+        SearchResultItem,
+        UserProfile,
+        UserStats,
+        SubscriptionItem,
+        ActionItem,
+        ReminderItem,
+        RelatedItem,
+        TrendingItem,
+        UserProfileTags,
+        DailyBriefing;
 
 const _apiBase = String.fromEnvironment(
   'CAMPUSMIND_API_BASE',
@@ -19,6 +37,8 @@ class IoCampusApi implements CampusApi {
   IoCampusApi(this.baseUrl);
 
   final String baseUrl;
+  final Map<LoginSession, LoginSession> _refreshedSessions = {};
+  final Map<LoginSession, Future<void>> _refreshing = {};
 
   @override
   Future<LoginSession> login(String username, String password) async {
@@ -28,6 +48,51 @@ class IoCampusApi implements CampusApi {
       body: {'username': username, 'password': password},
     );
     return LoginSession.fromJson(_data(root));
+  }
+
+  LoginSession _effective(LoginSession session) =>
+      _refreshedSessions[session] ?? session;
+
+  Future<void> _refresh(LoginSession session) async {
+    final inFlight = _refreshing[session];
+    if (inFlight != null) return inFlight;
+    final future = _performRefresh(session);
+    _refreshing[session] = future;
+    try {
+      await future;
+    } finally {
+      _refreshing.remove(session);
+    }
+  }
+
+  Future<void> _performRefresh(LoginSession session) async {
+    final current = _effective(session);
+    if (current.refreshToken.isEmpty ||
+        (current.refreshExpiresAt?.isBefore(DateTime.now()) ?? false)) {
+      throw const SessionExpiredException();
+    }
+    final root = await _request(
+      'POST',
+      '/api/v1/auth/refresh',
+      body: {'refreshToken': current.refreshToken},
+      allowRefresh: false,
+    );
+    _refreshedSessions[session] = LoginSession.fromJson(_data(root));
+  }
+
+  @override
+  Future<void> logout(LoginSession session) async {
+    final current = _effective(session);
+    try {
+      await _request(
+        'POST',
+        '/api/v1/auth/logout',
+        session: session,
+        body: {'refreshToken': current.refreshToken},
+      );
+    } finally {
+      _refreshedSessions.remove(session);
+    }
   }
 
   @override
@@ -73,7 +138,8 @@ class IoCampusApi implements CampusApi {
   }
 
   @override
-  Future<void> confirmAction(int itemId, String title, LoginSession session) async {
+  Future<void> confirmAction(
+      int itemId, String title, LoginSession session) async {
     await _request(
       'POST',
       '/api/v1/information/items/$itemId/actions',
@@ -87,6 +153,7 @@ class IoCampusApi implements CampusApi {
     String path, {
     LoginSession? session,
     Map<String, Object?>? body,
+    bool allowRefresh = true,
   }) async {
     final client = HttpClient();
     try {
@@ -94,14 +161,17 @@ class IoCampusApi implements CampusApi {
       final request = await switch (method) {
         'POST' => client.postUrl(uri),
         'PUT' => client.putUrl(uri),
+        'DELETE' => client.deleteUrl(uri),
         _ => client.getUrl(uri),
       };
       request.headers.set(HttpHeaders.acceptHeader, 'application/json');
-      request.headers.set(HttpHeaders.contentTypeHeader, 'application/json; charset=utf-8');
+      request.headers.set(
+          HttpHeaders.contentTypeHeader, 'application/json; charset=utf-8');
       if (session != null) {
+        final current = _effective(session);
         request.headers.set(
           HttpHeaders.authorizationHeader,
-          '${session.tokenType} ${session.accessToken}',
+          '${current.tokenType} ${current.accessToken}',
         );
       }
       if (body != null) {
@@ -110,6 +180,11 @@ class IoCampusApi implements CampusApi {
       final response = await request.close();
       final responseBody = await response.transform(utf8.decoder).join();
       if (response.statusCode == 401) {
+        if (allowRefresh && session != null) {
+          await _refresh(session);
+          return _request(method, path,
+              session: session, body: body, allowRefresh: false);
+        }
         throw const SessionExpiredException();
       }
       final root = jsonDecode(responseBody.isEmpty ? '{}' : responseBody)
@@ -128,6 +203,19 @@ class IoCampusApi implements CampusApi {
 
   Map<String, Object?> _data(Map<String, Object?> root) {
     return root['data'] as Map<String, Object?>? ?? const {};
+  }
+
+  @override
+  Future<Map<String, Object?>> exportMyData(LoginSession session) async {
+    final root =
+        await _request('GET', '/api/v1/users/me/export', session: session);
+    return _data(root);
+  }
+
+  @override
+  Future<void> deleteMyAccount(String password, LoginSession session) async {
+    await _request('DELETE', '/api/v1/users/me',
+        session: session, body: {'password': password});
   }
 
   @override
@@ -156,22 +244,29 @@ class IoCampusApi implements CampusApi {
   @override
   Future<ImportResult> importFile(
       List<int> bytes, String fileName, LoginSession session) async {
+    return _importFile(bytes, fileName, session, true);
+  }
+
+  Future<ImportResult> _importFile(List<int> bytes, String fileName,
+      LoginSession session, bool allowRefresh) async {
     final client = HttpClient();
     try {
       final uri = Uri.parse('$baseUrl/api/v1/import/file');
       final request = await client.postUrl(uri);
-      final boundary = '----CampusMindBoundary${DateTime.now().millisecondsSinceEpoch}';
+      final boundary =
+          '----CampusMindBoundary${DateTime.now().millisecondsSinceEpoch}';
       request.headers.set(HttpHeaders.contentTypeHeader,
           'multipart/form-data; boundary=$boundary');
       request.headers.set(
         HttpHeaders.authorizationHeader,
-        '${session.tokenType} ${session.accessToken}',
+        '${_effective(session).tokenType} ${_effective(session).accessToken}',
       );
 
       // 构建 multipart body
       final buffer = StringBuffer();
       buffer.write('--$boundary\r\n');
-      buffer.write('Content-Disposition: form-data; name="file"; filename="$fileName"\r\n');
+      buffer.write(
+          'Content-Disposition: form-data; name="file"; filename="$fileName"\r\n');
       buffer.write('Content-Type: application/octet-stream\r\n\r\n');
       final headerBytes = utf8.encode(buffer.toString());
       final footerBytes = utf8.encode('\r\n--$boundary--\r\n');
@@ -183,6 +278,10 @@ class IoCampusApi implements CampusApi {
       final response = await request.close();
       final responseBody = await response.transform(utf8.decoder).join();
       if (response.statusCode == 401) {
+        if (allowRefresh) {
+          await _refresh(session);
+          return _importFile(bytes, fileName, session, false);
+        }
         throw const SessionExpiredException();
       }
       final root = jsonDecode(responseBody.isEmpty ? '{}' : responseBody)
@@ -247,17 +346,20 @@ class IoCampusApi implements CampusApi {
 
   @override
   Future<List<ImportedEventItem>> fetchRainEvents(LoginSession session) async {
-    final root = await _request('GET', '/api/v1/events/search?page=1&size=100', session: session);
+    final root = await _request('GET', '/api/v1/events/search?page=1&size=100',
+        session: session);
     final data = _data(root);
     final list = data['items'] as List<Object?>? ?? const [];
-    return list.cast<Map<String, Object?>>()
+    return list
+        .cast<Map<String, Object?>>()
         .map(ImportedEventItem.fromJson)
         .where((item) => item.sourceType == 'RAIN_CLASSROOM')
         .toList();
   }
 
   @override
-  Future<AiChatResult> aiChat(String sessionId, String message, LoginSession session) async {
+  Future<AiChatResult> aiChat(
+      String sessionId, String message, LoginSession session) async {
     final root = await _request(
       'POST',
       '/api/v1/ai/chat',
@@ -332,7 +434,8 @@ class IoCampusApi implements CampusApi {
   }
 
   @override
-  Future<List<SubscriptionItem>> fetchSubscriptions(LoginSession session) async {
+  Future<List<SubscriptionItem>> fetchSubscriptions(
+      LoginSession session) async {
     final root = await _request(
       'GET',
       '/api/v1/information/subscriptions',
@@ -349,7 +452,8 @@ class IoCampusApi implements CampusApi {
   }
 
   @override
-  Future<SubscriptionItem> updateSubscription(int sourceId, bool enabled, LoginSession session) async {
+  Future<SubscriptionItem> updateSubscription(
+      int sourceId, bool enabled, LoginSession session) async {
     final root = await _request(
       'PUT',
       '/api/v1/information/subscriptions/$sourceId',
@@ -403,7 +507,8 @@ class IoCampusApi implements CampusApi {
   }
 
   @override
-  Future<List<RelatedItem>> fetchRelatedItems(int itemId, LoginSession session) async {
+  Future<List<RelatedItem>> fetchRelatedItems(
+      int itemId, LoginSession session) async {
     final root = await _request(
       'GET',
       '/api/v1/information/items/$itemId/related',
@@ -411,7 +516,10 @@ class IoCampusApi implements CampusApi {
     );
     final list = root['data'];
     if (list is List) {
-      return list.cast<Map<String, Object?>>().map(RelatedItem.fromJson).toList();
+      return list
+          .cast<Map<String, Object?>>()
+          .map(RelatedItem.fromJson)
+          .toList();
     }
     return const [];
   }
@@ -425,7 +533,10 @@ class IoCampusApi implements CampusApi {
     );
     final list = root['data'];
     if (list is List) {
-      return list.cast<Map<String, Object?>>().map(TrendingItem.fromJson).toList();
+      return list
+          .cast<Map<String, Object?>>()
+          .map(TrendingItem.fromJson)
+          .toList();
     }
     return const [];
   }
@@ -441,7 +552,8 @@ class IoCampusApi implements CampusApi {
   }
 
   @override
-  Future<UserProfileTags> updateProfileTags(List<String> tags, double sensitivity, LoginSession session) async {
+  Future<UserProfileTags> updateProfileTags(
+      List<String> tags, double sensitivity, LoginSession session) async {
     final root = await _request(
       'PUT',
       '/api/v1/users/profile-tags',
@@ -462,7 +574,8 @@ class IoCampusApi implements CampusApi {
   }
 
   @override
-  Future<List<InformationItem>> fetchInformationFeedSorted(String sort, LoginSession? session) async {
+  Future<List<InformationItem>> fetchInformationFeedSorted(
+      String sort, LoginSession? session) async {
     final root = await _request(
       'GET',
       '/api/v1/information/feed?size=30&sort=${Uri.encodeQueryComponent(sort)}',
@@ -470,7 +583,10 @@ class IoCampusApi implements CampusApi {
     );
     final data = _data(root);
     final items = data['items'] as List<Object?>? ?? const [];
-    return items.cast<Map<String, Object?>>().map(InformationItem.fromJson).toList();
+    return items
+        .cast<Map<String, Object?>>()
+        .map(InformationItem.fromJson)
+        .toList();
   }
 }
 

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:campus_flutter_app/detail_page.dart';
+import 'package:campus_flutter_app/discover_page.dart';
 import 'package:campus_flutter_app/information_api.dart';
 
 void main() {
@@ -50,7 +51,8 @@ void main() {
     expect(find.text('查看原文'), findsOneWidget);
   });
 
-  testWidgets('detail page does not show an AI label when summary is unavailable',
+  testWidgets(
+      'detail page does not show an AI label when summary is unavailable',
       (tester) async {
     final item = _item(aiStatus: 'FAILED', aiSummary: '不应展示的旧摘要');
     await tester.pumpWidget(_detailApp(item));
@@ -74,7 +76,9 @@ void main() {
     final item = _item(
       aiStatus: 'SUCCESS',
       aiSummary: '报名摘要',
-      aiCard: const {'requiredActions': ['完成报名']},
+      aiCard: const {
+        'requiredActions': ['完成报名']
+      },
     );
     final api = _FakeCampusApi(item);
     await tester.pumpWidget(_detailApp(item, api));
@@ -87,7 +91,28 @@ void main() {
     expect(api.confirmedAction, '完成报名');
     expect(find.byIcon(Icons.check_circle), findsOneWidget);
   });
+
+  testWidgets('discover page reports trending failures without demo content',
+      (tester) async {
+    final api = _FailingTrendingApi(_item());
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: PrototypeDiscoverPage(api: api, session: _session()),
+      ),
+    ));
+    await tester.pumpAndSettle();
+
+    expect(find.text('热门内容加载失败，请稍后重试'), findsOneWidget);
+    expect(find.text('选课系统维护通知'), findsNothing);
+  });
 }
+
+LoginSession _session() => LoginSession(
+      accessToken: 'test-token',
+      tokenType: 'Bearer',
+      expiresAt: DateTime(2026, 7, 10),
+      user: const CampusUser(id: 1, username: 'tester', role: 'STUDENT'),
+    );
 
 InformationItem _item({
   String aiStatus = 'PENDING',
@@ -117,64 +142,95 @@ Widget _detailApp(InformationItem item, [CampusApi? api]) => MaterialApp(
       home: PrototypeDetailPage(
         item: item,
         api: api ?? _FakeCampusApi(item),
-        session: LoginSession(
-          accessToken: 'test-token',
-          tokenType: 'Bearer',
-          expiresAt: DateTime(2026, 7, 10),
-          user: const CampusUser(id: 1, username: 'tester', role: 'STUDENT'),
-        ),
+        session: _session(),
         onItemChanged: (_) {},
       ),
     );
 
-class _FakeCampusApi implements CampusApi {
+class _FakeCampusApi extends CampusApi {
   _FakeCampusApi(this.item);
   final InformationItem item;
   String? confirmedAction;
 
   @override
-  Future<InformationItem> fetchInformationDetail(int id, LoginSession? session) async => item;
+  Future<InformationItem> fetchInformationDetail(
+          int id, LoginSession? session) async =>
+      item;
 
   @override
-  Future<InformationItem> updateReadStatus(int id, String readStatus, LoginSession session) async => item;
+  Future<InformationItem> updateReadStatus(
+          int id, String readStatus, LoginSession session) async =>
+      item;
 
   @override
-  Future<void> confirmAction(int itemId, String title, LoginSession session) async {
+  Future<void> confirmAction(
+      int itemId, String title, LoginSession session) async {
     confirmedAction = title;
   }
 
   @override
-  Future<LoginSession> login(String username, String password) => throw UnimplementedError();
+  Future<LoginSession> login(String username, String password) =>
+      throw UnimplementedError();
   @override
-  Future<List<InformationItem>> fetchInformationFeed(LoginSession? session) => throw UnimplementedError();
+  Future<List<InformationItem>> fetchInformationFeed(LoginSession? session) =>
+      throw UnimplementedError();
   @override
-  Future<ImportResult> importText(String text, LoginSession session) => throw UnimplementedError();
+  Future<ImportResult> importText(String text, LoginSession session) =>
+      throw UnimplementedError();
   @override
-  Future<ImportResult> importImage(String base64, String? name, LoginSession session) => throw UnimplementedError();
+  Future<ImportResult> importImage(
+          String base64, String? name, LoginSession session) =>
+      throw UnimplementedError();
   @override
-  Future<ImportResult> importFile(List<int> bytes, String fileName, LoginSession session) => throw UnimplementedError();
+  Future<ImportResult> importFile(
+          List<int> bytes, String fileName, LoginSession session) =>
+      throw UnimplementedError();
   @override
-  Future<ImportResult> importRainJson(String dataType, String rawJson, LoginSession session) => throw UnimplementedError();
+  Future<ImportResult> importRainJson(
+          String dataType, String rawJson, LoginSession session) =>
+      throw UnimplementedError();
   @override
-  Future<ImportResult> importRainCookie(String cookie, List<String> scopes, LoginSession session) => throw UnimplementedError();
+  Future<ImportResult> importRainCookie(
+          String cookie, List<String> scopes, LoginSession session) =>
+      throw UnimplementedError();
   @override
-  Future<List<ImportTaskItem>> fetchImportTasks(LoginSession session) => throw UnimplementedError();
+  Future<List<ImportTaskItem>> fetchImportTasks(LoginSession session) =>
+      throw UnimplementedError();
   @override
-  Future<List<ImportedEventItem>> fetchRainEvents(LoginSession session) => throw UnimplementedError();
+  Future<List<ImportedEventItem>> fetchRainEvents(LoginSession session) =>
+      throw UnimplementedError();
   @override
-  Future<AiChatResult> aiChat(String sessionId, String message, LoginSession session) => throw UnimplementedError();
+  Future<AiChatResult> aiChat(
+          String sessionId, String message, LoginSession session) =>
+      throw UnimplementedError();
   @override
-  Future<SearchResult> search(String query, LoginSession session) => throw UnimplementedError();
+  Future<SearchResult> search(String query, LoginSession session) =>
+      throw UnimplementedError();
   @override
-  Future<UserProfile> fetchMe(LoginSession session) => throw UnimplementedError();
+  Future<UserProfile> fetchMe(LoginSession session) =>
+      throw UnimplementedError();
   @override
-  Future<UserStats> fetchStats(LoginSession session) => throw UnimplementedError();
+  Future<UserStats> fetchStats(LoginSession session) =>
+      throw UnimplementedError();
   @override
-  Future<List<InformationItem>> fetchFavorites(LoginSession session) => throw UnimplementedError();
+  Future<List<InformationItem>> fetchFavorites(LoginSession session) =>
+      throw UnimplementedError();
   @override
-  Future<List<InformationItem>> fetchReadHistory(LoginSession session) => throw UnimplementedError();
+  Future<List<InformationItem>> fetchReadHistory(LoginSession session) =>
+      throw UnimplementedError();
   @override
-  Future<List<SubscriptionItem>> fetchSubscriptions(LoginSession session) => throw UnimplementedError();
+  Future<List<SubscriptionItem>> fetchSubscriptions(LoginSession session) =>
+      throw UnimplementedError();
   @override
-  Future<SubscriptionItem> updateSubscription(int sourceId, bool enabled, LoginSession session) => throw UnimplementedError();
+  Future<SubscriptionItem> updateSubscription(
+          int sourceId, bool enabled, LoginSession session) =>
+      throw UnimplementedError();
+}
+
+class _FailingTrendingApi extends _FakeCampusApi {
+  _FailingTrendingApi(super.item);
+
+  @override
+  Future<List<TrendingItem>> fetchTrending(LoginSession session) =>
+      Future.error(Exception('network unavailable'));
 }
