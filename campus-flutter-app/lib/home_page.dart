@@ -30,8 +30,12 @@ class PrototypeHomePage extends StatefulWidget {
 class _PrototypeHomePageState extends State<PrototypeHomePage> {
   int _activeChip = 0;
   int _reminderCount = 0;
+  int _unreadDeliveryCount = 0;
+  List<NotificationDelivery> _recentDeliveries = const [];
   String _sortMode = 'smart';
   String _briefingSummary = '';
+  final _bellKey = GlobalKey();
+  OverlayEntry? _bellOverlay;
 
   static const _sortOptions = <String, String>{
     'smart': '智能排序',
@@ -39,22 +43,124 @@ class _PrototypeHomePageState extends State<PrototypeHomePage> {
     'hot': '热度优先',
   };
 
-  static const _chipLabels = ['全部', '教务通知', '课程学术', '校园活动', '失物招领', '实习招聘'];
-  static const _chipKeywords = <String, List<String>>{
-    '教务通知': ['教务', '选课', '考试', '成绩', '教学'],
-    '课程学术': ['课程', '讲座', '学术', '研讨', '学院'],
-    '校园活动': ['活动', '社团', '志愿', '比赛', '校园'],
-    '失物招领': ['失物', '招领', '后勤'],
-    '实习招聘': ['实习', '招聘', '就业', '岗位'],
-  };
+  /// 过滤芯片：前几项为业务类型，后三项为快捷视图。
+  static const _chipDefs = <(String, String)>[
+    ('全部', 'ALL'),
+    ('通知', 'NOTICE'),
+    ('课程', 'COURSE'),
+    ('考试', 'EXAM'),
+    ('作业', 'HOMEWORK'),
+    ('活动', 'ACTIVITY'),
+    ('讲座', 'LECTURE'),
+    ('竞赛', 'COMPETITION'),
+    ('服务', 'SERVICE'),
+    ('仅未读', 'UNREAD'),
+    ('即将截止', 'DUE_SOON'),
+    ('与我相关', 'RELEVANT'),
+  ];
+
+  bool _isDueSoon(InformationItem item) {
+    final dueRaw = item.aiCard['dueAt'] ?? item.aiCard['deadline'];
+    if (dueRaw is! String || dueRaw.isEmpty) return false;
+    final due = DateTime.tryParse(dueRaw);
+    if (due == null) return false;
+    final now = DateTime.now();
+    return !due.isBefore(now) && due.difference(now).inDays <= 3;
+  }
 
   List<InformationItem> get _filteredItems {
-    if (_activeChip == 0) return widget.items;
-    final keywords = _chipKeywords[_chipLabels[_activeChip]] ?? const [];
-    return widget.items.where((item) {
-      final text = '${item.sourceName} ${item.title}';
-      return keywords.any((k) => text.contains(k));
-    }).toList();
+    final key = _chipDefs[_activeChip].$2;
+    final List<InformationItem> filtered;
+    switch (key) {
+      case 'ALL':
+        filtered = List<InformationItem>.from(widget.items);
+        break;
+      case 'UNREAD':
+        filtered =
+            widget.items.where((item) => item.readStatus == 'NEW').toList();
+        break;
+      case 'DUE_SOON':
+        filtered = widget.items.where(_isDueSoon).toList();
+        break;
+      case 'RELEVANT':
+        filtered = widget.items
+            .where((item) =>
+                item.recommendReasons.isNotEmpty ||
+                item.readStatus == 'FAVORITED')
+            .toList();
+        break;
+      default:
+        filtered = widget.items
+            .where((item) => item.eventType.toUpperCase() == key)
+            .toList();
+    }
+    return _sortedItems(filtered);
+  }
+
+  List<(String, int)> get _chipStats {
+    return List.generate(_chipDefs.length, (index) {
+      final key = _chipDefs[index].$2;
+      final count = switch (key) {
+        'ALL' => widget.items.length,
+        'UNREAD' =>
+          widget.items.where((item) => item.readStatus == 'NEW').length,
+        'DUE_SOON' => widget.items.where(_isDueSoon).length,
+        'RELEVANT' => widget.items
+            .where((item) =>
+                item.recommendReasons.isNotEmpty ||
+                item.readStatus == 'FAVORITED')
+            .length,
+        _ => widget.items
+            .where((item) => item.eventType.toUpperCase() == key)
+            .length,
+      };
+      return (_chipDefs[index].$1, count);
+    });
+  }
+
+  List<InformationItem> _sortedItems(List<InformationItem> items) {
+    final sorted = List<InformationItem>.from(items);
+    switch (_sortMode) {
+      case 'newest':
+        // 最新发布：严格按发布时间倒序；无发布时间时退回抓取时间
+        sorted.sort((a, b) {
+          final byRelease = _timestamp(b).compareTo(_timestamp(a));
+          if (byRelease != 0) return byRelease;
+          final byFetched =
+              b.fetchedAt.millisecondsSinceEpoch
+                  .compareTo(a.fetchedAt.millisecondsSinceEpoch);
+          if (byFetched != 0) return byFetched;
+          return b.id.compareTo(a.id);
+        });
+        break;
+      case 'hot':
+        sorted.sort((a, b) {
+          final byScore = _hotScore(b).compareTo(_hotScore(a));
+          if (byScore != 0) return byScore;
+          final byRelease = _timestamp(b).compareTo(_timestamp(a));
+          if (byRelease != 0) return byRelease;
+          return b.id.compareTo(a.id);
+        });
+        break;
+      case 'smart':
+      default:
+        // 保留服务端推荐顺序（订阅优先 + 抓取时间）
+        break;
+    }
+    return sorted;
+  }
+
+  /// 与卡片展示时间一致：优先 publishTime，否则 fetchedAt。
+  int _timestamp(InformationItem item) =>
+      (item.publishTime ?? item.fetchedAt).millisecondsSinceEpoch;
+
+  int _hotScore(InformationItem item) {
+    var score = 0;
+    if (item.readStatus == 'NEW') score += 3;
+    if (item.readStatus == 'FAVORITED') score += 2;
+    score += item.recommendReasons.length;
+    if (item.hasValidAiSummary) score += 1;
+    return score;
   }
 
   @override
@@ -83,17 +189,149 @@ class _PrototypeHomePageState extends State<PrototypeHomePage> {
 
   Future<void> _loadReminderCount() async {
     try {
-      final reminders = await widget.api.fetchReminders(widget.session);
+      final results = await Future.wait([
+        widget.api.fetchReminders(widget.session),
+        widget.api.fetchNotificationDeliveries(widget.session),
+      ]);
       if (!mounted) return;
+      final reminders = results[0] as List<ReminderItem>;
+      final deliveries = results[1] as List<NotificationDelivery>;
       final pending =
           reminders.where((r) => !r.isDismissed && !r.isExpired).length;
-      setState(() => _reminderCount = pending);
+      final unread = deliveries.where((d) => d.isUnreadInApp).length;
+      final recent = List<NotificationDelivery>.from(deliveries)
+        ..sort((a, b) => b.id.compareTo(a.id));
+      setState(() {
+        _reminderCount = pending;
+        _unreadDeliveryCount = unread;
+        _recentDeliveries = recent.take(8).toList();
+      });
     } catch (_) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('提醒数量暂时无法同步')),
       );
     }
+  }
+
+  void _openInbox() {
+    final renderBox = _bellKey.currentContext?.findRenderObject() as RenderBox?;
+    if (renderBox == null) return;
+    final bellPos = renderBox.localToGlobal(Offset.zero);
+    final bellSize = renderBox.size;
+    final screenWidth = MediaQuery.of(context).size.width;
+
+    _bellOverlay = OverlayEntry(
+      builder: (ctx) => Stack(
+        children: [
+          // tap outside to dismiss
+          Positioned.fill(
+            child: GestureDetector(
+              onTap: _closeBellPopup,
+              behavior: HitTestBehavior.translucent,
+              child: Container(color: Colors.black.withValues(alpha: 0.18)),
+            ),
+          ),
+          // popup card
+          Positioned(
+            right: 20,
+            top: bellPos.dy + bellSize.height + 6,
+            width: screenWidth - 40,
+            child: Material(
+              elevation: 12,
+              borderRadius: BorderRadius.circular(16),
+              color: AppTheme.surface,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        const Text('站内通知',
+                            style: TextStyle(
+                                fontSize: 15,
+                                fontWeight: FontWeight.w800,
+                                color: AppTheme.ink)),
+                        const Spacer(),
+                        TextButton(
+                          onPressed: () {
+                            _closeBellPopup();
+                            Navigator.of(context)
+                                .push(
+                                  MaterialPageRoute(
+                                    builder: (_) => RemindersPage(
+                                        api: widget.api,
+                                        session: widget.session),
+                                  ),
+                                )
+                                .then((_) => _loadReminderCount());
+                          },
+                          style: TextButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 10, vertical: 4),
+                              minimumSize: Size.zero),
+                          child: const Text('查看全部',
+                              style: TextStyle(fontSize: 12)),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    if (_recentDeliveries.isEmpty)
+                      const Padding(
+                        padding: EdgeInsets.symmetric(vertical: 18),
+                        child: Center(
+                          child: Text('暂无站内投递记录',
+                              style:
+                                  TextStyle(color: AppTheme.muted, fontSize: 13)),
+                        ),
+                      )
+                    else
+                      ConstrainedBox(
+                        constraints: BoxConstraints(
+                          maxHeight: MediaQuery.of(ctx).size.height * 0.42,
+                        ),
+                        child: SingleChildScrollView(
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: _recentDeliveries
+                                .map((delivery) => _BellDeliveryTile(
+                                      delivery: delivery,
+                                      onTap: () {
+                                        _closeBellPopup();
+                                        Navigator.of(context)
+                                            .push(
+                                              MaterialPageRoute(
+                                                builder: (_) => RemindersPage(
+                                                    api: widget.api,
+                                                    session: widget.session,
+                                                    initialReminderId:
+                                                        delivery.reminderId),
+                                              ),
+                                            )
+                                            .then(
+                                                (_) => _loadReminderCount());
+                                      },
+                                    ))
+                                .toList(),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+    Overlay.of(context).insert(_bellOverlay!);
+  }
+
+  void _closeBellPopup() {
+    _bellOverlay?.remove();
+    _bellOverlay = null;
   }
 
   Future<void> _toggleFavorite(InformationItem item) async {
@@ -134,7 +372,12 @@ class _PrototypeHomePageState extends State<PrototypeHomePage> {
       padding: const EdgeInsets.fromLTRB(20, 6, 20, 22),
       children: [
         // Header
-        _AppHeader(userName: widget.userName),
+        _AppHeader(
+          bellKey: _bellKey,
+          userName: widget.userName,
+          inboxCount: _unreadDeliveryCount,
+          onOpenInbox: _openInbox,
+        ),
         const SizedBox(height: 18),
         // AI Hero
         _AiHeroPanel(
@@ -156,9 +399,9 @@ class _PrototypeHomePageState extends State<PrototypeHomePage> {
           },
         ),
         const SizedBox(height: 18),
-        // Chips
+        // Chips with real counts
         _CategoryChips(
-          labels: _chipLabels,
+          chips: _chipStats,
           selectedIndex: _activeChip,
           onChanged: (i) => setState(() => _activeChip = i),
         ),
@@ -172,7 +415,12 @@ class _PrototypeHomePageState extends State<PrototypeHomePage> {
         const SizedBox(height: 12),
         // Feed cards
         if (items.isEmpty)
-          const _EmptyFeed()
+          _EmptyFeed(
+            title: _chipDefs[_activeChip].$2 == 'ALL' ? '暂无信息' : '当前筛选下暂无内容',
+            subtitle: _chipDefs[_activeChip].$2 == 'ALL'
+                ? '去订阅数据源或导入校园通知后会显示在这里'
+                : '试试切换类型，或查看“全部”',
+          )
         else
           ...items.map(
             (item) => Padding(
@@ -257,8 +505,16 @@ class _PrototypeHomePageState extends State<PrototypeHomePage> {
 }
 
 class _AppHeader extends StatelessWidget {
-  const _AppHeader({required this.userName});
+  const _AppHeader({
+    required this.bellKey,
+    required this.userName,
+    required this.inboxCount,
+    required this.onOpenInbox,
+  });
+  final GlobalKey bellKey;
   final String userName;
+  final int inboxCount;
+  final VoidCallback onOpenInbox;
 
   @override
   Widget build(BuildContext context) {
@@ -288,28 +544,75 @@ class _AppHeader extends StatelessWidget {
                     letterSpacing: -0.2)),
           ],
         ),
-        Container(
-          width: 42,
-          height: 42,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(14),
-            gradient: AppTheme.brandGradient,
-            boxShadow: [
-              BoxShadow(
-                  color: AppTheme.brand.withValues(alpha: 0.35),
-                  blurRadius: 16,
-                  offset: const Offset(0, 6))
-            ],
-          ),
-          child: Center(
-            child: Text(
-              userName.isNotEmpty ? userName[0] : '我',
-              style: const TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w700,
-                  fontSize: 15),
+        Row(
+          children: [
+            GestureDetector(
+              onTap: onOpenInbox,
+              child: Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  Container(
+                    key: bellKey,
+                    width: 42,
+                    height: 42,
+                    decoration: BoxDecoration(
+                      color: AppTheme.surface,
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: AppTheme.line),
+                    ),
+                    child: const Icon(Icons.notifications_none,
+                        color: AppTheme.ink2, size: 20),
+                  ),
+                  if (inboxCount > 0)
+                    Positioned(
+                      right: -2,
+                      top: -2,
+                      child: Container(
+                        constraints: const BoxConstraints(minWidth: 16),
+                        height: 16,
+                        padding: const EdgeInsets.symmetric(horizontal: 4),
+                        decoration: BoxDecoration(
+                          color: AppTheme.rose,
+                          borderRadius: BorderRadius.circular(999),
+                        ),
+                        alignment: Alignment.center,
+                        child: Text(
+                          inboxCount > 99 ? '99+' : '$inboxCount',
+                          style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 10,
+                              fontWeight: FontWeight.w800),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
             ),
-          ),
+            const SizedBox(width: 10),
+            Container(
+              width: 42,
+              height: 42,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(14),
+                gradient: AppTheme.brandGradient,
+                boxShadow: [
+                  BoxShadow(
+                      color: AppTheme.brand.withValues(alpha: 0.35),
+                      blurRadius: 16,
+                      offset: const Offset(0, 6))
+                ],
+              ),
+              child: Center(
+                child: Text(
+                  userName.isNotEmpty ? userName[0] : '我',
+                  style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w700,
+                      fontSize: 15),
+                ),
+              ),
+            ),
+          ],
         ),
       ],
     );
@@ -468,11 +771,11 @@ class _StatItem extends StatelessWidget {
 
 class _CategoryChips extends StatelessWidget {
   const _CategoryChips({
-    required this.labels,
+    required this.chips,
     required this.selectedIndex,
     required this.onChanged,
   });
-  final List<String> labels;
+  final List<(String, int)> chips;
   final int selectedIndex;
   final ValueChanged<int> onChanged;
 
@@ -481,30 +784,67 @@ class _CategoryChips extends StatelessWidget {
     return SizedBox(
       height: 38,
       child: ListView.separated(
+        primary: false,
         scrollDirection: Axis.horizontal,
-        itemCount: labels.length,
+        physics: const BouncingScrollPhysics(
+          parent: AlwaysScrollableScrollPhysics(),
+        ),
+        itemCount: chips.length,
         separatorBuilder: (_, __) => const SizedBox(width: 9),
-        itemBuilder: (context, i) => GestureDetector(
-          onTap: () => onChanged(i),
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14),
-            decoration: BoxDecoration(
-              color: selectedIndex == i ? AppTheme.ink : AppTheme.surface,
+        itemBuilder: (context, i) {
+          final label = chips[i].$1;
+          final count = chips[i].$2;
+          final active = selectedIndex == i;
+          return Material(
+            color: Colors.transparent,
+            child: InkWell(
               borderRadius: BorderRadius.circular(999),
-              border: Border.all(
-                  color: selectedIndex == i ? AppTheme.ink : AppTheme.line),
-            ),
-            alignment: Alignment.center,
-            child: Text(
-              labels[i],
-              style: TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-                color: selectedIndex == i ? Colors.white : AppTheme.ink2,
+              onTap: () => onChanged(i),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                decoration: BoxDecoration(
+                  color: active ? AppTheme.ink : AppTheme.surface,
+                  borderRadius: BorderRadius.circular(999),
+                  border:
+                      Border.all(color: active ? AppTheme.ink : AppTheme.line),
+                ),
+                alignment: Alignment.center,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      label,
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: active ? Colors.white : AppTheme.ink2,
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 6, vertical: 1),
+                      decoration: BoxDecoration(
+                        color: active
+                            ? Colors.white.withValues(alpha: 0.18)
+                            : AppTheme.surface2,
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                      child: Text(
+                        '$count',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          color: active ? Colors.white : AppTheme.muted,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
-          ),
-        ),
+          );
+        },
       ),
     );
   }
@@ -747,24 +1087,115 @@ class _ImportanceBadge extends StatelessWidget {
 }
 
 class _EmptyFeed extends StatelessWidget {
-  const _EmptyFeed();
+  const _EmptyFeed({
+    this.title = '暂无新信息',
+    this.subtitle = '订阅数据源或导入校园通知后会显示在这里',
+  });
+  final String title;
+  final String subtitle;
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(40),
+      width: double.infinity,
+      padding: const EdgeInsets.all(36),
       decoration: BoxDecoration(
           color: AppTheme.surface,
           borderRadius: BorderRadius.circular(AppTheme.radiusSm),
           border: Border.all(color: AppTheme.line)),
-      child: const Column(children: [
-        Icon(Icons.inbox_outlined, size: 40, color: AppTheme.muted),
-        SizedBox(height: 12),
-        Text('暂无新信息',
-            style: TextStyle(
+      child: Column(children: [
+        const Icon(Icons.inbox_outlined, size: 40, color: AppTheme.muted),
+        const SizedBox(height: 12),
+        Text(title,
+            style: const TextStyle(
                 fontSize: 14,
-                fontWeight: FontWeight.w600,
-                color: AppTheme.muted)),
+                fontWeight: FontWeight.w700,
+                color: AppTheme.ink2)),
+        const SizedBox(height: 6),
+        Text(subtitle,
+            textAlign: TextAlign.center,
+            style: const TextStyle(fontSize: 12.5, color: AppTheme.muted)),
       ]),
+    );
+  }
+}
+
+class _BellDeliveryTile extends StatelessWidget {
+  const _BellDeliveryTile({required this.delivery, required this.onTap});
+  final NotificationDelivery delivery;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final isFailed = delivery.status == 'FAILED';
+    final isWithdrawn = delivery.status == 'WITHDRAWN';
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 5),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              width: 30,
+              height: 30,
+              decoration: BoxDecoration(
+                color: isFailed
+                    ? AppTheme.roseSoft
+                    : isWithdrawn
+                        ? AppTheme.surface2
+                        : AppTheme.brandSoft,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Icon(
+                isFailed
+                    ? Icons.error_outline
+                    : isWithdrawn
+                        ? Icons.undo
+                        : Icons.notifications_active_outlined,
+                color: isFailed
+                    ? AppTheme.rose
+                    : isWithdrawn
+                        ? AppTheme.muted
+                        : AppTheme.brandInk,
+                size: 15,
+              ),
+            ),
+            const SizedBox(width: 9),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '提醒 #${delivery.reminderId} · ${delivery.statusLabel}',
+                    style: const TextStyle(
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w700,
+                        color: AppTheme.ink),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    [
+                      delivery.channel,
+                      if (delivery.sentAt != null)
+                        delivery.sentAt!.toLocal().toString().substring(0, 16),
+                      if (delivery.lastError != null &&
+                          delivery.lastError!.isNotEmpty)
+                        delivery.lastError!,
+                    ].join(' · '),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                        fontSize: 11.5, color: AppTheme.muted),
+                  ),
+                ],
+              ),
+            ),
+            const Icon(Icons.chevron_right,
+                color: AppTheme.muted, size: 16),
+          ],
+        ),
+      ),
     );
   }
 }

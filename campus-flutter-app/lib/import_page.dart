@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 
 import 'app_theme.dart';
 import 'information_api.dart';
+import 'import_preview_page.dart';
 import 'my_imported_events_page.dart';
 
 class ImportPage extends StatefulWidget {
@@ -67,7 +68,7 @@ class _ImportPageState extends State<ImportPage>
       };
       if (!mounted) return;
       setState(() => _lastResult = result);
-      _showResultSnackBar(result);
+      _openPreview(result);
     } catch (e) {
       if (!mounted) return;
       if (e is SessionExpiredException) {
@@ -104,13 +105,26 @@ class _ImportPageState extends State<ImportPage>
     return widget.api.importRainJson(_rainDataType, json, widget.session);
   }
 
-  void _showResultSnackBar(ImportResult result) {
-    final isSuccess = result.status == 'SUCCESS';
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(result.message),
-        backgroundColor: isSuccess ? AppTheme.brand : AppTheme.accent,
-        duration: const Duration(seconds: 3),
+  void _openPreview(ImportResult result) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => ImportPreviewPage(
+          result: result,
+          api: widget.api,
+          session: widget.session,
+          onConfirmed: (itemId) {
+            // 导入成功并确认后，返回时清空表单
+            if (mounted) {
+              _textCtrl.clear();
+              _rainJsonCtrl.clear();
+              setState(() {
+                _pickedFilePath = null;
+                _lastResult = null;
+              });
+            }
+          },
+          onRetry: () => _submit(),
+        ),
       ),
     );
   }

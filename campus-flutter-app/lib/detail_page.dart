@@ -131,7 +131,7 @@ class _PrototypeDetailPageState extends State<PrototypeDetailPage> {
       if (!mounted) return;
       setState(() => _confirmedActions.add(title));
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('已加入我的行动；有明确截止时间时会创建站内提醒')),
+        const SnackBar(content: Text('已加入我的待办；有明确截止时间时会创建站内提醒')),
       );
     } catch (_) {
       if (!mounted) return;

@@ -92,9 +92,9 @@ void main() {
     expect(find.byIcon(Icons.check_circle), findsOneWidget);
   });
 
-  testWidgets('discover page reports trending failures without demo content',
+  testWidgets('discover page reports action failures without demo content',
       (tester) async {
-    final api = _FailingTrendingApi(_item());
+    final api = _FailingActionsApi(_item());
     await tester.pumpWidget(MaterialApp(
       home: Scaffold(
         body: PrototypeDiscoverPage(api: api, session: _session()),
@@ -102,7 +102,7 @@ void main() {
     ));
     await tester.pumpAndSettle();
 
-    expect(find.text('热门内容加载失败，请稍后重试'), findsOneWidget);
+    expect(find.textContaining('待办加载失败'), findsOneWidget);
     expect(find.text('选课系统维护通知'), findsNothing);
   });
 }
@@ -227,10 +227,10 @@ class _FakeCampusApi extends CampusApi {
       throw UnimplementedError();
 }
 
-class _FailingTrendingApi extends _FakeCampusApi {
-  _FailingTrendingApi(super.item);
+class _FailingActionsApi extends _FakeCampusApi {
+  _FailingActionsApi(super.item);
 
   @override
-  Future<List<TrendingItem>> fetchTrending(LoginSession session) =>
+  Future<List<ActionItem>> fetchActions(LoginSession session) =>
       Future.error(Exception('network unavailable'));
 }

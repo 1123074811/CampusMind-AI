@@ -3,9 +3,10 @@ import 'app_theme.dart';
 import 'information_api.dart';
 
 class RemindersPage extends StatefulWidget {
-  const RemindersPage({super.key, required this.api, required this.session});
+  const RemindersPage({super.key, required this.api, required this.session, this.initialReminderId});
   final CampusApi api;
   final LoginSession session;
+  final int? initialReminderId;
 
   @override
   State<RemindersPage> createState() => _RemindersPageState();
@@ -13,8 +14,11 @@ class RemindersPage extends StatefulWidget {
 
 class _RemindersPageState extends State<RemindersPage> {
   List<ReminderItem> _items = [];
+  Map<int, List<NotificationDelivery>> _deliveriesByReminder = {};
   bool _loading = true;
   String? _error;
+  final _scrollCtrl = ScrollController();
+  final _itemKeys = <int, GlobalKey>{};
 
   @override
   void initState() {
@@ -22,31 +26,100 @@ class _RemindersPageState extends State<RemindersPage> {
     _load();
   }
 
+  @override
+  void dispose() {
+    _scrollCtrl.dispose();
+    super.dispose();
+  }
+
   Future<void> _load() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
     try {
-      final items = await widget.api.fetchReminders(widget.session);
+      final results = await Future.wait([
+        widget.api.fetchReminders(widget.session),
+        widget.api.fetchNotificationDeliveries(widget.session),
+      ]);
       if (!mounted) return;
-      setState(() { _items = items; _loading = false; });
+      final reminders = results[0] as List<ReminderItem>;
+      final deliveries = results[1] as List<NotificationDelivery>;
+      final grouped = <int, List<NotificationDelivery>>{};
+      for (final delivery in deliveries) {
+        grouped.putIfAbsent(delivery.reminderId, () => []).add(delivery);
+      }
+      setState(() {
+        _items = reminders;
+        _deliveriesByReminder = grouped;
+        _loading = false;
+      });
+      _scrollToInitialReminder();
     } catch (e) {
       if (!mounted) return;
-      setState(() { _error = '$e'; _loading = false; });
+      setState(() {
+        _error = '$e';
+        _loading = false;
+      });
     }
+  }
+
+  void _scrollToInitialReminder() {
+    final targetId = widget.initialReminderId;
+    if (targetId == null) return;
+    final key = _itemKeys[targetId];
+    if (key == null || key.currentContext == null) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || key.currentContext == null) return;
+      Scrollable.ensureVisible(
+        key.currentContext!,
+        alignment: 0.15,
+        duration: const Duration(milliseconds: 350),
+        curve: Curves.easeOutCubic,
+      );
+    });
   }
 
   Future<void> _dismiss(ReminderItem item) async {
     try {
       await widget.api.dismissReminder(item.id, widget.session);
+      try {
+        await widget.api.withdrawReminder(item.id, widget.session);
+      } catch (_) {
+        // 撤回投递失败不阻断本地消除
+      }
       if (!mounted) return;
       setState(() {
         final idx = _items.indexWhere((r) => r.id == item.id);
         if (idx >= 0) {
           _items[idx] = ReminderItem(
-            id: item.id, actionItemId: item.actionItemId,
+            id: item.id,
+            actionItemId: item.actionItemId,
             informationItemId: item.informationItemId,
-            actionTitle: item.actionTitle, sourceTitle: item.sourceTitle,
-            originalUrl: item.originalUrl, remindAt: item.remindAt,
-            dueAt: item.dueAt, status: 'DISMISSED', sentAt: item.sentAt,
+            actionTitle: item.actionTitle,
+            sourceTitle: item.sourceTitle,
+            originalUrl: item.originalUrl,
+            remindAt: item.remindAt,
+            dueAt: item.dueAt,
+            status: 'DISMISSED',
+            sentAt: item.sentAt,
           );
+        }
+        final deliveries = _deliveriesByReminder[item.id];
+        if (deliveries != null) {
+          _deliveriesByReminder[item.id] = deliveries
+              .map((d) => NotificationDelivery(
+                    id: d.id,
+                    reminderId: d.reminderId,
+                    channel: d.channel,
+                    status: 'WITHDRAWN',
+                    attemptCount: d.attemptCount,
+                    lastError: d.lastError,
+                    sentAt: d.sentAt,
+                    withdrawnAt: DateTime.now(),
+                    createdAt: d.createdAt,
+                  ))
+              .toList();
         }
       });
     } catch (_) {
@@ -74,33 +147,53 @@ class _RemindersPageState extends State<RemindersPage> {
                 children: [
                   GestureDetector(
                     onTap: () => Navigator.of(context).pop(),
-                    child: const Icon(Icons.arrow_back_ios_new, size: 18, color: AppTheme.ink2),
+                    child: const Icon(Icons.arrow_back_ios_new,
+                        size: 18, color: AppTheme.ink2),
                   ),
                   const SizedBox(width: 10),
-                  const Text('消息提醒', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: AppTheme.ink)),
+                  const Text('消息提醒',
+                      style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w800,
+                          color: AppTheme.ink)),
                   const Spacer(),
                   GestureDetector(
-                    onTap: () { setState(() => _loading = true); _load(); },
-                    child: const Icon(Icons.refresh, size: 18, color: AppTheme.muted),
+                    onTap: _load,
+                    child: const Icon(Icons.refresh,
+                        size: 18, color: AppTheme.muted),
                   ),
                 ],
               ),
             ),
             Expanded(
               child: _loading
-                  ? const Center(child: CircularProgressIndicator(color: AppTheme.brand))
+                  ? const Center(
+                      child: CircularProgressIndicator(color: AppTheme.brand))
                   : _error != null
-                      ? Center(child: Text('加载失败：$_error', style: const TextStyle(color: AppTheme.rose)))
+                      ? Center(
+                          child: Text('加载失败：$_error',
+                              style: const TextStyle(color: AppTheme.rose)))
                       : _items.isEmpty
                           ? const _EmptyState()
                           : ListView.separated(
                               padding: const EdgeInsets.all(16),
                               itemCount: _items.length,
-                              separatorBuilder: (_, __) => const SizedBox(height: 10),
-                              itemBuilder: (ctx, i) => _ReminderCard(
-                                item: _items[i],
-                                onDismiss: () => _dismiss(_items[i]),
-                              ),
+                              separatorBuilder: (_, __) =>
+                                  const SizedBox(height: 10),
+                              itemBuilder: (ctx, i) {
+                                final item = _items[i];
+                                _itemKeys.putIfAbsent(item.id, () => GlobalKey());
+                                return KeyedSubtree(
+                                  key: _itemKeys[item.id],
+                                  child: _ReminderCard(
+                                    item: item,
+                                    deliveries:
+                                        _deliveriesByReminder[item.id] ??
+                                            const [],
+                                    onDismiss: () => _dismiss(item),
+                                  ),
+                                );
+                              },
                             ),
             ),
           ],
@@ -118,11 +211,17 @@ class _EmptyState extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(Icons.notifications_none, size: 48, color: AppTheme.muted.withValues(alpha: 0.5)),
+          Icon(Icons.notifications_none,
+              size: 48, color: AppTheme.muted.withValues(alpha: 0.5)),
           const SizedBox(height: 12),
-          const Text('暂无提醒', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: AppTheme.muted)),
+          const Text('暂无提醒',
+              style: TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w700,
+                  color: AppTheme.muted)),
           const SizedBox(height: 6),
-          Text('确认行动后，系统会在截止前自动提醒你', style: TextStyle(fontSize: 12, color: AppTheme.muted)),
+          const Text('确认行动后，系统会在截止前自动提醒你',
+              style: TextStyle(fontSize: 12, color: AppTheme.muted)),
         ],
       ),
     );
@@ -130,8 +229,13 @@ class _EmptyState extends StatelessWidget {
 }
 
 class _ReminderCard extends StatelessWidget {
-  const _ReminderCard({required this.item, required this.onDismiss});
+  const _ReminderCard({
+    required this.item,
+    required this.deliveries,
+    required this.onDismiss,
+  });
   final ReminderItem item;
+  final List<NotificationDelivery> deliveries;
   final VoidCallback onDismiss;
 
   @override
@@ -139,6 +243,11 @@ class _ReminderCard extends StatelessWidget {
     final dismissed = item.isDismissed;
     final due = item.isDue;
     final expired = item.isExpired;
+    final latest = deliveries.isEmpty
+        ? null
+        : (List<NotificationDelivery>.from(deliveries)
+              ..sort((a, b) => b.id.compareTo(a.id)))
+            .first;
 
     return Dismissible(
       key: ValueKey(item.id),
@@ -150,7 +259,11 @@ class _ReminderCard extends StatelessWidget {
           color: AppTheme.roseSoft,
           borderRadius: BorderRadius.circular(AppTheme.radiusSm),
         ),
-        child: const Text('已消除', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFFBE123C))),
+        child: const Text('已消除',
+            style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                color: Color(0xFFBE123C))),
       ),
       onDismissed: (_) => onDismiss(),
       child: Container(
@@ -158,19 +271,33 @@ class _ReminderCard extends StatelessWidget {
         decoration: BoxDecoration(
           color: dismissed ? AppTheme.surface2 : AppTheme.surface,
           borderRadius: BorderRadius.circular(AppTheme.radiusSm),
-          border: Border.all(color: due && !dismissed ? const Color(0xFFBE123C) : AppTheme.line),
+          border: Border.all(
+              color: due && !dismissed
+                  ? const Color(0xFFBE123C)
+                  : AppTheme.line),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
               children: [
-                _StatusBadge(dismissed: dismissed, due: due, expired: expired),
+                _StatusBadge(
+                    dismissed: dismissed, due: due, expired: expired),
                 const SizedBox(width: 8),
+                if (latest != null) ...[
+                  _DeliveryBadge(delivery: latest),
+                  const SizedBox(width: 8),
+                ],
                 if (item.sourceTitle != null)
                   Expanded(
-                    child: Text(item.sourceTitle!, maxLines: 1, overflow: TextOverflow.ellipsis,
-                        style: TextStyle(fontSize: 11.5, color: dismissed ? AppTheme.muted : AppTheme.ink2)),
+                    child: Text(item.sourceTitle!,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                            fontSize: 11.5,
+                            color: dismissed
+                                ? AppTheme.muted
+                                : AppTheme.ink2)),
                   ),
               ],
             ),
@@ -178,18 +305,27 @@ class _ReminderCard extends StatelessWidget {
             Text(
               item.actionTitle,
               style: TextStyle(
-                fontSize: 14, fontWeight: FontWeight.w700,
-                color: dismissed ? AppTheme.muted : AppTheme.ink, height: 1.4,
+                fontSize: 14,
+                fontWeight: FontWeight.w700,
+                color: dismissed ? AppTheme.muted : AppTheme.ink,
+                height: 1.4,
               ),
             ),
             if (item.remindAt != null) ...[
               const SizedBox(height: 6),
               Row(
                 children: [
-                  Icon(Icons.notifications_active, size: 13, color: dismissed ? AppTheme.muted : AppTheme.brandInk),
+                  Icon(Icons.notifications_active,
+                      size: 13,
+                      color:
+                          dismissed ? AppTheme.muted : AppTheme.brandInk),
                   const SizedBox(width: 4),
                   Text('提醒时间：${_formatDateTime(item.remindAt!)}',
-                      style: TextStyle(fontSize: 12, color: dismissed ? AppTheme.muted : AppTheme.ink2)),
+                      style: TextStyle(
+                          fontSize: 12,
+                          color: dismissed
+                              ? AppTheme.muted
+                              : AppTheme.ink2)),
                 ],
               ),
             ],
@@ -197,12 +333,37 @@ class _ReminderCard extends StatelessWidget {
               const SizedBox(height: 3),
               Row(
                 children: [
-                  Icon(Icons.access_time, size: 13, color: dismissed ? AppTheme.muted : const Color(0xFFBE123C)),
+                  Icon(Icons.access_time,
+                      size: 13,
+                      color: dismissed
+                          ? AppTheme.muted
+                          : const Color(0xFFBE123C)),
                   const SizedBox(width: 4),
                   Text('截止：${_formatDateTime(item.dueAt!)}',
-                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600,
-                          color: dismissed ? AppTheme.muted : const Color(0xFFBE123C))),
+                      style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: dismissed
+                              ? AppTheme.muted
+                              : const Color(0xFFBE123C))),
                 ],
+              ),
+            ],
+            if (latest?.lastError != null &&
+                latest!.lastError!.isNotEmpty) ...[
+              const SizedBox(height: 6),
+              Text('投递说明：${latest.lastError}',
+                  style: const TextStyle(
+                      fontSize: 11.5, color: AppTheme.muted)),
+            ],
+            if (deliveries.length > 1) ...[
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                children: deliveries
+                    .map((d) => _DeliveryBadge(delivery: d, compact: true))
+                    .toList(),
               ),
             ],
             if (!dismissed) ...[
@@ -210,12 +371,17 @@ class _ReminderCard extends StatelessWidget {
               GestureDetector(
                 onTap: onDismiss,
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                   decoration: BoxDecoration(
                     border: Border.all(color: AppTheme.line),
                     borderRadius: BorderRadius.circular(8),
                   ),
-                  child: const Text('忽略此提醒', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppTheme.ink2)),
+                  child: const Text('忽略此提醒',
+                      style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: AppTheme.ink2)),
                 ),
               ),
             ],
@@ -231,8 +397,43 @@ class _ReminderCard extends StatelessWidget {
   }
 }
 
+class _DeliveryBadge extends StatelessWidget {
+  const _DeliveryBadge({required this.delivery, this.compact = false});
+  final NotificationDelivery delivery;
+  final bool compact;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = switch (delivery.status) {
+      'SENT' => AppTheme.brandInk,
+      'FAILED' => const Color(0xFFBE123C),
+      'WITHDRAWN' => AppTheme.muted,
+      'RETRY' || 'PENDING' || 'SENDING' => const Color(0xFFB45309),
+      _ => AppTheme.ink2,
+    };
+    final bg = switch (delivery.status) {
+      'SENT' => AppTheme.brandSoft,
+      'FAILED' => AppTheme.roseSoft,
+      'WITHDRAWN' => AppTheme.surface2,
+      _ => AppTheme.accentSoft,
+    };
+    final label = compact
+        ? '${delivery.channel}:${delivery.statusLabel}'
+        : '投递 ${delivery.statusLabel}';
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+      decoration: BoxDecoration(
+          color: bg, borderRadius: BorderRadius.circular(5)),
+      child: Text(label,
+          style: TextStyle(
+              fontSize: 10, fontWeight: FontWeight.w700, color: color)),
+    );
+  }
+}
+
 class _StatusBadge extends StatelessWidget {
-  const _StatusBadge({required this.dismissed, required this.due, required this.expired});
+  const _StatusBadge(
+      {required this.dismissed, required this.due, required this.expired});
   final bool dismissed;
   final bool due;
   final bool expired;
@@ -242,21 +443,36 @@ class _StatusBadge extends StatelessWidget {
     if (dismissed) {
       return Container(
         padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-        decoration: BoxDecoration(color: AppTheme.surface2, borderRadius: BorderRadius.circular(5)),
-        child: const Text('已消除', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: AppTheme.muted)),
+        decoration: BoxDecoration(
+            color: AppTheme.surface2, borderRadius: BorderRadius.circular(5)),
+        child: const Text('已消除',
+            style: TextStyle(
+                fontSize: 10,
+                fontWeight: FontWeight.w700,
+                color: AppTheme.muted)),
       );
     }
     if (due || expired) {
       return Container(
         padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-        decoration: BoxDecoration(color: AppTheme.roseSoft, borderRadius: BorderRadius.circular(5)),
-        child: Text(expired ? '已过期' : '待处理', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: Color(0xFFBE123C))),
+        decoration: BoxDecoration(
+            color: AppTheme.roseSoft, borderRadius: BorderRadius.circular(5)),
+        child: Text(expired ? '已过期' : '待处理',
+            style: const TextStyle(
+                fontSize: 10,
+                fontWeight: FontWeight.w700,
+                color: Color(0xFFBE123C))),
       );
     }
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-      decoration: BoxDecoration(color: AppTheme.brandSoft, borderRadius: BorderRadius.circular(5)),
-      child: const Text('等待中', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: AppTheme.brandInk)),
+      decoration: BoxDecoration(
+          color: AppTheme.brandSoft, borderRadius: BorderRadius.circular(5)),
+      child: const Text('等待中',
+          style: TextStyle(
+              fontSize: 10,
+              fontWeight: FontWeight.w700,
+              color: AppTheme.brandInk)),
     );
   }
 }

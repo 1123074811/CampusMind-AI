@@ -56,6 +56,20 @@ class LoginSession {
           json['user'] as Map<String, Object?>? ?? const {}),
     );
   }
+
+  Map<String, Object?> toJson() => {
+        'accessToken': accessToken,
+        'tokenType': tokenType,
+        'expiresAt': expiresAt.toIso8601String(),
+        'refreshToken': refreshToken,
+        if (refreshExpiresAt != null)
+          'refreshExpiresAt': refreshExpiresAt!.toIso8601String(),
+        'user': {
+          'id': user.id,
+          'username': user.username,
+          'role': user.role,
+        },
+      };
 }
 
 class InformationItem {
@@ -206,17 +220,59 @@ class ImportResult {
     required this.taskId,
     required this.status,
     required this.message,
+    this.parsedTitle,
+    this.parsedTime,
+    this.parsedLocation,
+    this.parsedTags = const [],
+    this.parsedSummary,
+    this.parsedEventType,
+    this.createdItemId,
   });
 
   final int taskId;
   final String status;
   final String message;
+  final String? parsedTitle;
+  final String? parsedTime;
+  final String? parsedLocation;
+  final List<String> parsedTags;
+  final String? parsedSummary;
+  final String? parsedEventType;
+  final int? createdItemId;
+
+  bool get hasParsedData =>
+      parsedTitle != null && parsedTitle!.isNotEmpty;
 
   factory ImportResult.fromJson(Map<String, Object?> json) {
+    final event = json['event'] as Map<String, Object?>? ??
+        json['parsedEvent'] as Map<String, Object?>? ??
+        const {};
+    final tagsRaw = (event['tags'] as List<Object?>? ?? const [])
+        .whereType<String>()
+        .toList();
     return ImportResult(
       taskId: (json['taskId'] as num?)?.toInt() ?? 0,
       status: json['status'] as String? ?? 'UNKNOWN',
       message: json['message'] as String? ?? '',
+      parsedTitle: event['title'] as String? ??
+          json['parsedTitle'] as String?,
+      parsedTime: event['eventTime'] as String? ??
+          event['time'] as String? ??
+          json['parsedTime'] as String?,
+      parsedLocation: event['location'] as String? ??
+          json['parsedLocation'] as String?,
+      parsedTags: tagsRaw.isEmpty
+          ? (json['parsedTags'] as List<Object?>? ?? const [])
+              .whereType<String>()
+              .toList()
+          : tagsRaw,
+      parsedSummary: event['summary'] as String? ??
+          event['aiSummary'] as String? ??
+          json['parsedSummary'] as String?,
+      parsedEventType: event['eventType'] as String? ??
+          json['parsedEventType'] as String?,
+      createdItemId: (json['createdItemId'] as num?)?.toInt() ??
+          (event['id'] as num?)?.toInt(),
     );
   }
 }
@@ -292,6 +348,17 @@ abstract class CampusApi {
   Future<void> resetPassword(String token, String newPassword) =>
       Future.error(UnsupportedError('当前实现不支持重置密码'));
 
+  Future<void> changePassword(
+    String currentPassword,
+    String newPassword,
+    LoginSession session,
+  ) =>
+      Future.error(UnsupportedError('当前实现不支持修改密码'));
+
+  /// 用本地缓存的会话尝试恢复登录；必要时刷新令牌。
+  Future<LoginSession?> restoreSession(LoginSession session) =>
+      Future.value(session);
+
   Future<void> logout(LoginSession session) => Future.value();
 
   Future<Map<String, Object?>> exportMyData(LoginSession session) =>
@@ -307,6 +374,12 @@ abstract class CampusApi {
       Future.error(UnsupportedError('当前实现不支持隐私授权'));
 
   Future<void> registerDevice(String deviceId, String platform, String? pushToken, LoginSession session) => Future.value();
+
+  Future<List<NotificationDelivery>> fetchNotificationDeliveries(LoginSession session) =>
+      Future.value(const []);
+
+  Future<void> withdrawReminder(int reminderId, LoginSession session) =>
+      Future.error(UnsupportedError('当前实现不支持撤回提醒'));
 
   Future<List<InformationItem>> fetchInformationFeed(LoginSession? session);
 
@@ -342,6 +415,18 @@ abstract class CampusApi {
 
   /// 查询导入任务列表
   Future<List<ImportTaskItem>> fetchImportTasks(LoginSession session);
+
+  /// 确认导入预览结果并提交
+  Future<void> confirmImportPreview({
+    required int taskId,
+    required String title,
+    String time = '',
+    String location = '',
+    String summary = '',
+    List<String> tags = const [],
+    String? eventType,
+    required LoginSession session,
+  });
 
   /// 当前用户可见的雨课堂私有事件
   Future<List<ImportedEventItem>> fetchRainEvents(LoginSession session);
@@ -653,6 +738,74 @@ class ReminderItem {
   }
 }
 
+/// 通知投递记录（站内/推送账本）
+class NotificationDelivery {
+  const NotificationDelivery({
+    required this.id,
+    required this.reminderId,
+    required this.channel,
+    required this.status,
+    this.attemptCount = 0,
+    this.lastError,
+    this.sentAt,
+    this.withdrawnAt,
+    this.createdAt,
+  });
+
+  final int id;
+  final int reminderId;
+  final String channel;
+  final String status;
+  final int attemptCount;
+  final String? lastError;
+  final DateTime? sentAt;
+  final DateTime? withdrawnAt;
+  final DateTime? createdAt;
+
+  bool get isUnreadInApp =>
+      channel.toUpperCase() == 'IN_APP' &&
+      (status == 'SENT' || status == 'PENDING' || status == 'RETRY');
+
+  String get statusLabel {
+    switch (status) {
+      case 'SENT':
+        return '已发送';
+      case 'PENDING':
+        return '待发送';
+      case 'RETRY':
+        return '重试中';
+      case 'SENDING':
+        return '发送中';
+      case 'FAILED':
+        return '失败';
+      case 'WITHDRAWN':
+        return '已撤回';
+      default:
+        return status;
+    }
+  }
+
+  factory NotificationDelivery.fromJson(Map<String, Object?> json) {
+    return NotificationDelivery(
+      id: (json['id'] as num?)?.toInt() ?? 0,
+      reminderId: (json['reminderId'] as num?)?.toInt() ?? 0,
+      channel: json['channel'] as String? ?? 'IN_APP',
+      status: json['status'] as String? ?? 'PENDING',
+      attemptCount: (json['attemptCount'] as num?)?.toInt() ?? 0,
+      lastError: json['lastError'] as String?,
+      sentAt: json['sentAt'] == null
+          ? null
+          : DateTime.tryParse(json['sentAt'] as String),
+      withdrawnAt: json['withdrawnAt'] == null
+          ? null
+          : DateTime.tryParse(json['withdrawnAt'] as String),
+      createdAt: json['createdAt'] == null
+          ? null
+          : DateTime.tryParse(json['createdAt'] as String),
+    );
+  }
+}
+
 /// 订阅项
 class SubscriptionItem {
   const SubscriptionItem({
@@ -754,6 +907,8 @@ class DailyBriefing {
       );
 }
 
-CampusApi createCampusApi() {
+CampusApi createCampusApi({
+  void Function(LoginSession original, LoginSession updated)? onSessionRefreshed,
+}) {
   throw UnsupportedError('当前平台暂不支持网络请求');
 }

@@ -2,12 +2,12 @@ import 'package:flutter/material.dart';
 import 'dart:convert';
 import 'package:share_plus/share_plus.dart';
 import 'app_theme.dart';
+import 'change_password_page.dart';
 import 'information_api.dart';
 import 'my_subscriptions_page.dart';
 import 'my_favorites_page.dart';
 import 'my_read_history_page.dart';
 import 'my_imported_events_page.dart';
-import 'my_actions_page.dart';
 import 'reminders_page.dart';
 import 'data_source_preference_page.dart';
 
@@ -20,7 +20,7 @@ class PrototypeProfilePage extends StatefulWidget {
     required this.session,
   });
   final String userName;
-  final VoidCallback onLogout;
+  final Future<void> Function() onLogout;
   final CampusApi api;
   final LoginSession session;
 
@@ -449,14 +449,6 @@ class _PrototypeProfilePageState extends State<PrototypeProfilePage> {
                 )),
               ),
               _MenuItem(
-                icon: Icons.task_alt,
-                label: '我的行动',
-                onTap: () => Navigator.of(context).push(MaterialPageRoute(
-                  builder: (_) =>
-                      MyActionsPage(api: widget.api, session: widget.session),
-                )),
-              ),
-              _MenuItem(
                 icon: Icons.school_outlined,
                 label: '我的雨课堂导入',
                 onTap: () => Navigator.of(context).push(MaterialPageRoute(
@@ -501,6 +493,10 @@ class _PrototypeProfilePageState extends State<PrototypeProfilePage> {
                 )),
               ),
               _MenuItem(
+                  icon: Icons.lock_outline,
+                  label: '修改密码',
+                  onTap: _changePassword),
+              _MenuItem(
                   icon: Icons.privacy_tip_outlined,
                   label: '隐私与授权',
                   onTap: _showPrivacySettings),
@@ -517,12 +513,28 @@ class _PrototypeProfilePageState extends State<PrototypeProfilePage> {
                   icon: Icons.logout,
                   label: '退出登录',
                   isLogout: true,
-                  onTap: widget.onLogout),
+                  onTap: () {
+                    widget.onLogout();
+                  }),
             ],
           ),
         ),
       ],
     );
+  }
+
+  Future<void> _changePassword() async {
+    final changed = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (_) => ChangePasswordPage(
+          api: widget.api,
+          session: widget.session,
+        ),
+      ),
+    );
+    if (changed == true && mounted) {
+      await widget.onLogout();
+    }
   }
 
   void _openDetail(InformationItem item) {

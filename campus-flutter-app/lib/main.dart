@@ -1,9 +1,11 @@
 import 'dart:async';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart' show defaultTargetPlatform, debugPrint;
 
 import 'information_api.dart';
 import 'app_theme.dart';
+import 'session_store.dart';
 import 'splash_page.dart';
 import 'login_page.dart';
 import 'home_page.dart';
@@ -14,19 +16,49 @@ import 'profile_page.dart';
 import 'import_page.dart';
 
 void main() {
+  WidgetsFlutterBinding.ensureInitialized();
   runApp(const CampusMindApp());
 }
 
-class CampusMindApp extends StatelessWidget {
-  const CampusMindApp({super.key, CampusApi? api}) : _api = api;
+/// 允许鼠标/触控板拖拽横向滚动（Windows 桌面默认仅触控可拖拽）。
+class AppScrollBehavior extends MaterialScrollBehavior {
+  const AppScrollBehavior();
+
+  @override
+  Set<PointerDeviceKind> get dragDevices => {
+        PointerDeviceKind.touch,
+        PointerDeviceKind.mouse,
+        PointerDeviceKind.trackpad,
+        PointerDeviceKind.stylus,
+      };
+}
+
+class CampusMindApp extends StatefulWidget {
+  const CampusMindApp({super.key, CampusApi? api, SessionStore? sessionStore})
+      : _api = api,
+        _sessionStore = sessionStore;
   final CampusApi? _api;
+  final SessionStore? _sessionStore;
+
+  @override
+  State<CampusMindApp> createState() => _CampusMindAppState();
+}
+
+class _CampusMindAppState extends State<CampusMindApp> {
+  late final SessionStore _store = widget._sessionStore ?? SessionStore();
+  late final CampusApi _api = widget._api ??
+      createCampusApi(
+        onSessionRefreshed: (_, updated) {
+          unawaited(_store.save(updated));
+        },
+      );
 
   @override
   Widget build(BuildContext context) {
-    final api = _api ?? createCampusApi();
     return MaterialApp(
       title: 'CampusMind',
       debugShowCheckedModeBanner: false,
+      scrollBehavior: const AppScrollBehavior(),
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(
           seedColor: AppTheme.brand,
@@ -35,14 +67,15 @@ class CampusMindApp extends StatelessWidget {
         scaffoldBackgroundColor: AppTheme.bg,
         useMaterial3: true,
       ),
-      home: AppRoot(api: api),
+      home: AppRoot(api: _api, sessionStore: _store),
     );
   }
 }
 
 class AppRoot extends StatefulWidget {
-  const AppRoot({super.key, required this.api});
+  const AppRoot({super.key, required this.api, required this.sessionStore});
   final CampusApi api;
+  final SessionStore sessionStore;
 
   @override
   State<AppRoot> createState() => _AppRootState();
@@ -51,30 +84,106 @@ class AppRoot extends StatefulWidget {
 class _AppRootState extends State<AppRoot> {
   LoginSession? _session;
   bool _splashDone = false;
+  bool _restoring = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _restoreSession();
+  }
+
+  Future<void> _restoreSession() async {
+    try {
+      final cached = await widget.sessionStore.load();
+      if (cached == null) {
+        if (mounted) setState(() => _restoring = false);
+        return;
+      }
+      final restored = await widget.api.restoreSession(cached);
+      if (!mounted) return;
+      if (restored == null) {
+        await widget.sessionStore.clear();
+        setState(() => _restoring = false);
+        return;
+      }
+      await widget.sessionStore.save(restored);
+      if (!mounted) return;
+      setState(() {
+        _session = restored;
+        _restoring = false;
+      });
+      unawaited(_registerDevice(restored));
+    } catch (error) {
+      debugPrint('会话恢复失败：$error');
+      await widget.sessionStore.clear();
+      if (mounted) setState(() => _restoring = false);
+    }
+  }
 
   void _onSplashFinished() {
     if (!mounted) return;
     setState(() => _splashDone = true);
   }
 
-  void _onLogin(LoginSession session) {
+  Future<void> _onLogin(LoginSession session) async {
+    await widget.sessionStore.save(session);
+    if (!mounted) return;
     setState(() => _session = session);
-    widget.api.registerDevice(
-      'campus-app-${session.user.id}',
-      defaultTargetPlatform.name,
-      null,
-      session,
-    ).catchError((error) { debugPrint('设备通知注册失败：$error'); });
+    unawaited(_registerDevice(session));
   }
 
-  void _onLogout() {
+  Future<void> _registerDevice(LoginSession session) async {
+    try {
+      await widget.api.registerDevice(
+        'campus-app-${session.user.id}',
+        defaultTargetPlatform.name,
+        null,
+        session,
+      );
+    } catch (error) {
+      debugPrint('设备通知注册失败：$error');
+    }
+  }
+
+  Future<void> _onLogout() async {
+    final current = _session;
+    if (current != null) {
+      try {
+        await widget.api.logout(current);
+      } catch (error) {
+        debugPrint('登出请求失败：$error');
+      }
+    }
+    await widget.sessionStore.clear();
+    if (!mounted) return;
     setState(() => _session = null);
+  }
+
+  void _onSessionExpired() {
+    unawaited(_forceLogout(showMessage: true));
+  }
+
+  Future<void> _forceLogout({bool showMessage = false}) async {
+    await widget.sessionStore.clear();
+    if (!mounted) return;
+    setState(() => _session = null);
+    if (showMessage) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('登录已过期，请重新登录')),
+      );
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     if (!_splashDone) {
       return SplashPage(onFinished: _onSplashFinished);
+    }
+    if (_restoring) {
+      return const Scaffold(
+        backgroundColor: AppTheme.bg,
+        body: Center(child: CircularProgressIndicator()),
+      );
     }
     if (_session == null) {
       return PrototypeLoginPage(api: widget.api, onLogin: _onLogin);
@@ -83,6 +192,7 @@ class _AppRootState extends State<AppRoot> {
       api: widget.api,
       session: _session!,
       onLogout: _onLogout,
+      onSessionExpired: _onSessionExpired,
     );
   }
 }
@@ -93,10 +203,12 @@ class CampusShell extends StatefulWidget {
     required this.api,
     required this.session,
     required this.onLogout,
+    this.onSessionExpired,
   });
   final CampusApi api;
   final LoginSession session;
-  final VoidCallback onLogout;
+  final Future<void> Function() onLogout;
+  final VoidCallback? onSessionExpired;
 
   @override
   State<CampusShell> createState() => _CampusShellState();
@@ -122,6 +234,8 @@ class _CampusShellState extends State<CampusShell> {
           ..clear()
           ..addAll(items);
       });
+    } on SessionExpiredException {
+      widget.onSessionExpired?.call();
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -182,13 +296,7 @@ class _CampusShellState extends State<CampusShell> {
       PrototypeAssistantPage(api: widget.api, session: widget.session),
       PrototypeProfilePage(
         userName: widget.session.user.username,
-        onLogout: () async {
-          try {
-            await widget.api.logout(widget.session);
-          } finally {
-            widget.onLogout();
-          }
-        },
+        onLogout: widget.onLogout,
         api: widget.api,
         session: widget.session,
       ),

@@ -21,6 +21,7 @@ export 'information_api_stub.dart'
         SubscriptionItem,
         ActionItem,
         ReminderItem,
+        NotificationDelivery,
         RelatedItem,
         TrendingItem,
         UserProfileTags,
@@ -32,12 +33,17 @@ const _apiBase = String.fromEnvironment(
   defaultValue: 'http://localhost:8080',
 );
 
-CampusApi createCampusApi() => IoCampusApi(_apiBase);
+CampusApi createCampusApi({
+  void Function(LoginSession original, LoginSession updated)? onSessionRefreshed,
+}) =>
+    IoCampusApi(_apiBase, onSessionRefreshed: onSessionRefreshed);
 
 class IoCampusApi implements CampusApi {
-  IoCampusApi(this.baseUrl);
+  IoCampusApi(this.baseUrl, {this.onSessionRefreshed});
 
   final String baseUrl;
+  final void Function(LoginSession original, LoginSession updated)?
+      onSessionRefreshed;
   final Map<LoginSession, LoginSession> _refreshedSessions = {};
   final Map<LoginSession, Future<void>> _refreshing = {};
 
@@ -69,6 +75,23 @@ class IoCampusApi implements CampusApi {
     await _request('POST', '/api/v1/auth/password/reset', body: {'token': token, 'newPassword': newPassword});
   }
 
+  @override
+  Future<void> changePassword(
+    String currentPassword,
+    String newPassword,
+    LoginSession session,
+  ) async {
+    await _request(
+      'POST',
+      '/api/v1/auth/change-password',
+      session: session,
+      body: {
+        'currentPassword': currentPassword,
+        'newPassword': newPassword,
+      },
+    );
+  }
+
   LoginSession _effective(LoginSession session) =>
       _refreshedSessions[session] ?? session;
 
@@ -96,7 +119,30 @@ class IoCampusApi implements CampusApi {
       body: {'refreshToken': current.refreshToken},
       allowRefresh: false,
     );
-    _refreshedSessions[session] = LoginSession.fromJson(_data(root));
+    final updated = LoginSession.fromJson(_data(root));
+    _refreshedSessions[session] = updated;
+    onSessionRefreshed?.call(session, updated);
+  }
+
+  @override
+  Future<LoginSession?> restoreSession(LoginSession session) async {
+    final current = _effective(session);
+    if (current.refreshToken.isEmpty) return null;
+    if (current.refreshExpiresAt != null &&
+        current.refreshExpiresAt!.isBefore(DateTime.now())) {
+      return null;
+    }
+    // access 仍有效则直接复用，避免无意义刷新。
+    final skew = DateTime.now().add(const Duration(seconds: 30));
+    if (current.expiresAt.isAfter(skew)) {
+      return current;
+    }
+    try {
+      await _refresh(session);
+      return _effective(session);
+    } on SessionExpiredException {
+      return null;
+    }
   }
 
   @override
@@ -257,6 +303,32 @@ class IoCampusApi implements CampusApi {
   }
 
   @override
+  Future<List<NotificationDelivery>> fetchNotificationDeliveries(LoginSession session) async {
+    final root = await _request(
+      'GET',
+      '/api/v1/information/notifications/deliveries',
+      session: session,
+    );
+    final list = root['data'];
+    if (list is List) {
+      return list
+          .cast<Map<String, Object?>>()
+          .map(NotificationDelivery.fromJson)
+          .toList();
+    }
+    return const [];
+  }
+
+  @override
+  Future<void> withdrawReminder(int reminderId, LoginSession session) async {
+    await _request(
+      'PUT',
+      '/api/v1/information/notifications/reminders/$reminderId/withdraw',
+      session: session,
+    );
+  }
+
+  @override
   Future<ImportResult> importText(String text, LoginSession session) async {
     final root = await _request(
       'POST',
@@ -380,6 +452,32 @@ class IoCampusApi implements CampusApi {
           .toList();
     }
     return const [];
+  }
+
+  @override
+  Future<void> confirmImportPreview({
+    required int taskId,
+    required String title,
+    String time = '',
+    String location = '',
+    String summary = '',
+    List<String> tags = const [],
+    String? eventType,
+    required LoginSession session,
+  }) async {
+    await _request(
+      'POST',
+      '/api/v1/import/$taskId/confirm',
+      session: session,
+      body: {
+        'title': title,
+        'eventTime': time,
+        'location': location,
+        'summary': summary,
+        'tags': tags,
+        if (eventType != null) 'eventType': eventType,
+      },
+    );
   }
 
   @override
