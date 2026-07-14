@@ -91,10 +91,23 @@ class AdminControllerTest {
                       ai_summary CLOB,
                       ai_card_json CLOB,
                       ai_need_review BOOLEAN DEFAULT FALSE,
+                      submitted_by VARCHAR(128),
+                      submitted_by_user_id BIGINT,
                       ai_error VARCHAR(1024),
                       ai_processed_at TIMESTAMP
                     )
                     """);
+            statement.execute("""
+                    CREATE TABLE IF NOT EXISTS data_source_version (
+                      id BIGINT AUTO_INCREMENT PRIMARY KEY, source_id BIGINT NOT NULL,
+                      version_no INT NOT NULL, action VARCHAR(32) NOT NULL, snapshot CLOB NOT NULL,
+                      operator_id BIGINT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                      UNIQUE(source_id, version_no)
+                    )
+                    """);
+            statement.execute("CREATE TABLE IF NOT EXISTS user_action_item (id BIGINT AUTO_INCREMENT PRIMARY KEY, information_item_id BIGINT)");
+            statement.execute("CREATE TABLE IF NOT EXISTS user_reminder (id BIGINT AUTO_INCREMENT PRIMARY KEY, action_item_id BIGINT, status VARCHAR(32))");
+            statement.execute("CREATE TABLE IF NOT EXISTS notification_delivery (id BIGINT AUTO_INCREMENT PRIMARY KEY, reminder_id BIGINT, status VARCHAR(32), withdrawn_at TIMESTAMP)");
             statement.execute("""
                     CREATE TABLE IF NOT EXISTS ai_processing_record (
                       id BIGINT PRIMARY KEY,
@@ -164,6 +177,10 @@ class AdminControllerTest {
                       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                     )
                     """);
+            statement.execute("DELETE FROM notification_delivery");
+            statement.execute("DELETE FROM user_reminder");
+            statement.execute("DELETE FROM user_action_item");
+            statement.execute("DELETE FROM data_source_version");
             statement.execute("DELETE FROM event_audit_log");
             statement.execute("DELETE FROM import_task");
             statement.execute("DELETE FROM crawl_task");
@@ -327,6 +344,20 @@ class AdminControllerTest {
                         .content("{\"enabled\":false}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.status").value("PAUSED"));
+
+        mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                        .get("/api/admin/sources/" + id + "/versions")
+                        .header("Authorization", adminToken()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(2))
+                .andExpect(jsonPath("$.data[0].action").value("DISABLE"));
+
+        mockMvc.perform(post("/api/admin/sources/" + id + "/rollback")
+                        .header("Authorization", adminToken())
+                        .contentType("application/json")
+                        .content("{\"versionNo\":1}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.enabled").value(true));
     }
 
     private String adminToken() {

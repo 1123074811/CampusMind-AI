@@ -13,12 +13,16 @@ public record UserDataExportResponse(
         List<Map<String, Object>> sourceSubscriptions,
         List<Map<String, Object>> actions,
         List<Map<String, Object>> reminders,
-        List<Map<String, Object>> privateEvents
+        List<Map<String, Object>> privateEvents,
+        List<Map<String, Object>> consentHistory,
+        List<Map<String, Object>> devices,
+        List<Map<String, Object>> notificationDeliveries
 ) {
     public record Account(
             Long id,
             String username,
             String phone,
+            String email,
             String role,
             Integer status,
             LocalDateTime createdAt,

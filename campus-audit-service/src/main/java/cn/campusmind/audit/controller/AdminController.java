@@ -96,6 +96,23 @@ public class AdminController {
         return ApiResponse.ok(adminDashboardService.setSourceEnabled(id, operatorId, request.enabled()));
     }
 
+    @GetMapping("/sources/{id}/versions")
+    public ApiResponse<java.util.List<DataSourceVersionResponse>> sourceVersions(
+            @PathVariable Long id,
+            @RequestHeader(value = "Authorization", required = false) String authorization) {
+        auditTokenService.requireAdmin(authorization);
+        return ApiResponse.ok(adminDashboardService.sourceVersions(id));
+    }
+
+    @PostMapping("/sources/{id}/rollback")
+    public ApiResponse<AdminDataSourceResponse> rollbackSource(
+            @PathVariable Long id,
+            @RequestHeader(value = "Authorization", required = false) String authorization,
+            @Valid @RequestBody RollbackDataSourceRequest request) {
+        return ApiResponse.ok(adminDashboardService.rollbackSource(
+                id, auditTokenService.requireAdmin(authorization), request.versionNo()));
+    }
+
     @GetMapping("/logs")
     public ApiResponse<AdminAuditLogListResponse> logs(
             @RequestHeader(value = "Authorization", required = false) String authorization,

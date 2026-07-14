@@ -15,6 +15,7 @@ import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.beans.factory.annotation.Value;
 
 @RestController
 @RequestMapping("/api/v1/users")
@@ -22,10 +23,30 @@ public class UserController {
 
     private final AuthTokenService authTokenService;
     private final UserService userService;
+    private final String policyVersion;
+    private final int retentionDays;
 
-    public UserController(AuthTokenService authTokenService, UserService userService) {
+    public UserController(AuthTokenService authTokenService, UserService userService,
+                          @Value("${campus.privacy.policy-version:2026-07-01}") String policyVersion,
+                          @Value("${campus.privacy.retention-days:365}") int retentionDays) {
         this.authTokenService = authTokenService;
         this.userService = userService;
+        this.policyVersion = policyVersion;
+        this.retentionDays = retentionDays;
+    }
+
+    @GetMapping("/me/privacy")
+    public ApiResponse<PrivacyStatusResponse> privacy(
+            @RequestHeader(value = "Authorization", required = false) String authorization) {
+        return ApiResponse.ok(userService.privacyStatus(authTokenService.parseBearerToken(authorization), policyVersion, retentionDays));
+    }
+
+    @PostMapping("/me/privacy/consents")
+    public ApiResponse<PrivacyStatusResponse> consent(
+            @RequestHeader(value = "Authorization", required = false) String authorization,
+            @Valid @RequestBody ConsentRequest request) {
+        return ApiResponse.ok(userService.recordConsent(authTokenService.parseBearerToken(authorization), request,
+                policyVersion, retentionDays));
     }
 
     @GetMapping("/me")

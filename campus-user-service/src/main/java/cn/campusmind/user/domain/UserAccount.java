@@ -17,6 +17,8 @@ public class UserAccount {
 
     private String phone;
 
+    private String email;
+
     @TableField("password_hash")
     private String passwordHash;
 
@@ -41,6 +43,8 @@ public class UserAccount {
     public String getPhone() {
         return phone;
     }
+
+    public String getEmail() { return email; }
 
     public String getPasswordHash() {
         return passwordHash;
@@ -69,6 +73,8 @@ public class UserAccount {
     public void setPhone(String phone) {
         this.phone = phone;
     }
+
+    public void setEmail(String email) { this.email = email; }
 
     public void setPasswordHash(String passwordHash) {
         this.passwordHash = passwordHash;

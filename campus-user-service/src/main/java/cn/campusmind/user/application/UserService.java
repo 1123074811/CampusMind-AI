@@ -13,6 +13,8 @@ import cn.campusmind.user.controller.UserMeResponse;
 import cn.campusmind.user.controller.UserProfileResponse;
 import cn.campusmind.user.controller.UserDataExportResponse;
 import cn.campusmind.user.controller.DeleteAccountRequest;
+import cn.campusmind.user.controller.ConsentRequest;
+import cn.campusmind.user.controller.PrivacyStatusResponse;
 import cn.campusmind.user.domain.UserAccount;
 import cn.campusmind.user.domain.UserProfile;
 import cn.campusmind.user.infrastructure.mapper.UserAccountMapper;
@@ -80,6 +82,7 @@ public class UserService {
     @Transactional
     public UserProfileResponse updateProfile(CurrentUser currentUser, UpdateProfileRequest request) {
         requireAccount(currentUser.userId());
+        ensurePersonalizationNotRevoked(currentUser.userId());
         UserProfile profile = findProfile(currentUser.userId());
         boolean creating = profile == null;
         if (creating) {
@@ -108,7 +111,7 @@ public class UserService {
         return new UserDataExportResponse(
                 Instant.now(),
                 new UserDataExportResponse.Account(
-                        account.getId(), account.getUsername(), account.getPhone(), account.getRole(),
+                        account.getId(), account.getUsername(), account.getPhone(), account.getEmail(), account.getRole(),
                         account.getStatus(), account.getCreatedAt(), account.getUpdatedAt()
                 ),
                 toProfileResponse(findProfile(userId)),
@@ -116,7 +119,10 @@ public class UserService {
                 jdbcTemplate.queryForList("SELECT * FROM user_source_subscription WHERE user_id = ?", userId),
                 jdbcTemplate.queryForList("SELECT * FROM user_action_item WHERE user_id = ?", userId),
                 jdbcTemplate.queryForList("SELECT * FROM user_reminder WHERE user_id = ?", userId),
-                jdbcTemplate.queryForList("SELECT * FROM campus_event WHERE owner_user_id = ?", userId)
+                jdbcTemplate.queryForList("SELECT * FROM campus_event WHERE owner_user_id = ?", userId),
+                jdbcTemplate.queryForList("SELECT * FROM user_consent_record WHERE user_id = ? ORDER BY occurred_at", userId),
+                jdbcTemplate.queryForList("SELECT id, device_id, platform, enabled, created_at, updated_at FROM user_device WHERE user_id = ?", userId),
+                jdbcTemplate.queryForList("SELECT * FROM notification_delivery WHERE user_id = ? ORDER BY created_at", userId)
         );
     }
 
@@ -127,6 +133,9 @@ public class UserService {
             throw new BusinessException("INVALID_CREDENTIALS", "密码错误", HttpStatus.UNAUTHORIZED);
         }
         Long userId = account.getId();
+        jdbcTemplate.update("DELETE FROM notification_delivery WHERE user_id = ?", userId);
+        jdbcTemplate.update("DELETE FROM user_device WHERE user_id = ?", userId);
+        jdbcTemplate.update("DELETE FROM user_consent_record WHERE user_id = ?", userId);
         jdbcTemplate.update("DELETE FROM user_reminder WHERE user_id = ?", userId);
         jdbcTemplate.update("DELETE FROM user_action_item WHERE user_id = ?", userId);
         jdbcTemplate.update("DELETE FROM user_information_state WHERE user_id = ?", userId);
@@ -136,11 +145,12 @@ public class UserService {
 
         account.setUsername("deleted_" + userId + "_" + UUID.randomUUID().toString().substring(0, 8));
         account.setPhone(null);
+        account.setEmail(null);
         account.setPasswordHash(passwordEncoder.encode(UUID.randomUUID().toString()));
         account.setStatus(0);
         userAccountMapper.updateById(account);
         // MyBatis-Plus 默认跳过 null 更新，隐私字段必须显式清空。
-        jdbcTemplate.update("UPDATE `user` SET phone = NULL WHERE id = ?", userId);
+        jdbcTemplate.update("UPDATE `user` SET phone = NULL, email = NULL WHERE id = ?", userId);
         redisTemplate.opsForValue().set("auth:user-revoked:" + userId, "1", Duration.ofDays(30));
     }
 
@@ -185,6 +195,7 @@ public class UserService {
         UserAccount account = requireAccount(userId);
         account.setStatus(request.status());
         userAccountMapper.updateById(account);
+        if (request.status() == 0) revokeUserSessions(userId);
         return toAdminUser(userAccountMapper.selectById(userId));
     }
 
@@ -194,6 +205,7 @@ public class UserService {
         UserAccount account = requireAccount(userId);
         account.setPasswordHash(passwordEncoder.encode(request.password()));
         userAccountMapper.updateById(account);
+        revokeUserSessions(userId);
         return toAdminUser(userAccountMapper.selectById(userId));
     }
 
@@ -268,6 +280,7 @@ public class UserService {
     @Transactional
     public ProfileTagsResponse updateProfileTags(CurrentUser currentUser, List<String> tags, double sensitivity) {
         requireAccount(currentUser.userId());
+        ensurePersonalizationNotRevoked(currentUser.userId());
         UserProfile profile = findProfile(currentUser.userId());
         boolean creating = profile == null;
         if (creating) {
@@ -285,6 +298,53 @@ public class UserService {
                 fromJson(profile.getInterestTags()),
                 profile.getSensitivity() != null ? profile.getSensitivity() : 0.5
         );
+    }
+
+    @Transactional(readOnly = true)
+    public PrivacyStatusResponse privacyStatus(CurrentUser currentUser, String policyVersion, int retentionDays) {
+        requireAccount(currentUser.userId());
+        List<PrivacyStatusResponse.Consent> consents = jdbcTemplate.query("""
+                SELECT c.id, c.consent_type, c.policy_version, c.granted, c.source, c.occurred_at
+                FROM user_consent_record c
+                JOIN (SELECT consent_type, MAX(id) id FROM user_consent_record WHERE user_id = ? GROUP BY consent_type) latest
+                  ON latest.id = c.id
+                ORDER BY c.consent_type
+                """, (rs, rowNum) -> new PrivacyStatusResponse.Consent(
+                rs.getLong("id"), rs.getString("consent_type"), rs.getString("policy_version"),
+                rs.getBoolean("granted"), rs.getString("source"), rs.getTimestamp("occurred_at").toLocalDateTime()),
+                currentUser.userId());
+        return new PrivacyStatusResponse(policyVersion, retentionDays, consents);
+    }
+
+    @Transactional
+    public PrivacyStatusResponse recordConsent(CurrentUser currentUser, ConsentRequest request,
+                                               String policyVersion, int retentionDays) {
+        requireAccount(currentUser.userId());
+        jdbcTemplate.update("""
+                INSERT INTO user_consent_record(user_id, consent_type, policy_version, granted, source)
+                VALUES (?, ?, ?, ?, ?)
+                """, currentUser.userId(), request.consentType(), request.policyVersion(), request.granted() ? 1 : 0,
+                StringUtils.hasText(request.source()) ? request.source().trim().toUpperCase() : "APP");
+        if ("PERSONALIZATION".equals(request.consentType()) && !request.granted()) {
+            jdbcTemplate.update("UPDATE user_profile SET interest_tags = JSON_ARRAY(), course_codes = JSON_ARRAY() WHERE user_id = ?",
+                    currentUser.userId());
+        }
+        return privacyStatus(currentUser, policyVersion, retentionDays);
+    }
+
+    private void ensurePersonalizationNotRevoked(Long userId) {
+        List<Integer> grants = jdbcTemplate.query("""
+                SELECT granted FROM user_consent_record WHERE user_id = ? AND consent_type = 'PERSONALIZATION'
+                ORDER BY id DESC LIMIT 1
+                """, (rs, rowNum) -> rs.getInt(1), userId);
+        if (!grants.isEmpty() && grants.get(0) == 0) {
+            throw new BusinessException("PERSONALIZATION_CONSENT_REQUIRED", "个性化授权已撤回，请重新授权后修改画像", HttpStatus.CONFLICT);
+        }
+    }
+
+    private void revokeUserSessions(Long userId) {
+        redisTemplate.opsForValue().set("auth:user-revoked:" + userId,
+                String.valueOf(Instant.now().toEpochMilli()), Duration.ofDays(30));
     }
 
     private List<String> fromJson(String json) {

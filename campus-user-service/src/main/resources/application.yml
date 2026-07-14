@@ -26,6 +26,10 @@ campus:
     jwt:
       issuer: ${AUTH_JWT_ISSUER:campusmind-auth}
       secret: ${AUTH_JWT_SECRET}
+  privacy:
+    policy-version: ${PRIVACY_POLICY_VERSION:2026-07-01}
+    retention-days: ${PRIVACY_RETENTION_DAYS:365}
+    cleanup-cron: ${PRIVACY_CLEANUP_CRON:0 20 3 * * *}
 
 management:
   endpoints:

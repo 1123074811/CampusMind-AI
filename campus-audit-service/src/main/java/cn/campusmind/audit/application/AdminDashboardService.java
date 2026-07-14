@@ -24,6 +24,7 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.JsonNode;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -114,6 +115,7 @@ public class AdminDashboardService {
         String beforeStatus = event.getItemStatus();
         event.setItemStatus(toItemStatus(status));
         informationItemMapper.updateById(event);
+        if ("OFFLINE".equals(event.getItemStatus())) withdrawItemReminders(eventId);
 
         EventAuditLog log = new EventAuditLog();
         log.setEventId(null);
@@ -172,6 +174,7 @@ public class AdminDashboardService {
         String beforeStatus = event.getItemStatus();
         event.setItemStatus("OFFLINE");
         informationItemMapper.updateById(event);
+        withdrawItemReminders(eventId);
 
         EventAuditLog log = new EventAuditLog();
         log.setEventId(null);
@@ -188,6 +191,21 @@ public class AdminDashboardService {
         for (Long id : ids) {
             deleteEvent(id, operatorId);
         }
+    }
+
+    private void withdrawItemReminders(Long itemId) {
+        jdbcTemplate.update("""
+                UPDATE user_reminder r JOIN user_action_item a ON a.id = r.action_item_id
+                SET r.status = 'DISMISSED'
+                WHERE a.information_item_id = ? AND r.status IN ('PENDING', 'DUE')
+                """, itemId);
+        jdbcTemplate.update("""
+                UPDATE notification_delivery d
+                JOIN user_reminder r ON r.id = d.reminder_id
+                JOIN user_action_item a ON a.id = r.action_item_id
+                SET d.status = 'WITHDRAWN', d.withdrawn_at = COALESCE(d.withdrawn_at, CURRENT_TIMESTAMP)
+                WHERE a.information_item_id = ? AND d.status <> 'WITHDRAWN'
+                """, itemId);
     }
 
     @Transactional(readOnly = true)
@@ -244,6 +262,7 @@ public class AdminDashboardService {
         applySource(source, request);
         if (source.getEnabled() == null) source.setEnabled(1);
         dataSourceMapper.insert(source);
+        writeSourceVersion(source, operatorId, "CREATE");
         writeSourceAudit(operatorId, "SOURCE_CREATE", null, source);
         return toSource(source, List.of());
     }
@@ -256,6 +275,7 @@ public class AdminDashboardService {
         ensureUniqueBaseUrl(sourceId, request.baseUrl());
         applySource(source, request);
         dataSourceMapper.updateById(source);
+        writeSourceVersion(source, operatorId, "UPDATE");
         writeSourceAudit(operatorId, "SOURCE_UPDATE", before, source);
         return toSource(source, List.of());
     }
@@ -266,8 +286,67 @@ public class AdminDashboardService {
         String before = writeJson(sourceSnapshot(source));
         source.setEnabled(enabled ? 1 : 0);
         dataSourceMapper.updateById(source);
+        writeSourceVersion(source, operatorId, enabled ? "ENABLE" : "DISABLE");
         writeSourceAudit(operatorId, enabled ? "SOURCE_ENABLE" : "SOURCE_PAUSE", before, source);
         return toSource(source, List.of());
+    }
+
+    @Transactional(readOnly = true)
+    public List<cn.campusmind.audit.controller.DataSourceVersionResponse> sourceVersions(Long sourceId) {
+        requireSource(sourceId);
+        return jdbcTemplate.query("""
+                SELECT id, source_id, version_no, action, snapshot, operator_id, created_at
+                FROM data_source_version WHERE source_id = ? ORDER BY version_no DESC
+                """, (rs, rowNum) -> {
+            try {
+                return new cn.campusmind.audit.controller.DataSourceVersionResponse(
+                        rs.getLong("id"), rs.getLong("source_id"), rs.getInt("version_no"),
+                        rs.getString("action"), objectMapper.readValue(rs.getString("snapshot"), new TypeReference<>() { }),
+                        rs.getObject("operator_id", Long.class), rs.getTimestamp("created_at").toLocalDateTime());
+            } catch (JsonProcessingException ex) {
+                throw new IllegalStateException("数据源版本快照损坏", ex);
+            }
+        }, sourceId);
+    }
+
+    @Transactional
+    public AdminDataSourceResponse rollbackSource(Long sourceId, Long operatorId, int versionNo) {
+        DataSource source = requireSource(sourceId);
+        String snapshot = jdbcTemplate.query("""
+                SELECT snapshot FROM data_source_version WHERE source_id = ? AND version_no = ?
+                """, rs -> rs.next() ? rs.getString(1) : null, sourceId, versionNo);
+        if (snapshot == null) {
+            throw new BusinessException("SOURCE_VERSION_NOT_FOUND", "数据源版本不存在", HttpStatus.NOT_FOUND);
+        }
+        String before = writeJson(sourceSnapshot(source));
+        try {
+            JsonNode node = objectMapper.readTree(snapshot);
+            source.setName(node.path("name").asText());
+            source.setSourceType(node.path("sourceType").asText());
+            source.setBaseUrl(node.path("baseUrl").asText());
+            source.setRobotsUrl(node.path("robotsUrl").isNull() ? null : node.path("robotsUrl").asText(null));
+            source.setCrawlIntervalSeconds(node.path("crawlIntervalSeconds").asInt(3600));
+            source.setParserType(node.path("parserType").asText("WEBMAGIC"));
+            source.setSelectorConfig(node.path("selectorConfig").isNull() ? null : node.path("selectorConfig").asText(null));
+            source.setEnabled(node.path("enabled").asInt(1));
+        } catch (JsonProcessingException ex) {
+            throw new BusinessException("SOURCE_VERSION_INVALID", "历史版本数据已损坏", HttpStatus.CONFLICT);
+        }
+        ensureUniqueBaseUrl(sourceId, source.getBaseUrl());
+        dataSourceMapper.updateById(source);
+        writeSourceVersion(source, operatorId, "ROLLBACK");
+        writeSourceAudit(operatorId, "SOURCE_ROLLBACK", before, source);
+        return toSource(source, List.of());
+    }
+
+    private void writeSourceVersion(DataSource source, Long operatorId, String action) {
+        Integer next = jdbcTemplate.queryForObject(
+                "SELECT COALESCE(MAX(version_no), 0) + 1 FROM data_source_version WHERE source_id = ?",
+                Integer.class, source.getId());
+        jdbcTemplate.update("""
+                INSERT INTO data_source_version(source_id, version_no, action, snapshot, operator_id)
+                VALUES (?, ?, ?, ?, ?)
+                """, source.getId(), next, action, writeJson(sourceSnapshot(source)), operatorId);
     }
 
     private DataSource requireSource(Long sourceId) {
@@ -400,7 +479,9 @@ public class AdminDashboardService {
                 stringList(card.get("tags"), List.of("校园信息")),
                 event.getAiStatus() == null ? "PENDING" : event.getAiStatus(),
                 Boolean.TRUE.equals(event.getAiNeedReview()),
-                card
+                card,
+                event.getSubmittedBy(),
+                event.getSubmittedByUserId()
         );
     }
 

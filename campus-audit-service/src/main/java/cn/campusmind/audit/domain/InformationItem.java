@@ -39,6 +39,10 @@ public class InformationItem {
     private String aiCardJson;
     @TableField("ai_need_review")
     private Boolean aiNeedReview;
+    @TableField("submitted_by")
+    private String submittedBy;
+    @TableField("submitted_by_user_id")
+    private Long submittedByUserId;
 
     public Long getId() { return id; }
     public String getSourceName() { return sourceName; }
@@ -55,6 +59,8 @@ public class InformationItem {
     public String getAiSummary() { return aiSummary; }
     public String getAiCardJson() { return aiCardJson; }
     public Boolean getAiNeedReview() { return aiNeedReview; }
+    public String getSubmittedBy() { return submittedBy; }
+    public Long getSubmittedByUserId() { return submittedByUserId; }
     public void setItemStatus(String itemStatus) { this.itemStatus = itemStatus; }
     public void setTitle(String title) { this.title = title; }
     public void setAiSummary(String aiSummary) { this.aiSummary = aiSummary; }

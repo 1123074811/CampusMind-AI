@@ -20,6 +20,8 @@ public record AdminEventResponse(
         List<String> tags,
         String aiStatus,
         Boolean aiNeedReview,
-        Map<String, Object> aiCard
+        Map<String, Object> aiCard,
+        String submittedBy,
+        Long submittedByUserId
 ) {
 }
