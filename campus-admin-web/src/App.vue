@@ -11,10 +11,14 @@ import {
   resetAdminUserPassword,
   retryAiProcessing,
   updateAiConfig,
-  updateAdminUserStatus
+  updateAdminUserStatus,
+  createDataSource,
+  updateDataSource,
+  setDataSourceEnabled
 } from './api/admin';
-import { clearSession, loadSession } from './api/auth';
-import { crawlPublicSources, crawlSource, fetchCrawlItems } from './api/crawler';
+import { clearSession, loadSession, logoutRemote } from './api/auth';
+import type { DataSourcePayload } from './api/admin';
+import { crawlEnabledSources, crawlSource, fetchCrawlItems } from './api/crawler';
 import AdminSidebar from './components/AdminSidebar.vue';
 import AdminTopbar from './components/AdminTopbar.vue';
 import MetricsBand from './components/MetricsBand.vue';
@@ -27,6 +31,7 @@ import UsersView from './views/UsersView.vue';
 import LogsView from './views/LogsView.vue';
 import AgentView from './views/AgentView.vue';
 import DatabaseView from './views/DatabaseView.vue';
+import { buildReviewMetrics, dashboardConnectionMessage } from './pageLogic';
 
 const session = ref<AdminSession | null>(loadSession());
 const activeNav = ref<NavKey>('review');
@@ -102,15 +107,7 @@ const pageMetrics = computed<PageMetric[]>(() => {
   const events = reviewEvents.value;
   switch (activeNav.value) {
     case 'review': {
-      const published = events.filter((e) => e.status === 'AI_PUBLISHED').length;
-      const corrected = events.filter((e) => e.status === 'CORRECTED').length;
-      const offline = events.filter((e) => e.status === 'OFFLINE' || e.status === 'REJECTED').length;
-      return [
-        { label: '待审核', value: published, hint: 'AI 已提取，待人工确认', accent: published > 0 ? 'amber' : 'default' },
-        { label: '已修正', value: corrected, hint: '人工修正过' },
-        { label: '已发布', value: corrected, hint: '人工确认通过' },
-        { label: '已下线', value: offline, hint: `共 ${events.length} 条事件` }
-      ];
+      return buildReviewMetrics(events);
     }
     case 'sources': {
       const sources = visibleDataSources.value;
@@ -176,6 +173,7 @@ async function loadDashboard() {
 
   loading.value = true;
   try {
+    const partialFailures: string[] = [];
     const dashboard = await fetchDashboard(session.value);
     dashboardMetrics.value = dashboard.metrics;
     reviewEvents.value = dashboard.events;
@@ -184,38 +182,38 @@ async function loadDashboard() {
     try {
       crawlItems.value = await fetchCrawlItems(session.value);
     } catch (error) {
-      crawlItems.value = [];
+      partialFailures.push('采集明细');
     }
     if (isAdmin.value) {
       try {
         adminUsers.value = (await fetchAdminUsers(session.value)).items;
       } catch (error) {
-        adminUsers.value = [];
+        partialFailures.push('用户列表');
       }
       try {
         databaseTables.value = await fetchAdminTables(session.value);
         await loadTable(selectedTable.value);
+        if (databaseError.value) partialFailures.push('数据表');
       } catch (error) {
-        databaseTables.value = [];
-        databaseRows.value = [];
+        partialFailures.push('数据表');
         databaseError.value = error instanceof Error ? error.message : '数据表加载失败';
       }
     }
     try {
       auditLogs.value = (await fetchAdminLogs(session.value)).items;
     } catch (error) {
-      auditLogs.value = [];
+      partialFailures.push('审计日志');
     }
     if (isAdmin.value) {
       try {
         aiConfig.value = await fetchAiConfig(session.value);
       } catch (error) {
-        aiConfig.value = null;
+        partialFailures.push('智能体配置');
       }
     }
     selectedId.value = dashboard.events[0]?.id ?? selectedId.value;
     apiMode.value = 'live';
-    apiMessage.value = '已连接后端数据库';
+    apiMessage.value = dashboardConnectionMessage(partialFailures);
   } catch (error) {
     apiMode.value = 'fallback';
     const message = error instanceof Error ? error.message : '后台接口异常';
@@ -337,20 +335,20 @@ async function reviewSelected(status: 'REVIEWED' | 'REJECTED' | 'CORRECTED' | 'O
     return;
   }
 
-  if (apiMode.value === 'live') {
-    try {
-      const updated = await reviewEvent(session.value, event.id, status, comment);
-      Object.assign(event, updated);
-      dashboardMetrics.value.reviewCount = reviewEvents.value.filter((item) => item.status === 'AI_PUBLISHED' || item.status === 'CORRECTED').length;
-      dashboardMetrics.value.urgentCount = reviewEvents.value.filter((item) => item.status === 'CORRECTED').length;
-      return;
-    } catch (error) {
-      apiMessage.value = '事件状态写入失败，已保留当前页面状态';
-    }
+  if (apiMode.value !== 'live') {
+    apiMessage.value = '后端未连接，无法修改事件状态';
+    return;
   }
 
-  event.status = status;
-  event.risk = status === 'REVIEWED' ? '已人工确认' : '已标记为无效事件';
+  try {
+    const updated = await reviewEvent(session.value, event.id, status, comment);
+    Object.assign(event, updated);
+    dashboardMetrics.value.reviewCount = reviewEvents.value.filter((item) => item.status === 'AI_PUBLISHED' || item.status === 'CORRECTED').length;
+    dashboardMetrics.value.urgentCount = reviewEvents.value.filter((item) => item.status === 'CORRECTED').length;
+    apiMessage.value = '事件状态已更新';
+  } catch (error) {
+    apiMessage.value = '事件状态写入失败，页面状态未改变';
+  }
 }
 
 function approveSelected() {
@@ -422,7 +420,7 @@ async function runCrawlerNow() {
       return;
     }
 
-    const batch = await crawlPublicSources(session.value, sourceIds);
+    const batch = await crawlEnabledSources(session.value);
     updateTempCrawlerTask(
       tempTaskId,
       batch.failedCount > 0 ? 'FAILED' : 'SUCCESS',
@@ -455,6 +453,36 @@ async function crawlSelectedSource(sourceId: number) {
   }
 }
 
+async function createSource(payload: DataSourcePayload) {
+  try {
+    await createDataSource(session.value, payload);
+    apiMessage.value = `${payload.name} 已创建`;
+    await loadDashboard();
+  } catch (error) {
+    apiMessage.value = error instanceof Error ? error.message : '数据源创建失败';
+  }
+}
+
+async function updateSource(id: number, payload: DataSourcePayload) {
+  try {
+    await updateDataSource(session.value, id, payload);
+    apiMessage.value = `${payload.name} 已更新`;
+    await loadDashboard();
+  } catch (error) {
+    apiMessage.value = error instanceof Error ? error.message : '数据源更新失败';
+  }
+}
+
+async function toggleSource(source: DataSource) {
+  try {
+    await setDataSourceEnabled(session.value, source.id, !source.enabled);
+    apiMessage.value = `${source.name} 已${source.enabled ? '暂停' : '恢复'}`;
+    await loadDashboard();
+  } catch (error) {
+    apiMessage.value = error instanceof Error ? error.message : '数据源状态更新失败';
+  }
+}
+
 function updateTempCrawlerTask(id: number, status: 'SUCCESS' | 'FAILED', note: string) {
   const task = crawlTasks.value.find((item) => item.id === id);
   if (!task) {
@@ -470,7 +498,9 @@ function handleAuthenticated(nextSession: AdminSession) {
   loadDashboard();
 }
 
-function logout() {
+async function logout() {
+  const current = session.value;
+  await logoutRemote(current);
   clearSession();
   session.value = null;
   apiMode.value = 'fallback';
@@ -536,7 +566,11 @@ onMounted(() => {
         v-else-if="activeNav === 'sources'"
         :data-sources="visibleDataSources"
         :crawling-source-id="crawlingSourceId"
+        :can-manage="isAdmin"
         @crawl="crawlSelectedSource"
+        @create="createSource"
+        @update="updateSource"
+        @toggle="toggleSource"
       />
       <TasksView
         v-else-if="activeNav === 'tasks'"

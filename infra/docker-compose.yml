@@ -9,7 +9,7 @@ services:
       MYSQL_PASSWORD: ${MYSQL_PASSWORD:?MYSQL_PASSWORD is required}
       TZ: Asia/Shanghai
     ports:
-      - "3306:3306"
+      - "${MYSQL_DOCKER_PORT:-13306}:3306"
     volumes:
       - mysql-data:/var/lib/mysql
       - ./mysql/init:/docker-entrypoint-initdb.d:ro
@@ -18,7 +18,7 @@ services:
     image: redis:7.4
     container_name: campusmind-redis
     ports:
-      - "6379:6379"
+      - "${REDIS_DOCKER_PORT:-16379}:6379"
     volumes:
       - redis-data:/data
 
@@ -26,7 +26,7 @@ services:
     image: mongo:8.0
     container_name: campusmind-mongo
     ports:
-      - "27017:27017"
+      - "${MONGO_DOCKER_PORT:-27018}:27017"
     volumes:
       - mongo-data:/data/db
 
@@ -39,7 +39,7 @@ services:
       POSTGRES_PASSWORD: ${PGVECTOR_PASSWORD:?PGVECTOR_PASSWORD is required}
       TZ: Asia/Shanghai
     ports:
-      - "5432:5432"
+      - "${PGVECTOR_DOCKER_PORT:-15432}:5432"
     volumes:
       - pgvector-data:/var/lib/postgresql/data
       - ./postgres/init:/docker-entrypoint-initdb.d:ro

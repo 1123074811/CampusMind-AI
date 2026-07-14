@@ -1,6 +1,7 @@
 import type { AdminSession, ApiResponse, LoginResponse } from '../adminTypes';
 
 const SESSION_KEY = 'campusmind-admin-session';
+let refreshInFlight: Promise<AdminSession> | null = null;
 
 export async function login(username: string, password: string) {
   const response = await fetch('/api/v1/auth/login', {
@@ -32,7 +33,7 @@ export function loadSession() {
 
   try {
     const session = JSON.parse(raw) as AdminSession;
-    if (session.demo || new Date(session.expiresAt).getTime() <= Date.now()) {
+    if (session.demo || !session.refreshToken || new Date(session.refreshExpiresAt).getTime() <= Date.now()) {
       clearSession();
       return null;
     }
@@ -58,4 +59,53 @@ export function authHeaders(session: AdminSession | null): Record<string, string
   return {
     Authorization: `${session.tokenType} ${session.accessToken}`
   };
+}
+
+export async function refreshSession(session: AdminSession) {
+  if (refreshInFlight) return refreshInFlight;
+  refreshInFlight = performRefresh(session).finally(() => { refreshInFlight = null; });
+  return refreshInFlight;
+}
+
+async function performRefresh(session: AdminSession) {
+  const response = await fetch('/api/v1/auth/refresh', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ refreshToken: session.refreshToken })
+  });
+  const payload = await response.json() as ApiResponse<LoginResponse>;
+  if (!response.ok || !payload.success) {
+    clearSession();
+    throw new Error('登录已失效，请重新登录');
+  }
+  Object.assign(session, payload.data, { demo: false });
+  saveSession(session);
+  return session;
+}
+
+export async function authorizedFetch(input: RequestInfo | URL, init: RequestInit = {}, session: AdminSession | null) {
+  const send = () => {
+    const headers = new Headers(init.headers);
+    for (const [name, value] of Object.entries(authHeaders(session))) headers.set(name, value);
+    return fetch(input, { ...init, headers });
+  };
+  let response = await send();
+  if (response.status === 401 && session?.refreshToken) {
+    await refreshSession(session);
+    response = await send();
+  }
+  return response;
+}
+
+export async function logoutRemote(session: AdminSession | null) {
+  if (!session) return;
+  try {
+    await authorizedFetch('/api/v1/auth/logout', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refreshToken: session.refreshToken })
+    }, session);
+  } finally {
+    clearSession();
+  }
 }

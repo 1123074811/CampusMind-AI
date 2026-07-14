@@ -36,6 +36,11 @@ export interface DataSource {
   name: string;
   sourceUrl: string;
   channel: string;
+  robotsUrl: string | null;
+  crawlIntervalSeconds: number;
+  parserType: string;
+  selectorConfig: string | null;
+  enabled: boolean;
   status: SourceStatus;
   lastSync: string;
   successRate: number;
@@ -138,6 +143,8 @@ export interface LoginResponse {
   accessToken: string;
   tokenType: string;
   expiresAt: string;
+  refreshToken: string;
+  refreshExpiresAt: string;
   user: AdminUser;
 }
 
@@ -145,6 +152,8 @@ export interface AdminSession {
   accessToken: string;
   tokenType: string;
   expiresAt: string;
+  refreshToken: string;
+  refreshExpiresAt: string;
   user: AdminUser;
   demo?: boolean;
 }

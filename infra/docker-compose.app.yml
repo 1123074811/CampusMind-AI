@@ -1,0 +1,102 @@
+x-backend: &backend
+  restart: unless-stopped
+  environment: &backend-env
+    NACOS_SERVER_ADDR: nacos:8848
+    AUTH_JWT_ISSUER: ${AUTH_JWT_ISSUER:-campusmind-auth}
+    AUTH_JWT_SECRET: ${AUTH_JWT_SECRET:?AUTH_JWT_SECRET is required}
+    AUTH_DB_URL: jdbc:mysql://mysql:3306/${MYSQL_DATABASE:-campusmind}?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai
+    USER_DB_URL: jdbc:mysql://mysql:3306/${MYSQL_DATABASE:-campusmind}?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai
+    EVENT_DB_URL: jdbc:mysql://mysql:3306/${MYSQL_DATABASE:-campusmind}?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai
+    FEED_DB_URL: jdbc:mysql://mysql:3306/${MYSQL_DATABASE:-campusmind}?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai
+    IMPORT_DB_URL: jdbc:mysql://mysql:3306/${MYSQL_DATABASE:-campusmind}?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai
+    CRAWLER_DB_URL: jdbc:mysql://mysql:3306/${MYSQL_DATABASE:-campusmind}?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai
+    AUDIT_DB_URL: jdbc:mysql://mysql:3306/${MYSQL_DATABASE:-campusmind}?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai
+    SEARCH_DB_URL: jdbc:mysql://mysql:3306/${MYSQL_DATABASE:-campusmind}?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai
+    AUTH_DB_USERNAME: ${MYSQL_USERNAME:-campusmind}
+    USER_DB_USERNAME: ${MYSQL_USERNAME:-campusmind}
+    EVENT_DB_USERNAME: ${MYSQL_USERNAME:-campusmind}
+    FEED_DB_USERNAME: ${MYSQL_USERNAME:-campusmind}
+    IMPORT_DB_USERNAME: ${MYSQL_USERNAME:-campusmind}
+    CRAWLER_DB_USERNAME: ${MYSQL_USERNAME:-campusmind}
+    AUDIT_DB_USERNAME: ${MYSQL_USERNAME:-campusmind}
+    SEARCH_DB_USERNAME: ${MYSQL_USERNAME:-campusmind}
+    AUTH_DB_PASSWORD: ${MYSQL_PASSWORD:?MYSQL_PASSWORD is required}
+    USER_DB_PASSWORD: ${MYSQL_PASSWORD:?MYSQL_PASSWORD is required}
+    EVENT_DB_PASSWORD: ${MYSQL_PASSWORD:?MYSQL_PASSWORD is required}
+    FEED_DB_PASSWORD: ${MYSQL_PASSWORD:?MYSQL_PASSWORD is required}
+    IMPORT_DB_PASSWORD: ${MYSQL_PASSWORD:?MYSQL_PASSWORD is required}
+    CRAWLER_DB_PASSWORD: ${MYSQL_PASSWORD:?MYSQL_PASSWORD is required}
+    AUDIT_DB_PASSWORD: ${MYSQL_PASSWORD:?MYSQL_PASSWORD is required}
+    SEARCH_DB_PASSWORD: ${MYSQL_PASSWORD:?MYSQL_PASSWORD is required}
+    AUTH_REDIS_HOST: redis
+    GATEWAY_REDIS_HOST: redis
+    IMPORT_REDIS_HOST: redis
+    CRAWLER_REDIS_HOST: redis
+    USER_REDIS_HOST: redis
+    IMPORT_MONGO_URI: mongodb://mongo:27017/campusmind
+  depends_on:
+    - mysql
+    - redis
+    - nacos
+
+services:
+  campus-gateway:
+    <<: *backend
+    build: { context: .., args: { SERVICE: campus-gateway } }
+    ports: ["8080:8080"]
+
+  campus-auth-service:
+    <<: *backend
+    build: { context: .., args: { SERVICE: campus-auth-service } }
+
+  campus-user-service:
+    <<: *backend
+    build: { context: .., args: { SERVICE: campus-user-service } }
+
+  campus-event-service:
+    <<: *backend
+    build: { context: .., args: { SERVICE: campus-event-service } }
+
+  campus-feed-service:
+    <<: *backend
+    build: { context: .., args: { SERVICE: campus-feed-service } }
+
+  campus-import-service:
+    <<: *backend
+    build: { context: .., args: { SERVICE: campus-import-service } }
+
+  campus-crawler-service:
+    <<: *backend
+    build: { context: .., args: { SERVICE: campus-crawler-service } }
+    environment:
+      <<: *backend-env
+      CAMPUS_AI_EXTRACT_URL: http://campus-ai-service:8089/api/v1/ai/cognition/extract
+
+  campus-audit-service:
+    <<: *backend
+    build: { context: .., args: { SERVICE: campus-audit-service } }
+
+  campus-search-service:
+    <<: *backend
+    build: { context: .., args: { SERVICE: campus-search-service } }
+
+  campus-ai-service:
+    <<: *backend
+    build: { context: .., args: { SERVICE: campus-ai-service } }
+    environment:
+      <<: *backend-env
+      SPRING_PROFILES_ACTIVE: llm,pg
+      CAMPUS_AI_MODE: llm
+      OPENAI_API_KEY: ${OPENAI_API_KEY:?OPENAI_API_KEY is required}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:?OPENAI_BASE_URL is required}
+      OPENAI_CHAT_MODEL: ${OPENAI_CHAT_MODEL:?OPENAI_CHAT_MODEL is required}
+      PGVECTOR_URL: jdbc:postgresql://postgres:5432/${PGVECTOR_DATABASE:-campusmind_vector}
+      PGVECTOR_USERNAME: ${PGVECTOR_USERNAME:-campusmind}
+      PGVECTOR_PASSWORD: ${PGVECTOR_PASSWORD:?PGVECTOR_PASSWORD is required}
+    depends_on: [mysql, redis, nacos, postgres]
+
+  campus-admin-web:
+    build: ../campus-admin-web
+    restart: unless-stopped
+    ports: ["80:80"]
+    depends_on: [campus-gateway]

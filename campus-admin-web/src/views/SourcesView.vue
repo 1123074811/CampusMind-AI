@@ -1,19 +1,30 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue';
+import { computed, reactive, ref } from 'vue';
 import StatusPill from '../components/StatusPill.vue';
 import type { DataSource, SourceStatus } from '../adminTypes';
+import type { DataSourcePayload } from '../api/admin';
 
 const props = defineProps<{
   dataSources: DataSource[];
   crawlingSourceId: number | null;
+  canManage: boolean;
 }>();
 
-defineEmits<{
+const emit = defineEmits<{
   crawl: [id: number];
+  create: [payload: DataSourcePayload];
+  update: [id: number, payload: DataSourcePayload];
+  toggle: [source: DataSource];
 }>();
 
 const statusFilter = ref<'ALL' | SourceStatus>('ALL');
 const selectedSourceId = ref(props.dataSources[0]?.id ?? 0);
+const editing = ref(false);
+const editingId = ref<number | null>(null);
+const form = reactive<DataSourcePayload>({
+  name: '', sourceType: 'PUBLIC_WEB', baseUrl: '', robotsUrl: '', crawlIntervalSeconds: 3600,
+  parserType: 'WEBMAGIC', selectorConfig: '', enabled: true
+});
 
 const filteredSources = computed(() => {
   if (statusFilter.value === 'ALL') {
@@ -35,6 +46,32 @@ function sourceChannelLabel(channel: string) {
     USER_FILE: '用户文件'
   }[channel] ?? channel;
 }
+
+function startEdit(source?: DataSource) {
+  editing.value = true;
+  editingId.value = source?.id ?? null;
+  Object.assign(form, source ? {
+    name: source.name,
+    sourceType: source.channel,
+    baseUrl: source.sourceUrl,
+    robotsUrl: source.robotsUrl ?? '',
+    crawlIntervalSeconds: source.crawlIntervalSeconds || 3600,
+    parserType: source.parserType || 'WEBMAGIC',
+    selectorConfig: source.selectorConfig ?? '',
+    enabled: source.enabled
+  } : {
+    name: '', sourceType: 'PUBLIC_WEB', baseUrl: '', robotsUrl: '', crawlIntervalSeconds: 3600,
+    parserType: 'WEBMAGIC', selectorConfig: '', enabled: true
+  });
+}
+
+function saveSource() {
+  if (!form.name.trim() || !form.baseUrl.trim()) return;
+  const payload = { ...form, name: form.name.trim(), baseUrl: form.baseUrl.trim() };
+  if (editingId.value == null) emit('create', payload);
+  else emit('update', editingId.value, payload);
+  editing.value = false;
+}
 </script>
 
 <template>
@@ -51,6 +88,7 @@ function sourceChannelLabel(channel: string) {
           <button type="button" :class="{ active: statusFilter === 'NEEDS_AUTH' }" @click="statusFilter = 'NEEDS_AUTH'">授权</button>
           <button type="button" :class="{ active: statusFilter === 'PAUSED' }" @click="statusFilter = 'PAUSED'">暂停</button>
         </div>
+        <button v-if="props.canManage" type="button" class="solid-button" @click="startEdit()">新增数据源</button>
       </div>
 
       <div class="source-cards">
@@ -79,7 +117,28 @@ function sourceChannelLabel(channel: string) {
       </div>
     </section>
 
-    <aside v-if="selectedSource" class="inspector-panel" aria-label="数据源详情">
+    <aside v-if="editing" class="inspector-panel" aria-label="编辑数据源">
+      <p class="eyebrow">Source Editor</p>
+      <h3>{{ editingId == null ? '新增数据源' : '编辑数据源' }}</h3>
+      <div class="filters vertical">
+        <input v-model="form.name" type="text" placeholder="数据源名称" />
+        <select v-model="form.sourceType">
+          <option value="PUBLIC_WEB">公开网页</option>
+          <option value="OFFICIAL_API">官方 API</option>
+        </select>
+        <input v-model="form.baseUrl" type="url" placeholder="https://example.edu.cn/notices" />
+        <input v-model="form.robotsUrl" type="url" placeholder="robots.txt 地址（可选）" />
+        <input v-model.number="form.crawlIntervalSeconds" type="number" min="30" max="86400" placeholder="采集间隔（秒）" />
+        <input v-model="form.parserType" type="text" placeholder="解析器，例如 WEBMAGIC" />
+        <textarea v-model="form.selectorConfig" rows="7" placeholder="选择器 JSON（可选）"></textarea>
+      </div>
+      <div class="decision-actions">
+        <button type="button" class="solid-button" @click="saveSource">保存</button>
+        <button type="button" class="ghost-button" @click="editing = false">取消</button>
+      </div>
+    </aside>
+
+    <aside v-else-if="selectedSource" class="inspector-panel" aria-label="数据源详情">
       <p class="eyebrow">Inspector</p>
       <h3>{{ selectedSource.name }}</h3>
       <dl class="stacked-list">
@@ -103,6 +162,14 @@ function sourceChannelLabel(channel: string) {
           <dt>待处理</dt>
           <dd>{{ selectedSource.pending }} 条</dd>
         </div>
+        <div>
+          <dt>采集间隔</dt>
+          <dd>{{ selectedSource.crawlIntervalSeconds }} 秒</dd>
+        </div>
+        <div>
+          <dt>解析器</dt>
+          <dd>{{ selectedSource.parserType }}</dd>
+        </div>
       </dl>
       <div class="decision-actions">
         <button
@@ -113,6 +180,10 @@ function sourceChannelLabel(channel: string) {
           @click="$emit('crawl', selectedSource.id)"
         >
           {{ props.crawlingSourceId === selectedSource.id ? '采集中' : '立即采集此源' }}
+        </button>
+        <button v-if="props.canManage" type="button" class="ghost-button" @click="startEdit(selectedSource)">编辑</button>
+        <button v-if="props.canManage" type="button" class="ghost-button" @click="emit('toggle', selectedSource)">
+          {{ selectedSource.enabled ? '暂停' : '恢复' }}
         </button>
       </div>
     </aside>

@@ -123,7 +123,7 @@ Copy-Item campus-ai-service\src\main\resources\application-local.yml.example cam
 
 开发阶段默认连接本机 MySQL、Redis、MongoDB、PostgreSQL/PGVector。请先确认这些服务已在本地启动，并已执行 `infra/mysql/init` 下的初始化脚本创建业务表和演示数据。
 
-2. 一键启动后端服务和管理后台：
+2. 一键启动 Docker 开发依赖、后端服务、管理后台和 Windows App：
 
 在 PowerShell 执行：
 
@@ -137,6 +137,7 @@ Copy-Item campus-ai-service\src\main\resources\application-local.yml.example cam
 - 检查后端 jar，缺失时自动执行 Maven 打包。
 - 启动全部后端微服务。
 - 启动 `campus-admin-web` Vite 开发服务器。
+- 构建并打开 Windows Flutter App。
 - 等待 `/actuator/health` 与前端服务可访问。
 - 将日志写入 `logs/`。
 
@@ -211,8 +212,12 @@ flutter test
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| `POST` | `/api/v1/auth/login` | 用户登录并返回 JWT |
+| `POST` | `/api/v1/auth/login` | 登录并返回访问令牌与轮换刷新令牌 |
+| `POST` | `/api/v1/auth/refresh` | 使用单次刷新令牌续期会话 |
+| `POST` | `/api/v1/auth/logout` | 注销并撤销当前会话 |
 | `GET` | `/api/v1/users/me` | 获取当前用户信息 |
+| `GET` | `/api/v1/users/me/export` | 导出当前用户数据 |
+| `DELETE` | `/api/v1/users/me` | 校验密码后匿名化注销账号 |
 | `PUT` | `/api/v1/users/me/profile` | 更新用户画像 |
 | `GET` | `/api/v1/events/search` | 查询事件列表 |
 | `GET` | `/api/v1/events/{id}` | 查询事件详情 |
@@ -226,12 +231,25 @@ flutter test
 | `GET` | `/api/admin/dashboard` | 管理后台仪表盘 |
 | `PUT` | `/api/admin/events/{id}/review` | 审核事件 |
 | `POST` | `/api/admin/crawler/sources/{sourceId}/crawl` | 触发数据源采集 |
+| `POST/PUT` | `/api/admin/sources` | 新增或维护数据源（管理员） |
 | `POST` | `/api/v1/ai/cognition/extract` | AI 认知抽取 |
 | `POST` | `/api/v1/ai/decision/plan` | AI 决策规划 |
 | `POST` | `/api/v1/ai/vector/text` | 生成事件向量文本 |
 | `POST` | `/api/v1/ai/vector/store` | 写入向量文本 |
 | `POST` | `/api/v1/ai/vector/search` | 向量检索 |
 | `POST` | `/api/v1/ai/chat` | ChatModel 对话 |
+
+## 生产容器部署
+
+生产编排只向宿主机暴露管理端 `80` 和网关 `8080`，其余微服务仅在 Docker 网络内通信。先在 `.env` 配置数据库、JWT、真实模型和 PGVector 凭据，再执行：
+
+```powershell
+docker compose -f infra/docker-compose.yml -f infra/docker-compose.app.yml up -d --build
+```
+
+Android release 构建必须通过 `CAMPUSMIND_KEYSTORE_PATH`、`CAMPUSMIND_KEYSTORE_PASSWORD`、`CAMPUSMIND_KEY_ALIAS`、`CAMPUSMIND_KEY_PASSWORD` 注入签名；缺少任一项时 release 构建会明确失败，debug 构建不受影响。
+
+校方单点登录采用标准 OIDC。为认证服务启用 `sso` profile，并配置 `CAMPUS_OIDC_ISSUER_URI`、`CAMPUS_OIDC_CLIENT_ID`、`CAMPUS_OIDC_CLIENT_SECRET` 与 `CAMPUS_OIDC_APP_CALLBACK_URL`。登录入口为 `/oauth2/authorization/campus`；回调只携带 60 秒一次性 code，客户端再调用 `/api/v1/auth/sso/exchange` 换取会话，访问令牌不会出现在 URL 中。SSO 用户须先在用户目录中开通。
 
 ## 示例请求
 

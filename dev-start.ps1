@@ -2,7 +2,8 @@
 .SYNOPSIS
     CampusMind AI 开发阶段启动脚本
 .DESCRIPTION
-    启动全部后端微服务 + 前端管理后台。服务以独立进程运行（Start-Process），
+    启动 Docker 开发依赖、全部后端微服务、管理后台和 Windows App。
+    服务以独立进程运行（Start-Process），
     脚本退出后服务保持。jar 已存在则跳过构建。日志输出到 logs/ 目录。
     停止服务用 dev-stop.ps1。
 #>
@@ -27,6 +28,19 @@ function Import-DotEnv {
 }
 
 Import-DotEnv "$ProjectRoot\.env"
+
+if (-not $env:MYSQL_DOCKER_PORT) { $env:MYSQL_DOCKER_PORT = "13306" }
+if (-not $env:REDIS_DOCKER_PORT) { $env:REDIS_DOCKER_PORT = "16379" }
+if (-not $env:MONGO_DOCKER_PORT) { $env:MONGO_DOCKER_PORT = "27018" }
+if (-not $env:PGVECTOR_DOCKER_PORT) { $env:PGVECTOR_DOCKER_PORT = "15432" }
+$env:MYSQL_HOST = "localhost"
+$env:MYSQL_PORT = $env:MYSQL_DOCKER_PORT
+$env:REDIS_HOST = "localhost"
+$env:REDIS_PORT = $env:REDIS_DOCKER_PORT
+$env:MONGODB_URI = "mongodb://localhost:$($env:MONGO_DOCKER_PORT)/campusmind"
+$env:IMPORT_MONGO_URI = $env:MONGODB_URI
+$env:PGVECTOR_HOST = "localhost"
+$env:PGVECTOR_PORT = $env:PGVECTOR_DOCKER_PORT
 
 $JavaHome = "C:\Program Files\Java\jdk-21"
 $Java    = "$JavaHome\bin\java.exe"
@@ -53,7 +67,13 @@ if (-not $LocalDbPassword) { $LocalDbPassword = "campusmind" }
 foreach ($prefix in @("AUTH", "USER", "EVENT", "FEED", "IMPORT", "CRAWLER", "AUDIT", "SEARCH")) {
     Set-Item -Path "Env:${prefix}_DB_USERNAME" -Value $LocalDbUsername
     Set-Item -Path "Env:${prefix}_DB_PASSWORD" -Value $LocalDbPassword
+    Set-Item -Path "Env:${prefix}_DB_URL" -Value "jdbc:mysql://localhost:$($env:MYSQL_PORT)/$($env:MYSQL_DATABASE)?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai"
 }
+foreach ($prefix in @("AUTH", "USER", "IMPORT", "CRAWLER", "GATEWAY")) {
+    Set-Item -Path "Env:${prefix}_REDIS_HOST" -Value "localhost"
+    Set-Item -Path "Env:${prefix}_REDIS_PORT" -Value $env:REDIS_PORT
+}
+$env:PGVECTOR_URL = "jdbc:postgresql://localhost:$($env:PGVECTOR_PORT)/$($env:PGVECTOR_DATABASE)"
 if (-not $env:IMPORT_REDIS_PASSWORD) { $env:IMPORT_REDIS_PASSWORD = "" }
 $AiProfiles = if ($env:CAMPUS_AI_MODE -eq "llm") { "llm,pg" } else { "" }
 
@@ -80,6 +100,19 @@ if (-not (Test-Path $Java)) {
 }
 New-Item -ItemType Directory -Force -Path $LogDir | Out-Null
 
+$docker = Get-Command docker -ErrorAction SilentlyContinue
+if (-not $docker) {
+    Write-Host "[ERROR] Docker CLI not found." -ForegroundColor Red
+    exit 1
+}
+$infraServices = @("mysql", "redis", "mongo", "nacos")
+if ($AiProfiles) { $infraServices += "postgres" }
+& $docker.Source compose --env-file "$ProjectRoot\.env" -f $InfraComposeFile up -d @infraServices
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "[ERROR] Failed to start Docker development infrastructure." -ForegroundColor Red
+    exit 1
+}
+
 function Test-TcpPort {
     param(
         [string]$HostName,
@@ -95,12 +128,6 @@ function Test-TcpPort {
         Write-Host "      [TCP FAIL] ${HostName}:${Port} — $($_.Exception.Message)" -ForegroundColor DarkGray
         return $false
     }
-}
-
-function Get-DockerComposeCommand {
-    $docker = Get-Command docker -ErrorAction SilentlyContinue
-    if (-not $docker) { return $null }
-    return @("docker", "compose")
 }
 
 function Start-NativeServiceIfPresent {
@@ -129,8 +156,6 @@ function Ensure-InfraService {
         [string]$Label,
         [string]$HostName,
         [int]$Port,
-        [string]$ComposeService,
-        [string]$ContainerName,
         [string[]]$NativeServiceNames
     )
 
@@ -147,61 +172,8 @@ function Ensure-InfraService {
         }
     }
 
-    $compose = Get-DockerComposeCommand
-    if (-not $compose) {
-        Write-Host "[ERROR] $Label is not running, and Docker was not found for first deployment install." -ForegroundColor Red
-        Write-Host "        Please install Docker Desktop or install/start $Label manually, then rerun this script." -ForegroundColor Red
-        exit 1
-    }
-    if (-not (Test-Path $InfraComposeFile)) {
-        Write-Host "[ERROR] Docker compose file not found: $InfraComposeFile" -ForegroundColor Red
-        exit 1
-    }
-
-    $existingContainer = docker ps -a --filter "name=^/$ContainerName$" --format "{{.Names}}" 2>$null
-    if ($existingContainer -eq $ContainerName) {
-        Write-Host "      Container found: $ContainerName. Starting..." -ForegroundColor Yellow
-        docker start $ContainerName | Out-Null
-    } else {
-        Write-Host "      $Label not found. Installing via Docker Compose service '$ComposeService'..." -ForegroundColor Yellow
-        $composeExe = $compose[0]
-        $composeArgs = @($compose[1], "-f", $InfraComposeFile, "up", "-d", $ComposeService)
-        $restoreEnv = @{}
-        if ($ComposeService -eq "nacos") {
-            foreach ($name in @("MYSQL_ROOT_PASSWORD", "MYSQL_PASSWORD", "PGVECTOR_PASSWORD")) {
-                $restoreEnv[$name] = [Environment]::GetEnvironmentVariable($name, "Process")
-                if ([string]::IsNullOrEmpty($restoreEnv[$name])) {
-                    Set-Item "Env:$name" "compose-placeholder-not-persisted"
-                }
-            }
-        }
-        try {
-            & $composeExe @composeArgs
-        } finally {
-            foreach ($name in $restoreEnv.Keys) {
-                if ($null -eq $restoreEnv[$name]) {
-                    Remove-Item "Env:$name" -ErrorAction SilentlyContinue
-                } else {
-                    Set-Item "Env:$name" $restoreEnv[$name]
-                }
-            }
-        }
-        if ($LASTEXITCODE -ne 0) {
-            Write-Host "[ERROR] Failed to install/start $Label with Docker Compose." -ForegroundColor Red
-            exit 1
-        }
-    }
-
-    $waited = 0
-    while ($waited -lt 45) {
-        if (Test-TcpPort -HostName $HostName -Port $Port) {
-            Write-Host "      [OK]  $Label is running at ${HostName}:${Port}" -ForegroundColor Green
-            return
-        }
-        Start-Sleep -Seconds 3
-        $waited += 3
-    }
-    Write-Host "[ERROR] $Label did not become reachable at ${HostName}:${Port}" -ForegroundColor Red
+    Write-Host "[ERROR] $Label is not reachable at ${HostName}:${Port}." -ForegroundColor Red
+    Write-Host "        Check the local service or Docker container, then rerun this script." -ForegroundColor Red
     exit 1
 }
 
@@ -235,22 +207,11 @@ function Invoke-MySqlScript {
             return $exitCode
         }
 
-        $compose = Get-DockerComposeCommand
-        if ($compose) {
-            $container = docker ps --filter "name=^/campusmind-mysql$" --format "{{.Names}}" 2>$null
-            if ($container -eq "campusmind-mysql") {
-                Get-Content -Encoding UTF8 $ScriptPath | docker exec -i campusmind-mysql mysql `
-                    "--user=$Username" `
-                    "--database=$Database" `
-                    "--default-character-set=utf8mb4"
-                return $LASTEXITCODE
-            }
-        }
     } finally {
         $env:MYSQL_PWD = $previousMysqlPwd
     }
 
-    Write-Host "[ERROR] mysql client not found and Docker MySQL container is not available." -ForegroundColor Red
+    Write-Host "[ERROR] mysql client not found. Install the local MySQL client and rerun this script." -ForegroundColor Red
     return 1
 }
 
@@ -309,6 +270,19 @@ function Get-MySqlScalar {
 }
 
 function Ensure-MySqlSchema {
+    $ready = $false
+    foreach ($attempt in 1..30) {
+        if ((Invoke-MySqlCommand -Sql "SELECT 1" -Username "root" -Password $env:MYSQL_ROOT_PASSWORD) -eq 0) {
+            $ready = $true
+            break
+        }
+        Start-Sleep -Seconds 2
+    }
+    if (-not $ready) {
+        Write-Host "[ERROR] Docker MySQL did not become ready in 60 seconds." -ForegroundColor Red
+        exit 1
+    }
+
     $testExit = Invoke-MySqlCommand `
         -Sql "SELECT 1" `
         -Username $LocalDbUsername `
@@ -348,7 +322,11 @@ FLUSH PRIVILEGES;
         "$ProjectRoot\infra\mysql\init\005_web_crawl_item_detail.sql",
         "$ProjectRoot\infra\mysql\init\006_information_item.sql",
         "$ProjectRoot\infra\mysql\init\007_information_ai_card.sql",
-        "$ProjectRoot\infra\mysql\init\007_user_subscription.sql"
+        "$ProjectRoot\infra\mysql\init\007_user_subscription.sql",
+        "$ProjectRoot\infra\mysql\init\009_ai_processing_record.sql",
+        "$ProjectRoot\infra\mysql\init\010_user_actions.sql",
+        "$ProjectRoot\infra\mysql\init\011_information_change_log.sql",
+        "$ProjectRoot\infra\mysql\migrations\006_user_profile_sensitivity.sql"
     )
     foreach ($script in $schemaScripts) {
         if ((Split-Path $script -Leaf) -eq "007_information_ai_card.sql") {
@@ -412,37 +390,27 @@ Ensure-InfraService `
     -Label "MySQL" `
     -HostName $env:MYSQL_HOST `
     -Port ([int]$env:MYSQL_PORT) `
-    -ComposeService "mysql" `
-    -ContainerName "campusmind-mysql" `
     -NativeServiceNames @("MySQL91", "MySQL90", "MySQL84", "MySQL80", "MySQL")
 Ensure-InfraService `
     -Label "Redis" `
     -HostName $env:REDIS_HOST `
     -Port ([int]$env:REDIS_PORT) `
-    -ComposeService "redis" `
-    -ContainerName "campusmind-redis" `
     -NativeServiceNames @("Redis", "Redis Server", "redis")
 Ensure-InfraService `
     -Label "MongoDB" `
     -HostName $MongoHost `
     -Port $MongoPort `
-    -ComposeService "mongo" `
-    -ContainerName "campusmind-mongo" `
     -NativeServiceNames @("MongoDB", "MongoDB Server", "mongodb")
 Ensure-InfraService `
     -Label "Nacos" `
     -HostName "localhost" `
     -Port 8848 `
-    -ComposeService "nacos" `
-    -ContainerName "campusmind-nacos" `
     -NativeServiceNames @()
 if ($AiProfiles) {
     Ensure-InfraService `
         -Label "PGVector" `
         -HostName $env:PGVECTOR_HOST `
         -Port ([int]$env:PGVECTOR_PORT) `
-        -ComposeService "postgres" `
-        -ContainerName "campusmind-pgvector" `
         -NativeServiceNames @("postgresql-x64-17", "postgresql-x64-16")
 }
 
@@ -452,7 +420,6 @@ Ensure-MySqlSchema
 # 1. 清理残留进程与端口
 # ------------------------------------------------------------
 Write-Host "`n[1/4] Cleaning up leftover processes..." -ForegroundColor Cyan
-Get-Process -Name java -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
 foreach ($p in 8080..8089 + $FrontendPort) {
     $line = netstat -ano | Select-String ":$p .*LISTENING"
     if ($line) {
@@ -559,3 +526,6 @@ if ($down.Count -gt 0) {
 }
 Write-Host "  Stop   : .\dev-stop.ps1" -ForegroundColor White
 Write-Host "============================================`n" -ForegroundColor DarkCyan
+
+Write-Host "[APP] Building and starting CampusMind user app..." -ForegroundColor Cyan
+& "$ProjectRoot\start-user-app.ps1"

@@ -8,6 +8,6 @@ foreach ($p in $ports) {
         Write-Host "Stopped PID $procId (port $p)" -ForegroundColor Yellow
     }
 }
-Get-Process -Name java -ErrorAction SilentlyContinue | Stop-Process -Force
-Get-Process -Name node -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+Get-Process campus_flutter_app -ErrorAction SilentlyContinue |
+    Stop-Process -Force -ErrorAction SilentlyContinue
 Write-Host "Done." -ForegroundColor Green

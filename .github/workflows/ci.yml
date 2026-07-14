@@ -34,6 +34,7 @@ jobs:
           cache-dependency-path: campus-admin-web/package-lock.json
       - run: npm ci
       - run: npm audit --audit-level=high
+      - run: npm test
       - run: npm run build
 
   flutter:

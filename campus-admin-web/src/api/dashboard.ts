@@ -1,11 +1,9 @@
 import type { ApiResponse, DashboardResponse, ReviewEvent } from '../adminTypes';
 import type { AdminSession } from '../adminTypes';
-import { authHeaders } from './auth';
+import { authorizedFetch } from './auth';
 
 export async function fetchDashboard(session: AdminSession | null) {
-  const response = await fetch('/api/admin/dashboard', {
-    headers: authHeaders(session)
-  });
+  const response = await authorizedFetch('/api/admin/dashboard', {}, session);
   if (!response.ok) {
     if (response.status === 401) {
       throw new Error('登录已失效，请重新登录');
@@ -22,14 +20,13 @@ export async function fetchDashboard(session: AdminSession | null) {
 }
 
 export async function reviewEvent(session: AdminSession | null, id: number, status: 'REVIEWED' | 'REJECTED' | 'CORRECTED' | 'OFFLINE', comment: string) {
-  const response = await fetch(`/api/admin/events/${id}/review`, {
+  const response = await authorizedFetch(`/api/admin/events/${id}/review`, {
     method: 'PUT',
     headers: {
       'Content-Type': 'application/json',
-      ...authHeaders(session)
     },
     body: JSON.stringify({ status, comment })
-  });
+  }, session);
 
   if (!response.ok) {
     throw new Error(`HTTP ${response.status}`);
@@ -44,14 +41,13 @@ export async function reviewEvent(session: AdminSession | null, id: number, stat
 }
 
 export async function updateEvent(session: AdminSession | null, id: number, data: { title?: string; summary?: string; eventType?: string }) {
-  const response = await fetch(`/api/admin/events/${id}`, {
+  const response = await authorizedFetch(`/api/admin/events/${id}`, {
     method: 'PUT',
     headers: {
       'Content-Type': 'application/json',
-      ...authHeaders(session)
     },
     body: JSON.stringify(data)
-  });
+  }, session);
 
   if (!response.ok) {
     throw new Error(`HTTP ${response.status}`);
@@ -66,10 +62,9 @@ export async function updateEvent(session: AdminSession | null, id: number, data
 }
 
 export async function deleteEvent(session: AdminSession | null, id: number) {
-  const response = await fetch(`/api/admin/events/${id}`, {
+  const response = await authorizedFetch(`/api/admin/events/${id}`, {
     method: 'DELETE',
-    headers: authHeaders(session)
-  });
+  }, session);
 
   if (!response.ok) {
     throw new Error(`HTTP ${response.status}`);
@@ -82,14 +77,13 @@ export async function deleteEvent(session: AdminSession | null, id: number) {
 }
 
 export async function batchDeleteEvents(session: AdminSession | null, ids: number[]) {
-  const response = await fetch('/api/admin/events/batch-delete', {
+  const response = await authorizedFetch('/api/admin/events/batch-delete', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      ...authHeaders(session)
     },
     body: JSON.stringify({ ids })
-  });
+  }, session);
 
   if (!response.ok) {
     throw new Error(`HTTP ${response.status}`);

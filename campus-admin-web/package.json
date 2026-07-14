@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "test": "node --experimental-strip-types --test src/pageLogic.test.ts",
     "build": "vue-tsc -b && vite build",
     "preview": "vite preview"
   },
@@ -18,4 +19,3 @@
     "vue-tsc": "^3.1.3"
   }
 }
-
