@@ -20,6 +20,7 @@ import java.time.temporal.ChronoUnit;
 import java.util.Date;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
@@ -107,7 +108,7 @@ class AdminControllerTest {
                     """);
             statement.execute("CREATE TABLE IF NOT EXISTS user_action_item (id BIGINT AUTO_INCREMENT PRIMARY KEY, information_item_id BIGINT)");
             statement.execute("CREATE TABLE IF NOT EXISTS user_reminder (id BIGINT AUTO_INCREMENT PRIMARY KEY, action_item_id BIGINT, status VARCHAR(32))");
-            statement.execute("CREATE TABLE IF NOT EXISTS notification_delivery (id BIGINT AUTO_INCREMENT PRIMARY KEY, reminder_id BIGINT, status VARCHAR(32), withdrawn_at TIMESTAMP)");
+            statement.execute("CREATE TABLE IF NOT EXISTS notification_delivery (id BIGINT AUTO_INCREMENT PRIMARY KEY, reminder_id BIGINT, user_id BIGINT, channel VARCHAR(32), status VARCHAR(32), attempt_count INT DEFAULT 0, last_error VARCHAR(1024), next_attempt_at TIMESTAMP, sent_at TIMESTAMP, withdrawn_at TIMESTAMP, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)");
             statement.execute("""
                     CREATE TABLE IF NOT EXISTS ai_processing_record (
                       id BIGINT PRIMARY KEY,
@@ -215,6 +216,9 @@ class AdminControllerTest {
         insertAuditLog(1002L, 9901L, "CORRECT", "修正考试地点");
         insertAiProcessingRecord(7001L, 1001L, "FAILED");
         insertAiProcessingRecord(7002L, 1002L, "SUCCEEDED");
+        insertDelivery(8001L, "PENDING", "IN_APP");
+        insertDelivery(8002L, "SENT", "PUSH");
+        insertDelivery(8003L, "FAILED", "PUSH");
     }
 
     @Test
@@ -358,6 +362,60 @@ class AdminControllerTest {
                         .content("{\"versionNo\":1}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.enabled").value(true));
+    }
+
+    @Test
+    void deliveryStatsReturnsAggregatedCounts() throws Exception {
+        mockMvc.perform(get("/api/admin/notifications/stats").header("Authorization", adminToken()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.total").value(3))
+                .andExpect(jsonPath("$.data.sent").value(1))
+                .andExpect(jsonPath("$.data.failed").value(1))
+                .andExpect(jsonPath("$.data.pending").value(1));
+    }
+
+    @Test
+    void deliveryListReturnsPaginatedResults() throws Exception {
+        mockMvc.perform(get("/api/admin/notifications/deliveries")
+                        .header("Authorization", adminToken())
+                        .param("status", "ALL").param("page", "0").param("size", "10"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(3));
+
+        mockMvc.perform(get("/api/admin/notifications/deliveries")
+                        .header("Authorization", adminToken())
+                        .param("status", "FAILED"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(1));
+    }
+
+    @Test
+    void retryDeliveryOnlyWorksForFailedStatus() throws Exception {
+        mockMvc.perform(post("/api/admin/notifications/deliveries/8003/retry")
+                        .header("Authorization", adminToken()))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(post("/api/admin/notifications/deliveries/8001/retry")
+                        .header("Authorization", adminToken()))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void withdrawDeliveryUpdatesStatus() throws Exception {
+        mockMvc.perform(post("/api/admin/notifications/deliveries/8002/withdraw")
+                        .header("Authorization", adminToken()))
+                .andExpect(status().isOk());
+
+        // Withdrawing again should fail
+        mockMvc.perform(post("/api/admin/notifications/deliveries/8002/withdraw")
+                        .header("Authorization", adminToken()))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void studentCannotAccessNotificationAdmin() throws Exception {
+        mockMvc.perform(get("/api/admin/notifications/stats").header("Authorization", token("STUDENT", 9902L)))
+                .andExpect(status().isForbidden());
     }
 
     private String adminToken() {
@@ -512,6 +570,19 @@ class AdminControllerTest {
             statement.setLong(2, informationItemId);
             statement.setString(3, String.format("%064d", id));
             statement.setString(4, status);
+            statement.executeUpdate();
+        }
+    }
+
+    private void insertDelivery(Long id, String status, String channel) throws Exception {
+        try (Connection connection = dataSource.getConnection();
+             PreparedStatement statement = connection.prepareStatement("""
+                     INSERT INTO notification_delivery (id, reminder_id, user_id, channel, status, attempt_count)
+                     VALUES (?, 1, 1, ?, ?, 0)
+                     """)) {
+            statement.setLong(1, id);
+            statement.setString(2, channel);
+            statement.setString(3, status);
             statement.executeUpdate();
         }
     }

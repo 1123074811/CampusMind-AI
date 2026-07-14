@@ -180,6 +180,25 @@ public class AdminController {
         return ApiResponse.ok(null);
     }
 
+    @PostMapping("/events/batch-review")
+    public ApiResponse<java.util.List<AdminEventResponse>> batchReview(
+            @Valid @RequestBody BatchReviewRequest request,
+            @RequestHeader(value = "Authorization", required = false) String authorization
+    ) {
+        Long operatorId = auditTokenService.requireOperatorOrAdmin(authorization).userId();
+        return ApiResponse.ok(adminDashboardService.batchReview(
+                request.ids(), operatorId, request.status(), request.comment()));
+    }
+
+    @GetMapping("/events/{id}/impact")
+    public ApiResponse<EventImpactResponse> eventImpact(
+            @PathVariable Long id,
+            @RequestHeader(value = "Authorization", required = false) String authorization
+    ) {
+        auditTokenService.requireOperatorOrAdmin(authorization);
+        return ApiResponse.ok(adminDashboardService.eventImpact(id));
+    }
+
     @GetMapping("/change-logs")
     public ApiResponse<java.util.List<ChangeLogResponse>> changeLogs(
             @RequestHeader(value = "Authorization", required = false) String authorization,
@@ -187,5 +206,46 @@ public class AdminController {
     ) {
         auditTokenService.requireAdmin(authorization);
         return ApiResponse.ok(adminDashboardService.changeLogs(size));
+    }
+
+    // ─── 通知运营 ──────────────────────────────────────────
+
+    @GetMapping("/notifications/stats")
+    public ApiResponse<DeliveryStatsResponse> deliveryStats(
+            @RequestHeader(value = "Authorization", required = false) String authorization
+    ) {
+        auditTokenService.requireOperatorOrAdmin(authorization);
+        return ApiResponse.ok(adminDashboardService.deliveryStats());
+    }
+
+    @GetMapping("/notifications/deliveries")
+    public ApiResponse<java.util.List<java.util.Map<String, Object>>> deliveries(
+            @RequestHeader(value = "Authorization", required = false) String authorization,
+            @RequestParam(defaultValue = "ALL") String status,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "50") int size
+    ) {
+        auditTokenService.requireOperatorOrAdmin(authorization);
+        return ApiResponse.ok(adminDashboardService.deliveries(status, page, size));
+    }
+
+    @PostMapping("/notifications/deliveries/{id}/retry")
+    public ApiResponse<Void> retryDelivery(
+            @PathVariable Long id,
+            @RequestHeader(value = "Authorization", required = false) String authorization
+    ) {
+        auditTokenService.requireOperatorOrAdmin(authorization);
+        adminDashboardService.retryDelivery(id);
+        return ApiResponse.ok(null);
+    }
+
+    @PostMapping("/notifications/deliveries/{id}/withdraw")
+    public ApiResponse<Void> withdrawDelivery(
+            @PathVariable Long id,
+            @RequestHeader(value = "Authorization", required = false) String authorization
+    ) {
+        auditTokenService.requireOperatorOrAdmin(authorization);
+        adminDashboardService.withdrawDelivery(id);
+        return ApiResponse.ok(null);
     }
 }

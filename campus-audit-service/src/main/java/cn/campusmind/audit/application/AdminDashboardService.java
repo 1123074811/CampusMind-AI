@@ -193,6 +193,54 @@ public class AdminDashboardService {
         }
     }
 
+    @Transactional
+    public List<AdminEventResponse> batchReview(List<Long> ids, Long operatorId, String status, String comment) {
+        if (ids == null || ids.isEmpty()) {
+            return List.of();
+        }
+        String safeComment = StringUtils.hasText(comment) ? comment : "批量审核";
+        return ids.stream()
+                .distinct()
+                .map(id -> review(id, operatorId, status, safeComment))
+                .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public cn.campusmind.audit.controller.EventImpactResponse eventImpact(Long eventId) {
+        InformationItem event = informationItemMapper.selectById(eventId);
+        if (event == null) {
+            throw new BusinessException("EVENT_NOT_FOUND", "事件不存在", HttpStatus.NOT_FOUND);
+        }
+        Long pending = jdbcTemplate.queryForObject("""
+                SELECT COUNT(*) FROM user_reminder r
+                JOIN user_action_item a ON a.id = r.action_item_id
+                WHERE a.information_item_id = ? AND r.status = 'PENDING'
+                """, Long.class, eventId);
+        Long due = jdbcTemplate.queryForObject("""
+                SELECT COUNT(*) FROM user_reminder r
+                JOIN user_action_item a ON a.id = r.action_item_id
+                WHERE a.information_item_id = ? AND r.status = 'DUE'
+                """, Long.class, eventId);
+        Long deliveries = jdbcTemplate.queryForObject("""
+                SELECT COUNT(*) FROM notification_delivery d
+                JOIN user_reminder r ON r.id = d.reminder_id
+                JOIN user_action_item a ON a.id = r.action_item_id
+                WHERE a.information_item_id = ? AND d.status IN ('PENDING','RETRY','SENDING','SENT')
+                """, Long.class, eventId);
+        Long users = jdbcTemplate.queryForObject("""
+                SELECT COUNT(DISTINCT r.user_id) FROM user_reminder r
+                JOIN user_action_item a ON a.id = r.action_item_id
+                WHERE a.information_item_id = ? AND r.status IN ('PENDING','DUE')
+                """, Long.class, eventId);
+        return new cn.campusmind.audit.controller.EventImpactResponse(
+                eventId,
+                pending == null ? 0 : pending,
+                due == null ? 0 : due,
+                deliveries == null ? 0 : deliveries,
+                users == null ? 0 : users
+        );
+    }
+
     private void withdrawItemReminders(Long itemId) {
         jdbcTemplate.update("""
                 UPDATE user_reminder r JOIN user_action_item a ON a.id = r.action_item_id
@@ -701,5 +749,80 @@ public class AdminDashboardService {
             return duration.toHours() + " 小时前";
         }
         return duration.toDays() + " 天前";
+    }
+
+    // ─── 通知运营 ───────────────────────────────────────────
+
+    @Transactional(readOnly = true)
+    public cn.campusmind.audit.controller.DeliveryStatsResponse deliveryStats() {
+        Map<String, Object> row = jdbcTemplate.queryForMap("""
+                SELECT
+                  COUNT(*) AS total,
+                  SUM(CASE WHEN status='PENDING'  THEN 1 ELSE 0 END) AS pending,
+                  SUM(CASE WHEN status='SENDING'  THEN 1 ELSE 0 END) AS sending,
+                  SUM(CASE WHEN status='SENT'     THEN 1 ELSE 0 END) AS sent,
+                  SUM(CASE WHEN status='RETRY'    THEN 1 ELSE 0 END) AS retry,
+                  SUM(CASE WHEN status='FAILED'   THEN 1 ELSE 0 END) AS failed,
+                  SUM(CASE WHEN status='WITHDRAWN' THEN 1 ELSE 0 END) AS withdrawn
+                FROM notification_delivery
+                """);
+        return new cn.campusmind.audit.controller.DeliveryStatsResponse(
+                ((Number) row.get("total")).longValue(),
+                ((Number) row.get("pending")).longValue(),
+                ((Number) row.get("sending")).longValue(),
+                ((Number) row.get("sent")).longValue(),
+                ((Number) row.get("retry")).longValue(),
+                ((Number) row.get("failed")).longValue(),
+                ((Number) row.get("withdrawn")).longValue()
+        );
+    }
+
+    @Transactional(readOnly = true)
+    public List<Map<String, Object>> deliveries(String status, int page, int size) {
+        final int safeSize = Math.min(Math.max(size, 1), 200);
+        final int safePage = Math.max(page, 0);
+        final int offset = safePage * safeSize;
+
+        if (StringUtils.hasText(status) && !"ALL".equalsIgnoreCase(status)) {
+            return jdbcTemplate.queryForList(
+                """
+                SELECT d.id, d.reminder_id AS reminderId, d.user_id AS userId,
+                       d.channel, d.status, d.attempt_count AS attemptCount,
+                       d.last_error AS lastError, d.sent_at AS sentAt,
+                       d.withdrawn_at AS withdrawnAt, d.created_at AS createdAt
+                FROM notification_delivery d
+                WHERE d.status = ?
+                ORDER BY d.id DESC LIMIT ? OFFSET ?
+                """,
+                status, safeSize, offset);
+        }
+        return jdbcTemplate.queryForList(
+                """
+                SELECT d.id, d.reminder_id AS reminderId, d.user_id AS userId,
+                       d.channel, d.status, d.attempt_count AS attemptCount,
+                       d.last_error AS lastError, d.sent_at AS sentAt,
+                       d.withdrawn_at AS withdrawnAt, d.created_at AS createdAt
+                FROM notification_delivery d
+                ORDER BY d.id DESC LIMIT ? OFFSET ?
+                """,
+                safeSize, offset);
+    }
+
+    @Transactional
+    public void retryDelivery(Long id) {
+        int changed = jdbcTemplate.update(
+                "UPDATE notification_delivery SET status='RETRY', next_attempt_at=CURRENT_TIMESTAMP WHERE id=? AND status='FAILED'", id);
+        if (changed == 0) {
+            throw new BusinessException("DELIVERY_NOT_RETRYABLE", "投递记录不存在或状态不允许重试", HttpStatus.BAD_REQUEST);
+        }
+    }
+
+    @Transactional
+    public void withdrawDelivery(Long id) {
+        int changed = jdbcTemplate.update(
+                "UPDATE notification_delivery SET status='WITHDRAWN', withdrawn_at=CURRENT_TIMESTAMP WHERE id=? AND status <> 'WITHDRAWN'", id);
+        if (changed == 0) {
+            throw new BusinessException("DELIVERY_NOT_FOUND", "投递记录不存在或已撤回", HttpStatus.NOT_FOUND);
+        }
     }
 }
