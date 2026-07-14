@@ -1,38 +1,37 @@
 package cn.campusmind.auth.config;
 
+import cn.campusmind.auth.application.SsoSuccessHandler;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Profile;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
-import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
-import org.springframework.context.annotation.Profile;
 
 @Configuration
-@EnableWebSecurity
-@EnableConfigurationProperties(AuthProperties.class)
-@Profile("!sso")
-public class SecurityConfig {
+@Profile("sso")
+@EnableConfigurationProperties({AuthProperties.class, SsoProperties.class})
+public class SsoSecurityConfig {
 
     @Bean
-    public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+    SecurityFilterChain ssoSecurityFilterChain(HttpSecurity http, SsoSuccessHandler successHandler) throws Exception {
         return http
                 .csrf(AbstractHttpConfigurer::disable)
-                .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED))
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/api/v1/auth/login", "/api/v1/auth/refresh", "/api/v1/auth/logout",
-                                "/api/v1/auth/sso/exchange",
+                        .requestMatchers("/api/v1/auth/**", "/oauth2/**", "/login/oauth2/**",
                                 "/actuator/health", "/actuator/info").permitAll()
                         .anyRequest().authenticated())
+                .oauth2Login(oauth -> oauth.successHandler(successHandler))
                 .build();
     }
 
     @Bean
-    public PasswordEncoder passwordEncoder() {
+    PasswordEncoder passwordEncoder() {
         return new BCryptPasswordEncoder();
     }
 }

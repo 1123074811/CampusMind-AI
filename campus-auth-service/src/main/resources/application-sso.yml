@@ -1,0 +1,20 @@
+spring:
+  security:
+    oauth2:
+      client:
+        registration:
+          campus:
+            provider: campus
+            client-id: ${CAMPUS_OIDC_CLIENT_ID}
+            client-secret: ${CAMPUS_OIDC_CLIENT_SECRET}
+            authorization-grant-type: authorization_code
+            redirect-uri: "{baseUrl}/login/oauth2/code/{registrationId}"
+            scope: openid,profile,email
+        provider:
+          campus:
+            issuer-uri: ${CAMPUS_OIDC_ISSUER_URI}
+
+campus:
+  auth:
+    sso:
+      callback-url: ${CAMPUS_OIDC_APP_CALLBACK_URL}

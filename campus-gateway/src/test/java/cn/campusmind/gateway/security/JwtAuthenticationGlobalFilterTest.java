@@ -8,6 +8,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.cloud.gateway.filter.GatewayFilterChain;
 import org.springframework.http.HttpHeaders;
+import org.springframework.data.redis.core.ReactiveStringRedisTemplate;
 import org.springframework.mock.http.server.reactive.MockServerHttpRequest;
 import org.springframework.mock.web.server.MockServerWebExchange;
 import org.springframework.web.server.ServerWebExchange;
@@ -183,6 +184,40 @@ class JwtAuthenticationGlobalFilterTest {
 
         StepVerifier.create(filter.filter(exchange, chain))
                 .expectError(GatewayAccessDeniedException.class)
+                .verify();
+        verify(chain, never()).filter(any());
+    }
+
+    @Test
+    void revokedSessionShouldReturnUnauthorized() {
+        ReactiveStringRedisTemplate redisTemplate = mock(ReactiveStringRedisTemplate.class);
+        when(redisTemplate.hasKey("auth:revoked:session-1")).thenReturn(Mono.just(true));
+        when(redisTemplate.hasKey("auth:user-revoked:1")).thenReturn(Mono.just(false));
+        GatewayAuthProperties authProperties = new GatewayAuthProperties(ISSUER, SECRET);
+        GatewaySecurityProperties securityProperties = new GatewaySecurityProperties(
+                List.of("/api/v1/auth/login"),
+                new GatewaySecurityProperties.RateLimit(false, 50, 10)
+        );
+        JwtAuthenticationGlobalFilter revocationFilter = new JwtAuthenticationGlobalFilter(
+                authProperties, securityProperties, redisTemplate
+        );
+        String token = Jwts.builder()
+                .issuer(ISSUER)
+                .subject("1")
+                .id("session-1")
+                .claim("role", "STUDENT")
+                .issuedAt(Date.from(Instant.now()))
+                .expiration(Date.from(Instant.now().plus(2, ChronoUnit.HOURS)))
+                .signWith(signingKey)
+                .compact();
+        ServerWebExchange exchange = MockServerWebExchange.from(
+                MockServerHttpRequest.get("/api/v1/users/me")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
+                        .build());
+        GatewayFilterChain chain = mock(GatewayFilterChain.class);
+
+        StepVerifier.create(revocationFilter.filter(exchange, chain))
+                .expectError(GatewayAuthenticationException.class)
                 .verify();
         verify(chain, never()).filter(any());
     }

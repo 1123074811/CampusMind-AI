@@ -11,6 +11,8 @@ import org.springframework.core.Ordered;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.server.reactive.ServerHttpRequest;
 import org.springframework.stereotype.Component;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.redis.core.ReactiveStringRedisTemplate;
 import org.springframework.util.StringUtils;
 import org.springframework.web.server.ServerWebExchange;
 import reactor.core.publisher.Mono;
@@ -50,11 +52,20 @@ public class JwtAuthenticationGlobalFilter implements GlobalFilter, Ordered {
     private final GatewayAuthProperties authProperties;
     private final GatewaySecurityProperties securityProperties;
     private final SecretKey signingKey;
+    private final ReactiveStringRedisTemplate redisTemplate;
 
     public JwtAuthenticationGlobalFilter(GatewayAuthProperties authProperties,
                                          GatewaySecurityProperties securityProperties) {
+        this(authProperties, securityProperties, null);
+    }
+
+    @Autowired
+    public JwtAuthenticationGlobalFilter(GatewayAuthProperties authProperties,
+                                         GatewaySecurityProperties securityProperties,
+                                         ReactiveStringRedisTemplate redisTemplate) {
         this.authProperties = authProperties;
         this.securityProperties = securityProperties;
+        this.redisTemplate = redisTemplate;
         this.signingKey = Keys.hmacShaKeyFor(authProperties.secret().getBytes(StandardCharsets.UTF_8));
     }
 
@@ -99,7 +110,23 @@ public class JwtAuthenticationGlobalFilter implements GlobalFilter, Ordered {
                         headers.set("X-User-Role", role);
                     })
                     .build();
-            return chain.filter(exchange.mutate().request(authenticatedRequest).build());
+            String sessionId = claims.getId();
+            Mono<Boolean> revoked;
+            if (redisTemplate == null) {
+                revoked = Mono.just(false);
+            } else {
+                Mono<Boolean> sessionRevoked = sessionId == null
+                        ? Mono.just(false)
+                        : redisTemplate.hasKey("auth:revoked:" + sessionId);
+                Mono<Boolean> userRevoked = redisTemplate.hasKey("auth:user-revoked:" + userId);
+                revoked = Mono.zip(sessionRevoked, userRevoked).map(flags -> flags.getT1() || flags.getT2());
+            }
+            ServerWebExchange authenticatedExchange = exchange.mutate().request(authenticatedRequest).build();
+            return revoked
+                    .onErrorMap(ex -> new GatewayAuthenticationException("会话状态暂时不可用"))
+                    .flatMap(isRevoked -> isRevoked
+                            ? Mono.error(new GatewayAuthenticationException("会话已注销"))
+                            : chain.filter(authenticatedExchange));
         } catch (GatewayAccessDeniedException | GatewayAuthenticationException ex) {
             return Mono.error(ex);
         } catch (RuntimeException ex) {

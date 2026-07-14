@@ -6,6 +6,8 @@ public record LoginResponse(
         String accessToken,
         String tokenType,
         Instant expiresAt,
+        String refreshToken,
+        Instant refreshExpiresAt,
         UserPrincipal user
 ) {
 

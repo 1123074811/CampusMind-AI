@@ -11,6 +11,7 @@ campus:
       issuer: campusmind-auth-test
       secret: test-secret-key-with-at-least-32-bytes
       access-token-ttl-minutes: 30
+      refresh-token-ttl-days: 30
 
 mybatis-plus:
   configuration:

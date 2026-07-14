@@ -6,6 +6,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 public record AuthProperties(
         String issuer,
         String secret,
-        long accessTokenTtlMinutes
+        long accessTokenTtlMinutes,
+        long refreshTokenTtlDays
 ) {
 }

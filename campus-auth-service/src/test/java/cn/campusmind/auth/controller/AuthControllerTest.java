@@ -1,5 +1,6 @@
 package cn.campusmind.auth.controller;
 
+import cn.campusmind.auth.application.AuthSessionService;
 import cn.campusmind.auth.domain.UserRole;
 import cn.campusmind.auth.domain.UserStatus;
 import org.junit.jupiter.api.BeforeEach;
@@ -10,6 +11,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
 import javax.sql.DataSource;
 import java.sql.Connection;
@@ -22,6 +24,8 @@ import static org.springframework.http.MediaType.APPLICATION_JSON;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.Mockito.when;
 
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -36,6 +40,11 @@ class AuthControllerTest {
 
     @Autowired
     private PasswordEncoder passwordEncoder;
+
+    @MockitoBean
+    private AuthSessionService authSessionService;
+
+    private long aliceId;
 
     @BeforeEach
     void setUp() throws Exception {
@@ -58,6 +67,19 @@ class AuthControllerTest {
 
         insertUser("alice", "password123", UserRole.STUDENT, UserStatus.ENABLED);
         insertUser("disabled", "password123", UserRole.STUDENT, UserStatus.DISABLED);
+        try (Connection connection = dataSource.getConnection();
+             PreparedStatement statement = connection.prepareStatement("SELECT id FROM `user` WHERE username = ?")) {
+            statement.setString(1, "alice");
+            try (var result = statement.executeQuery()) {
+                result.next();
+                aliceId = result.getLong(1);
+            }
+        }
+        when(authSessionService.create(anyLong())).thenAnswer(invocation ->
+                new AuthSessionService.Session(
+                        invocation.getArgument(0), "session-id", "refresh-token",
+                        java.time.Instant.now().plusSeconds(3600)
+                ));
     }
 
     @Test
@@ -70,6 +92,7 @@ class AuthControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data.accessToken", not(blankOrNullString())))
+                .andExpect(jsonPath("$.data.refreshToken").value("refresh-token"))
                 .andExpect(jsonPath("$.data.tokenType").value("Bearer"))
                 .andExpect(jsonPath("$.data.user.username").value("alice"))
                 .andExpect(jsonPath("$.data.user.role").value("STUDENT"));
@@ -97,6 +120,22 @@ class AuthControllerTest {
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.success").value(false))
                 .andExpect(jsonPath("$.code").value("USER_DISABLED"));
+    }
+
+    @Test
+    void refreshRotatesTokenAndReturnsNewSession() throws Exception {
+        when(authSessionService.rotate("refresh-old")).thenReturn(new AuthSessionService.Session(
+                aliceId, "session-new", "refresh-new", java.time.Instant.now().plusSeconds(3600)
+        ));
+
+        mockMvc.perform(post("/api/v1/auth/refresh")
+                        .contentType(APPLICATION_JSON)
+                        .content("""
+                                {"refreshToken":"refresh-old"}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.accessToken", not(blankOrNullString())))
+                .andExpect(jsonPath("$.data.refreshToken").value("refresh-new"));
     }
 
     private void insertUser(String username, String password, UserRole role, UserStatus status) throws Exception {
