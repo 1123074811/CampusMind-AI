@@ -126,6 +126,29 @@ public class AuthService {
         );
     }
 
+    @Transactional
+    public void changePassword(String authorization, cn.campusmind.auth.controller.ChangePasswordRequest request) {
+        if (!StringUtils.hasText(authorization) || !authorization.startsWith("Bearer ")) {
+            throw new BusinessException("UNAUTHORIZED", "缺少访问令牌", HttpStatus.UNAUTHORIZED);
+        }
+        if (request.currentPassword().equals(request.newPassword())) {
+            throw new BusinessException("PASSWORD_UNCHANGED", "新密码不能与当前密码相同", HttpStatus.BAD_REQUEST);
+        }
+        Claims claims = jwtTokenService.parse(authorization.substring("Bearer ".length()).trim());
+        Long userId = Long.parseLong(claims.getSubject());
+        UserAccount user = userAccountMapper.selectById(userId);
+        if (user == null || user.getStatus() != UserStatus.ENABLED) {
+            throw new BusinessException("USER_DISABLED", "账号不存在或已被禁用", HttpStatus.FORBIDDEN);
+        }
+        if (!passwordEncoder.matches(request.currentPassword(), user.getPasswordHash())) {
+            throw new BusinessException("INVALID_CREDENTIALS", "当前密码不正确", HttpStatus.UNAUTHORIZED);
+        }
+        user.setPasswordHash(passwordEncoder.encode(request.newPassword()));
+        userAccountMapper.updateById(user);
+        authSessionService.revokeUserSessions(userId);
+        authSessionService.revoke(claims.getId(), claims.getExpiration().toInstant(), null);
+    }
+
     private LoginResponse issueSession(UserAccount user, AuthSessionService.Session session) {
         JwtTokenService.TokenIssue tokenIssue = jwtTokenService.issueAccessToken(user, session.sessionId());
         return new LoginResponse(

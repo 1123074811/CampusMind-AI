@@ -31,7 +31,8 @@ public record GatewaySecurityProperties(
 
     public static GatewaySecurityProperties defaults() {
         return new GatewaySecurityProperties(
-                List.of("/api/v1/auth/login", "/api/v1/auth/register", "/api/v1/auth/password/",
+                List.of("/api/v1/auth/login", "/api/v1/auth/register",
+                        "/api/v1/auth/password/forgot", "/api/v1/auth/password/reset",
                         "/api/v1/auth/web/login", "/api/v1/auth/web/refresh", "/api/v1/auth/web/logout",
                         "/actuator/health", "/actuator/info"),
                 RateLimit.defaults()

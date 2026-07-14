@@ -81,6 +81,13 @@ public class AuthController {
         return ApiResponse.ok(null);
     }
 
+    @PostMapping("/change-password")
+    public ApiResponse<Void> changePassword(@RequestHeader(HttpHeaders.AUTHORIZATION) String authorization,
+                                            @Valid @RequestBody ChangePasswordRequest request) {
+        authService.changePassword(authorization, request);
+        return ApiResponse.ok(null);
+    }
+
     @PostMapping("/web/login")
     public ResponseEntity<ApiResponse<WebSessionResponse>> webLogin(@Valid @RequestBody LoginRequest request) {
         return cookieSession(authService.login(request));
