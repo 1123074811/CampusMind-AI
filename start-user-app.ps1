@@ -2,6 +2,7 @@ $ErrorActionPreference = 'Stop'
 
 $appDir = Join-Path $PSScriptRoot 'campus-flutter-app'
 $exe = Join-Path $appDir 'build\windows\x64\runner\Release\campus_flutter_app.exe'
+$releaseDir = Split-Path $exe
 
 Get-Process campus_flutter_app -ErrorAction SilentlyContinue |
   Stop-Process -Force -ErrorAction SilentlyContinue
@@ -14,5 +15,5 @@ try {
   Pop-Location
 }
 
-Start-Process -FilePath $exe -WorkingDirectory $appDir
+Start-Process -FilePath $exe -WorkingDirectory $releaseDir
 Write-Host 'CampusMind user app started.' -ForegroundColor Green

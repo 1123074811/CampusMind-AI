@@ -32,5 +32,13 @@ application-local.yml
 application-local*.yml
 !application-local*.example
 
+# E2E 运行产物（脚本可提交，截图/临时输出不入库）
+e2e/*.png
+e2e/*.log
+e2e/artifacts/
+e2e/screenshots/
+e2e/__pycache__/
+e2e/.pytest_cache/
+
 # AI workspace (WorkBuddy 项目记忆与缓存，不入版本库)
 .workbuddy/

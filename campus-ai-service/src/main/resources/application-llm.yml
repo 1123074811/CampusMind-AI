@@ -20,12 +20,12 @@ spring:
       # DeepSeek 不提供 embedding 端点；pg profile 使用独立的 Transformer Embedding。
       embedding: none
     openai:
-      base-url: https://api.deepseek.com
+      base-url: ${OPENAI_BASE_URL:https://api.deepseek.com}
       api-key: ${OPENAI_API_KEY}
       chat:
         options:
           model: ${OPENAI_CHAT_MODEL:deepseek-v4-flash}
-          temperature: 0.2
+          temperature: ${OPENAI_TEMPERATURE:0.2}
   # 单独启用 llm 时仍不加载数据源；llm,pg 中后加载的 pg profile 会覆盖此列表。
   autoconfigure:
     exclude:

@@ -22,6 +22,8 @@ CREATE TABLE IF NOT EXISTS information_item (
   ai_card_json JSON NULL COMMENT '智能体结构化信息卡片',
   ai_confidence DECIMAL(5,4) NULL COMMENT '智能提取置信度',
   ai_need_review TINYINT(1) NOT NULL DEFAULT 0 COMMENT '是否需要人工复核',
+  submitted_by VARCHAR(128) NULL COMMENT '提交用户名（用户导入时记录）',
+  submitted_by_user_id BIGINT NULL COMMENT '提交用户ID（用户导入时记录）',
   ai_error VARCHAR(1024) NULL COMMENT '智能提取失败原因',
   ai_processed_at DATETIME NULL COMMENT '智能提取完成时间',
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,

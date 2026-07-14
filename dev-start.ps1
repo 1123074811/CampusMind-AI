@@ -326,7 +326,8 @@ FLUSH PRIVILEGES;
         "$ProjectRoot\infra\mysql\init\009_ai_processing_record.sql",
         "$ProjectRoot\infra\mysql\init\010_user_actions.sql",
         "$ProjectRoot\infra\mysql\init\011_information_change_log.sql",
-        "$ProjectRoot\infra\mysql\migrations\006_user_profile_sensitivity.sql"
+        "$ProjectRoot\infra\mysql\migrations\006_user_profile_sensitivity.sql",
+        "$ProjectRoot\infra\mysql\init\012_enterprise_closure.sql"
     )
     foreach ($script in $schemaScripts) {
         if ((Split-Path $script -Leaf) -eq "007_information_ai_card.sql") {
