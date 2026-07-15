@@ -189,6 +189,20 @@ class JwtAuthenticationGlobalFilterTest {
     }
 
     @Test
+    void externalRequestCannotCallInternalWriteEndpointEvenAsAuthenticatedUser() {
+        ServerWebExchange exchange = MockServerWebExchange.from(
+                MockServerHttpRequest.post("/api/v1/information")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + validToken())
+                        .build());
+        GatewayFilterChain chain = mock(GatewayFilterChain.class);
+
+        StepVerifier.create(filter.filter(exchange, chain))
+                .expectError(GatewayAccessDeniedException.class)
+                .verify();
+        verify(chain, never()).filter(any());
+    }
+
+    @Test
     void revokedSessionShouldReturnUnauthorized() {
         ReactiveStringRedisTemplate redisTemplate = mock(ReactiveStringRedisTemplate.class);
         when(redisTemplate.hasKey("auth:revoked:session-1")).thenReturn(Mono.just(true));

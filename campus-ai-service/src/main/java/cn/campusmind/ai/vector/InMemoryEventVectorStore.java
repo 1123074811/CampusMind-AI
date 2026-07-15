@@ -71,6 +71,13 @@ public class InMemoryEventVectorStore implements EventVectorStore {
         return hits.size() <= limit ? hits : new ArrayList<>(hits.subList(0, limit));
     }
 
+    @Override
+    public synchronized void delete(List<String> docIds) {
+        if (docIds != null && !docIds.isEmpty()) {
+            docs.removeIf(doc -> docIds.contains(doc.docId()));
+        }
+    }
+
     /**
      * 可见性检查：PUBLIC 文档对所有人可见，PRIVATE 文档只对 owner 可见。
      */

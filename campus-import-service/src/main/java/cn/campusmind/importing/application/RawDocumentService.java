@@ -16,6 +16,7 @@ import java.time.LocalDateTime;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Collection;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
@@ -75,6 +76,15 @@ public class RawDocumentService {
         DeleteResult result = mongoTemplate.remove(Query.query(Criteria.where("_id").is(documentId)
                 .and("ownerUserId").is(ownerUserId)), RawDocument.class);
         return result.getDeletedCount() > 0;
+    }
+
+    public List<RawDocument> listOwned(Long ownerUserId) {
+        return mongoTemplate.find(Query.query(Criteria.where("ownerUserId").is(ownerUserId)), RawDocument.class);
+    }
+
+    public long deleteOwnedByUser(Long ownerUserId) {
+        return mongoTemplate.remove(
+                Query.query(Criteria.where("ownerUserId").is(ownerUserId)), RawDocument.class).getDeletedCount();
     }
 
     /**

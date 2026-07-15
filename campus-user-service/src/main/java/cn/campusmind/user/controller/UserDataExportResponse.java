@@ -14,6 +14,11 @@ public record UserDataExportResponse(
         List<Map<String, Object>> actions,
         List<Map<String, Object>> reminders,
         List<Map<String, Object>> privateEvents,
+        List<Map<String, Object>> eventAuditLogs,
+        List<Map<String, Object>> dataSourceVersionActions,
+        List<Map<String, Object>> submittedInformation,
+        List<Map<String, Object>> importTasks,
+        List<Map<String, Object>> rawDocuments,
         List<Map<String, Object>> consentHistory,
         List<Map<String, Object>> devices,
         List<Map<String, Object>> notificationDeliveries

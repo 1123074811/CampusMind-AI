@@ -50,19 +50,22 @@ public class UserService {
     private final PasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
     private final JdbcTemplate jdbcTemplate;
     private final StringRedisTemplate redisTemplate;
+    private final UserDataLifecycleClient dataLifecycleClient;
 
     public UserService(
             UserAccountMapper userAccountMapper,
             UserProfileMapper userProfileMapper,
             ObjectMapper objectMapper,
             JdbcTemplate jdbcTemplate,
-            StringRedisTemplate redisTemplate
+            StringRedisTemplate redisTemplate,
+            UserDataLifecycleClient dataLifecycleClient
     ) {
         this.userAccountMapper = userAccountMapper;
         this.userProfileMapper = userProfileMapper;
         this.objectMapper = objectMapper;
         this.jdbcTemplate = jdbcTemplate;
         this.redisTemplate = redisTemplate;
+        this.dataLifecycleClient = dataLifecycleClient;
     }
 
     @Transactional(readOnly = true)
@@ -120,6 +123,16 @@ public class UserService {
                 jdbcTemplate.queryForList("SELECT * FROM user_action_item WHERE user_id = ?", userId),
                 jdbcTemplate.queryForList("SELECT * FROM user_reminder WHERE user_id = ?", userId),
                 jdbcTemplate.queryForList("SELECT * FROM campus_event WHERE owner_user_id = ?", userId),
+                jdbcTemplate.queryForList("""
+                        SELECT * FROM event_audit_log WHERE operator_id = ? OR event_id IN (
+                          SELECT id FROM campus_event WHERE owner_user_id = ?
+                        ) ORDER BY created_at
+                        """, userId, userId),
+                jdbcTemplate.queryForList(
+                        "SELECT * FROM data_source_version WHERE operator_id = ? ORDER BY created_at", userId),
+                jdbcTemplate.queryForList("SELECT * FROM information_item WHERE submitted_by_user_id = ?", userId),
+                jdbcTemplate.queryForList("SELECT * FROM import_task WHERE user_id = ?", userId),
+                dataLifecycleClient.listRawDocuments(userId),
                 jdbcTemplate.queryForList("SELECT * FROM user_consent_record WHERE user_id = ? ORDER BY occurred_at", userId),
                 jdbcTemplate.queryForList("SELECT id, device_id, platform, enabled, created_at, updated_at FROM user_device WHERE user_id = ?", userId),
                 jdbcTemplate.queryForList("SELECT * FROM notification_delivery WHERE user_id = ? ORDER BY created_at", userId)
@@ -133,13 +146,55 @@ public class UserService {
             throw new BusinessException("INVALID_CREDENTIALS", "密码错误", HttpStatus.UNAUTHORIZED);
         }
         Long userId = account.getId();
+        List<String> vectorDocIds = jdbcTemplate.queryForList(
+                "SELECT vector_doc_id FROM campus_event WHERE owner_user_id = ? AND vector_doc_id IS NOT NULL",
+                String.class, userId);
+        dataLifecycleClient.deleteRawDocuments(userId);
+        dataLifecycleClient.deleteVectors(vectorDocIds);
+
         jdbcTemplate.update("DELETE FROM notification_delivery WHERE user_id = ?", userId);
         jdbcTemplate.update("DELETE FROM user_device WHERE user_id = ?", userId);
         jdbcTemplate.update("DELETE FROM user_consent_record WHERE user_id = ?", userId);
+        jdbcTemplate.update("""
+                DELETE FROM user_reminder WHERE action_item_id IN (
+                  SELECT id FROM user_action_item WHERE information_item_id IN (
+                    SELECT id FROM information_item WHERE submitted_by_user_id = ?
+                  )
+                )
+                """, userId);
+        jdbcTemplate.update("""
+                DELETE FROM user_action_item WHERE information_item_id IN (
+                  SELECT id FROM information_item WHERE submitted_by_user_id = ?
+                )
+                """, userId);
+        jdbcTemplate.update("""
+                DELETE FROM user_information_state WHERE item_id IN (
+                  SELECT id FROM information_item WHERE submitted_by_user_id = ?
+                )
+                """, userId);
+        jdbcTemplate.update("""
+                DELETE FROM information_change_log WHERE item_id IN (
+                  SELECT id FROM information_item WHERE submitted_by_user_id = ?
+                )
+                """, userId);
         jdbcTemplate.update("DELETE FROM user_reminder WHERE user_id = ?", userId);
         jdbcTemplate.update("DELETE FROM user_action_item WHERE user_id = ?", userId);
         jdbcTemplate.update("DELETE FROM user_information_state WHERE user_id = ?", userId);
         jdbcTemplate.update("DELETE FROM user_source_subscription WHERE user_id = ?", userId);
+        jdbcTemplate.update("DELETE FROM information_item WHERE submitted_by_user_id = ?", userId);
+        jdbcTemplate.update("DELETE FROM import_task WHERE user_id = ?", userId);
+        jdbcTemplate.update("""
+                DELETE FROM event_source_ref WHERE event_id IN (
+                  SELECT id FROM campus_event WHERE owner_user_id = ?
+                )
+                """, userId);
+        jdbcTemplate.update("""
+                DELETE FROM event_audit_log WHERE event_id IN (
+                  SELECT id FROM campus_event WHERE owner_user_id = ?
+                )
+                """, userId);
+        jdbcTemplate.update("UPDATE event_audit_log SET operator_id = NULL WHERE operator_id = ?", userId);
+        jdbcTemplate.update("UPDATE data_source_version SET operator_id = NULL WHERE operator_id = ?", userId);
         jdbcTemplate.update("DELETE FROM campus_event WHERE owner_user_id = ?", userId);
         userProfileMapper.delete(new LambdaQueryWrapper<UserProfile>().eq(UserProfile::getUserId, userId));
 
@@ -337,8 +392,8 @@ public class UserService {
                 SELECT granted FROM user_consent_record WHERE user_id = ? AND consent_type = 'PERSONALIZATION'
                 ORDER BY id DESC LIMIT 1
                 """, (rs, rowNum) -> rs.getInt(1), userId);
-        if (!grants.isEmpty() && grants.get(0) == 0) {
-            throw new BusinessException("PERSONALIZATION_CONSENT_REQUIRED", "个性化授权已撤回，请重新授权后修改画像", HttpStatus.CONFLICT);
+        if (grants.isEmpty() || grants.get(0) == 0) {
+            throw new BusinessException("PERSONALIZATION_CONSENT_REQUIRED", "请先授权个性化画像后再修改", HttpStatus.CONFLICT);
         }
     }
 

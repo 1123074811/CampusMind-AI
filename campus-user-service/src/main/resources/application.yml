@@ -30,6 +30,9 @@ campus:
     policy-version: ${PRIVACY_POLICY_VERSION:2026-07-01}
     retention-days: ${PRIVACY_RETENTION_DAYS:365}
     cleanup-cron: ${PRIVACY_CLEANUP_CRON:0 20 3 * * *}
+  internal:
+    import-service-url: ${IMPORT_SERVICE_URL:http://localhost:8085}
+    ai-service-url: ${AI_SERVICE_URL:http://localhost:8089}
 
 management:
   endpoints:

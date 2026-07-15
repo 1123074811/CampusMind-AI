@@ -52,6 +52,10 @@ services:
   campus-user-service:
     <<: *backend
     build: { context: .., args: { SERVICE: campus-user-service } }
+    environment:
+      <<: *backend-env
+      IMPORT_SERVICE_URL: http://campus-import-service:8085
+      AI_SERVICE_URL: http://campus-ai-service:8089
 
   campus-event-service:
     <<: *backend

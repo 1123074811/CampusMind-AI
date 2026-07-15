@@ -49,4 +49,6 @@ public interface EventVectorStore {
      * @return 按相关性降序的命中列表
      */
     List<VectorSearchHit> search(String query, int topK, Long userId);
+
+    void delete(List<String> docIds);
 }

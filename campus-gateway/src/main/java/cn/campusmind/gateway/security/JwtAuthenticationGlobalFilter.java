@@ -9,6 +9,7 @@ import org.springframework.cloud.gateway.filter.GatewayFilterChain;
 import org.springframework.cloud.gateway.filter.GlobalFilter;
 import org.springframework.core.Ordered;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.server.reactive.ServerHttpRequest;
 import org.springframework.stereotype.Component;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -80,6 +81,9 @@ public class JwtAuthenticationGlobalFilter implements GlobalFilter, Ordered {
         exchange = exchange.mutate().request(request).build();
         String path = request.getPath().pathWithinApplication().value();
 
+        if (isInternalWriteEndpoint(path, request.getMethod())) {
+            return Mono.error(new GatewayAccessDeniedException("该接口仅供内部服务调用"));
+        }
         if (isPublicPath(path)) {
             return chain.filter(exchange);
         }
@@ -109,7 +113,7 @@ public class JwtAuthenticationGlobalFilter implements GlobalFilter, Ordered {
             if (!ROLES.contains(role)) {
                 throw new GatewayAuthenticationException("访问令牌角色无效");
             }
-            requireRouteRole(path, role);
+            requireRouteAccess(path, role);
             ServerHttpRequest authenticatedRequest = request.mutate()
                     .headers(headers -> {
                         headers.set(HttpHeaders.AUTHORIZATION, BEARER_PREFIX + token);
@@ -161,12 +165,30 @@ public class JwtAuthenticationGlobalFilter implements GlobalFilter, Ordered {
         return false;
     }
 
-    private static void requireRouteRole(String path, String role) {
+    private static void requireRouteAccess(String path, String role) {
         if (path.startsWith("/api/v1/users/admin") && !"ADMIN".equals(role)) {
             throw new GatewayAccessDeniedException("仅管理员可管理用户");
         }
         if (path.startsWith("/api/admin/") && !"ADMIN".equals(role) && !"OPERATOR".equals(role)) {
             throw new GatewayAccessDeniedException("仅管理员或运营可访问后台");
         }
+    }
+
+    private static boolean isInternalWriteEndpoint(String path, HttpMethod method) {
+        String normalizedPath = path.length() > 1 && path.endsWith("/")
+                ? path.substring(0, path.length() - 1)
+                : path;
+        if (HttpMethod.POST.equals(method)) {
+            return Set.of(
+                    "/api/v1/events",
+                    "/api/v1/information",
+                    "/api/v1/ai/cognition/extract",
+                    "/api/v1/ai/decision/plan",
+                    "/api/v1/ai/vector/text",
+                    "/api/v1/ai/vector/store",
+                    "/api/v1/ai/vector/search"
+            ).contains(normalizedPath);
+        }
+        return HttpMethod.PUT.equals(method) && "/api/v1/ai/runtime-config".equals(normalizedPath);
     }
 }

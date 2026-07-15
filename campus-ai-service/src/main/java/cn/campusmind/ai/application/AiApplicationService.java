@@ -111,8 +111,14 @@ public class AiApplicationService {
         return new VectorSearchResponse(hits, hits.size());
     }
 
-    public ChatResponse chat(String sessionId, String message, boolean usePersonalProfile, Long userId) {
-        SearchPlan plan = planSearch(message, List.of(), usePersonalProfile);
+    public void deleteVectors(List<String> docIds) {
+        eventVectorStore.delete(docIds);
+    }
+
+    public ChatResponse chat(String sessionId, String message, List<String> userScopes,
+                             boolean usePersonalProfile, Long userId) {
+        SearchPlan plan = planSearch(
+                message, userScopes == null ? List.of() : userScopes, usePersonalProfile);
         String answer = switch (plan.intent()) {
             case "CASUAL_CHAT" -> casualChatReply(message);
             case "IMPORT_HELP" -> "请在导入入口粘贴雨课堂 JSON 或一次性 Cookie，系统会在后台解析并生成待审核事件。";

@@ -94,6 +94,14 @@ public class PgEventVectorStore implements EventVectorStore {
         }
     }
 
+    @Override
+    public void delete(List<String> docIds) {
+        if (docIds == null || docIds.isEmpty()) {
+            return;
+        }
+        vectorStore.delete(docIds);
+    }
+
     /**
      * 本地可见性双重过滤，防止 filterExpression 失效时泄露私有事件。
      */

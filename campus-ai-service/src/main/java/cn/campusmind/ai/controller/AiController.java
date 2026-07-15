@@ -68,7 +68,8 @@ public class AiController {
             @RequestHeader(value = "X-User-Id", required = false) Long userId,
             @Valid @RequestBody ChatRequest request) {
         boolean usePersonalProfile = Boolean.TRUE.equals(request.usePersonalProfile());
-        return ApiResponse.ok(aiApplicationService.chat(request.sessionId(), request.message(), usePersonalProfile, userId));
+        return ApiResponse.ok(aiApplicationService.chat(
+                request.sessionId(), request.message(), request.userScopes(), usePersonalProfile, userId));
     }
 
     @PutMapping("/runtime-config")
