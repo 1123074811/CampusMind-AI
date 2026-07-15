@@ -217,6 +217,12 @@ class CampusShell extends StatefulWidget {
 class _CampusShellState extends State<CampusShell> {
   int _tabIndex = 0;
   final List<InformationItem> _items = [];
+  String? _nextCursor;
+  int? _nextCursorId;
+  int? _nextSubscriptionMatch;
+  int _total = 0;
+  bool _hasMore = true;
+  bool _loadingMore = false;
 
   @override
   void initState() {
@@ -227,12 +233,17 @@ class _CampusShellState extends State<CampusShell> {
   Future<void> _refresh() async {
     setState(() {});
     try {
-      final items = await widget.api.fetchInformationFeed(widget.session);
+      final page = await widget.api.fetchInformationPage(widget.session);
       if (!mounted) return;
       setState(() {
         _items
           ..clear()
-          ..addAll(items);
+          ..addAll(page.items);
+        _nextCursor = page.nextCursor;
+        _nextCursorId = page.nextCursorId;
+        _nextSubscriptionMatch = page.nextSubscriptionMatch;
+        _hasMore = page.hasMore;
+        _total = page.total;
       });
     } on SessionExpiredException {
       widget.onSessionExpired?.call();
@@ -244,11 +255,45 @@ class _CampusShellState extends State<CampusShell> {
     }
   }
 
+  Future<void> _loadMore() async {
+    if (_loadingMore || !_hasMore) return;
+    setState(() => _loadingMore = true);
+    try {
+      final page = await widget.api.fetchInformationPage(
+        widget.session,
+        cursor: _nextCursor,
+        cursorId: _nextCursorId,
+        cursorSubscriptionMatch: _nextSubscriptionMatch,
+      );
+      if (!mounted) return;
+      final knownIds = _items.map((item) => item.id).toSet();
+      setState(() {
+        _items.addAll(page.items.where((item) => knownIds.add(item.id)));
+        _nextCursor = page.nextCursor;
+        _nextCursorId = page.nextCursorId;
+        _nextSubscriptionMatch = page.nextSubscriptionMatch;
+        _hasMore = page.hasMore;
+        _total = page.total;
+      });
+    } on SessionExpiredException {
+      widget.onSessionExpired?.call();
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('加载更多失败：$error')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _loadingMore = false);
+    }
+  }
+
   void _replaceItem(InformationItem item) {
     final idx = _items.indexWhere((v) => v.id == item.id);
     setState(() {
       if (idx == -1) {
         _items.insert(0, item);
+        _total++;
       } else {
         _items[idx] = item;
       }
@@ -289,7 +334,11 @@ class _CampusShellState extends State<CampusShell> {
         userName: widget.session.user.username,
         api: widget.api,
         session: widget.session,
+        total: _total,
         onItemUpdated: _replaceItem,
+        onLoadMore: _loadMore,
+        hasMore: _hasMore,
+        loadingMore: _loadingMore,
       ),
       PrototypeDiscoverPage(
           onOpenImport: _openImport, api: widget.api, session: widget.session),

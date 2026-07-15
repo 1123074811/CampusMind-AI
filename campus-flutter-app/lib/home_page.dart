@@ -13,7 +13,11 @@ class PrototypeHomePage extends StatefulWidget {
     required this.userName,
     required this.api,
     required this.session,
+    required this.total,
     this.onItemUpdated,
+    this.onLoadMore,
+    this.hasMore = false,
+    this.loadingMore = false,
   });
   final List<InformationItem> items;
   final ValueChanged<InformationItem> onOpenDetail;
@@ -21,7 +25,11 @@ class PrototypeHomePage extends StatefulWidget {
   final String userName;
   final CampusApi api;
   final LoginSession session;
+  final int total;
   final ValueChanged<InformationItem>? onItemUpdated;
+  final Future<void> Function()? onLoadMore;
+  final bool hasMore;
+  final bool loadingMore;
 
   @override
   State<PrototypeHomePage> createState() => _PrototypeHomePageState();
@@ -59,14 +67,8 @@ class _PrototypeHomePageState extends State<PrototypeHomePage> {
     ('与我相关', 'RELEVANT'),
   ];
 
-  bool _isDueSoon(InformationItem item) {
-    final dueRaw = item.aiCard['dueAt'] ?? item.aiCard['deadline'];
-    if (dueRaw is! String || dueRaw.isEmpty) return false;
-    final due = DateTime.tryParse(dueRaw);
-    if (due == null) return false;
-    final now = DateTime.now();
-    return !due.isBefore(now) && due.difference(now).inDays <= 3;
-  }
+  bool _isDueSoon(InformationItem item) =>
+      item.importanceLevelAt(DateTime.now()) == 'urgent';
 
   List<InformationItem> get _filteredItems {
     final key = _chipDefs[_activeChip].$2;
@@ -101,7 +103,7 @@ class _PrototypeHomePageState extends State<PrototypeHomePage> {
     return List.generate(_chipDefs.length, (index) {
       final key = _chipDefs[index].$2;
       final count = switch (key) {
-        'ALL' => widget.items.length,
+        'ALL' => widget.total,
         'UNREAD' =>
           widget.items.where((item) => item.readStatus == 'NEW').length,
         'DUE_SOON' => widget.items.where(_isDueSoon).length,
@@ -356,7 +358,9 @@ class _PrototypeHomePageState extends State<PrototypeHomePage> {
   @override
   Widget build(BuildContext context) {
     final items = _filteredItems;
-    final urgentCount = items.where((e) => e.readStatus == 'NEW').length;
+    final now = DateTime.now();
+    final urgentCount =
+        items.where((item) => item.importanceLevelAt(now) != null).length;
     // 动态计算相关度
     final relevance = items.isEmpty
         ? 0
@@ -368,9 +372,18 @@ class _PrototypeHomePageState extends State<PrototypeHomePage> {
     final briefingText = _briefingSummary.isNotEmpty
         ? _briefingSummary
         : _generateBriefing(items);
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(20, 6, 20, 22),
-      children: [
+    return NotificationListener<ScrollNotification>(
+      onNotification: (notification) {
+        if (notification.metrics.extentAfter < 300 &&
+            widget.hasMore &&
+            !widget.loadingMore) {
+          widget.onLoadMore?.call();
+        }
+        return false;
+      },
+      child: ListView(
+        padding: const EdgeInsets.fromLTRB(20, 6, 20, 22),
+        children: [
         // Header
         _AppHeader(
           bellKey: _bellKey,
@@ -381,7 +394,7 @@ class _PrototypeHomePageState extends State<PrototypeHomePage> {
         const SizedBox(height: 18),
         // AI Hero
         _AiHeroPanel(
-          total: items.length,
+          total: _activeChip == 0 ? widget.total : items.length,
           urgent: urgentCount,
           relevancePercent: relevance,
           briefingSummary: briefingText,
@@ -433,7 +446,13 @@ class _PrototypeHomePageState extends State<PrototypeHomePage> {
               ),
             ),
           ),
-      ],
+        if (widget.loadingMore)
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 12),
+            child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
+          ),
+        ],
+      ),
     );
   }
 
@@ -891,6 +910,7 @@ class _FeedCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isNew = item.readStatus == 'NEW';
+    final importance = item.importanceLevelAt(DateTime.now());
     return GestureDetector(
       onTap: onTap,
       child: Container(
@@ -907,8 +927,10 @@ class _FeedCard extends StatelessWidget {
             Row(
               children: [
                 _SrcTag(text: item.sourceName, primary: isNew),
-                const SizedBox(width: 8),
-                _ImportanceBadge(level: isNew ? 'urgent' : 'mid'),
+                if (importance != null) ...[
+                  const SizedBox(width: 8),
+                  _ImportanceBadge(level: importance),
+                ],
                 const SizedBox(width: 6),
                 Container(
                     width: 3,

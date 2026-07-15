@@ -39,6 +39,29 @@ void main() {
     expect(item.safeOriginalUri, isNull);
   });
 
+  test('shows importance only for time-sensitive event types', () {
+    final now = DateTime(2026, 7, 15, 12);
+    InformationItem event(String type, String deadline) => InformationItem(
+          id: 1,
+          title: '测试事件',
+          sourceName: '教务处',
+          preview: '',
+          originalUrl: 'https://example.edu/1',
+          readStatus: 'NEW',
+          itemStatus: 'ACTIVE',
+          fetchedAt: now,
+          eventType: type,
+          aiCard: {'registrationDeadline': deadline},
+        );
+
+    expect(event('NOTICE', '2026-07-16 12:00').importanceLevelAt(now), isNull);
+    expect(event('COMPETITION', '2026年7月17日 12:00').importanceLevelAt(now),
+        'urgent');
+    expect(event('EXAM', '2026-07-20 12:00').importanceLevelAt(now), 'high');
+    expect(
+        event('ACTIVITY', '2026-07-10 12:00').importanceLevelAt(now), isNull);
+  });
+
   testWidgets('detail page separates a persisted AI summary from the body',
       (tester) async {
     final item = _item(aiStatus: 'SUCCESS', aiSummary: '模型生成的三点摘要。');
@@ -49,6 +72,7 @@ void main() {
     expect(find.text('模型生成的三点摘要。'), findsOneWidget);
     expect(find.text('这里是完整原文正文。'), findsOneWidget);
     expect(find.text('查看原文'), findsOneWidget);
+    expect(find.text('紧急'), findsNothing);
   });
 
   testWidgets(
@@ -85,11 +109,19 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('建议行动'), findsOneWidget);
-    await tester.tap(find.text('确认加入'));
+    await tester.tap(find.text('加入'));
     await tester.pumpAndSettle();
 
     expect(api.confirmedAction, '完成报名');
-    expect(find.byIcon(Icons.check_circle), findsOneWidget);
+    expect(find.text('已加入'), findsOneWidget);
+    expect(find.text('加入'), findsNothing);
+
+    await tester.pumpWidget(const SizedBox());
+    await tester.pumpWidget(_detailApp(item, api));
+    await tester.pumpAndSettle();
+
+    expect(find.text('已加入'), findsOneWidget);
+    expect(find.text('加入'), findsNothing);
   });
 
   testWidgets('discover page reports action failures without demo content',
@@ -104,6 +136,42 @@ void main() {
 
     expect(find.textContaining('待办加载失败'), findsOneWidget);
     expect(find.text('选课系统维护通知'), findsNothing);
+  });
+
+  testWidgets('todo cards can be cancelled, completed and opened',
+      (tester) async {
+    tester.view.physicalSize = const Size(800, 1200);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final api = _ActionsApi(_item());
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: PrototypeDiscoverPage(api: api, session: _session()),
+      ),
+    ));
+    await tester.pumpAndSettle();
+
+    expect(find.text('待完成 2'), findsOneWidget);
+    expect(find.text('已完成 1'), findsOneWidget);
+    await tester.ensureVisible(find.text('取消待办').first);
+    await tester.tap(find.text('取消待办').first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('确认取消'));
+    await tester.pumpAndSettle();
+    expect(api.cancelledId, 1);
+
+    await tester.ensureVisible(find.text('完成'));
+    await tester.tap(find.text('完成'));
+    await tester.pumpAndSettle();
+    expect(api.completedId, 2);
+    await tester.tap(find.text('已完成 2'));
+    await tester.pumpAndSettle();
+    expect(find.text('已完成事项'), findsOneWidget);
+
+    await tester.tap(find.text('已完成事项'));
+    await tester.pumpAndSettle();
+    expect(find.text('测试通知'), findsOneWidget);
   });
 }
 
@@ -169,6 +237,19 @@ class _FakeCampusApi extends CampusApi {
   }
 
   @override
+  Future<List<ActionItem>> fetchActions(LoginSession session) async =>
+      confirmedAction == null
+          ? const []
+          : [
+              ActionItem(
+                id: 1,
+                informationItemId: item.id,
+                title: confirmedAction!,
+                status: 'CONFIRMED',
+              )
+            ];
+
+  @override
   Future<LoginSession> login(String username, String password) =>
       throw UnimplementedError();
   @override
@@ -195,6 +276,18 @@ class _FakeCampusApi extends CampusApi {
       throw UnimplementedError();
   @override
   Future<List<ImportTaskItem>> fetchImportTasks(LoginSession session) =>
+      throw UnimplementedError();
+  @override
+  Future<void> confirmImportPreview({
+    required int taskId,
+    required String title,
+    String time = '',
+    String location = '',
+    String summary = '',
+    List<String> tags = const [],
+    String? eventType,
+    required LoginSession session,
+  }) =>
       throw UnimplementedError();
   @override
   Future<List<ImportedEventItem>> fetchRainEvents(LoginSession session) =>
@@ -233,4 +326,37 @@ class _FailingActionsApi extends _FakeCampusApi {
   @override
   Future<List<ActionItem>> fetchActions(LoginSession session) =>
       Future.error(Exception('network unavailable'));
+}
+
+class _ActionsApi extends _FakeCampusApi {
+  _ActionsApi(super.item);
+  int? completedId;
+  int? cancelledId;
+
+  @override
+  Future<List<ActionItem>> fetchActions(LoginSession session) async => [
+        _action(1, '取消事项'),
+        _action(2, '完成事项'),
+        _action(3, '已完成事项', status: 'COMPLETED'),
+      ];
+
+  @override
+  Future<void> completeAction(int actionId, LoginSession session) async {
+    completedId = actionId;
+  }
+
+  @override
+  Future<void> cancelAction(int actionId, LoginSession session) async {
+    cancelledId = actionId;
+  }
+
+  static ActionItem _action(int id, String title,
+          {String status = 'CONFIRMED'}) =>
+      ActionItem(
+        id: id,
+        informationItemId: 1,
+        title: title,
+        status: status,
+        sourceTitle: '测试通知',
+      );
 }

@@ -42,6 +42,10 @@ class _PrototypeDetailPageState extends State<PrototypeDetailPage> {
     try {
       var item =
           await widget.api.fetchInformationDetail(_item.id, widget.session);
+      List<ActionItem> actions = const [];
+      try {
+        actions = await widget.api.fetchActions(widget.session);
+      } catch (_) {}
       if (item.readStatus == 'NEW') {
         try {
           item = await widget.api
@@ -57,6 +61,9 @@ class _PrototypeDetailPageState extends State<PrototypeDetailPage> {
       if (!mounted) return;
       setState(() {
         _item = item;
+        _confirmedActions.addAll(actions
+            .where((action) => action.informationItemId == item.id)
+            .map((action) => action.title));
         _loadError = null;
       });
       widget.onItemChanged(item);
@@ -143,6 +150,12 @@ class _PrototypeDetailPageState extends State<PrototypeDetailPage> {
 
   @override
   Widget build(BuildContext context) {
+    final importance = _item.importanceLevelAt(DateTime.now());
+    final importanceColor = importance == 'urgent'
+        ? const Color(0xFFBE123C)
+        : const Color(0xFFB45309);
+    final importanceBackground =
+        importance == 'urgent' ? AppTheme.roseSoft : AppTheme.accentSoft;
     return Scaffold(
       backgroundColor: AppTheme.bg,
       body: SafeArea(
@@ -190,31 +203,33 @@ class _PrototypeDetailPageState extends State<PrototypeDetailPage> {
                         fontSize: 12,
                         color: AppTheme.muted,
                         fontWeight: FontWeight.w500)),
-                const SizedBox(width: 8),
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                  decoration: BoxDecoration(
-                      color: AppTheme.roseSoft,
-                      borderRadius: BorderRadius.circular(6)),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Container(
-                          width: 6,
-                          height: 6,
-                          decoration: const BoxDecoration(
-                              color: Color(0xFFBE123C),
-                              shape: BoxShape.circle)),
-                      const SizedBox(width: 4),
-                      const Text('紧急',
-                          style: TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w700,
-                              color: Color(0xFFBE123C))),
-                    ],
+                if (importance != null) ...[
+                  const SizedBox(width: 8),
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(
+                        color: importanceBackground,
+                        borderRadius: BorderRadius.circular(6)),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Container(
+                            width: 6,
+                            height: 6,
+                            decoration: BoxDecoration(
+                                color: importanceColor,
+                                shape: BoxShape.circle)),
+                        const SizedBox(width: 4),
+                        Text(importance == 'urgent' ? '紧急' : '重要',
+                            style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w700,
+                                color: importanceColor)),
+                      ],
+                    ),
                   ),
-                ),
+                ],
               ],
             ),
             const SizedBox(height: 14),
@@ -280,13 +295,20 @@ class _PrototypeDetailPageState extends State<PrototypeDetailPage> {
                       ListTile(
                         contentPadding: EdgeInsets.zero,
                         dense: true,
-                        title: Text(action),
-                        trailing: _confirmedActions.contains(action)
-                            ? const Icon(Icons.check_circle,
-                                color: AppTheme.brand)
-                            : TextButton(
-                                onPressed: () => _confirmAction(action),
-                                child: const Text('确认加入')),
+                        title: Text(action,
+                            style: const TextStyle(fontSize: 13, height: 1.5)),
+                        trailing: SizedBox(
+                          width: 72,
+                          child: _confirmedActions.contains(action)
+                              ? const Text('已加入',
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(
+                                      color: AppTheme.brand,
+                                      fontWeight: FontWeight.w700))
+                              : TextButton(
+                                  onPressed: () => _confirmAction(action),
+                                  child: const Text('加入')),
+                        ),
                       ),
                   ],
                 ),

@@ -66,8 +66,8 @@ class _PrototypeProfilePageState extends State<PrototypeProfilePage> {
   }
 
   Future<void> _showPrivacySettings() async {
-    var personalization = _privacy?.consents['PERSONALIZATION'] ?? true;
-    var notifications = _privacy?.consents['NOTIFICATION'] ?? true;
+    var personalization = _privacy?.consents['PERSONALIZATION'] ?? false;
+    var notifications = _privacy?.consents['NOTIFICATION'] ?? false;
     await showDialog<void>(context: context, builder: (context) => StatefulBuilder(builder: (context, setDialogState) => AlertDialog(
       title: const Text('隐私与授权'),
       content: Column(mainAxisSize: MainAxisSize.min, children: [
@@ -161,6 +161,104 @@ class _PrototypeProfilePageState extends State<PrototypeProfilePage> {
         const SnackBar(content: Text('个人资料加载失败')),
       );
     }
+  }
+
+  Future<void> _editProfile() async {
+    final college = TextEditingController(text: _profile?.college ?? '');
+    final major = TextEditingController(text: _profile?.major ?? '');
+    final grade = TextEditingController(text: _profile?.grade ?? '');
+    final className = TextEditingController(text: _profile?.className ?? '');
+    final interests = TextEditingController(
+        text: _profile?.interestTags.join('，') ?? '');
+    final courses =
+        TextEditingController(text: _profile?.courseCodes.join('，') ?? '');
+    final saved = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('编辑个人画像'),
+        content: SingleChildScrollView(
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            _profileField(college, '学院'),
+            _profileField(major, '专业'),
+            _profileField(grade, '年级'),
+            _profileField(className, '班级'),
+            _profileField(interests, '兴趣标签（逗号分隔）'),
+            _profileField(courses, '课程代码（逗号分隔）'),
+          ]),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('取消')),
+          FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('保存')),
+        ],
+      ),
+    );
+    if (saved == true) {
+      try {
+        final updated = await widget.api.updateProfile(
+          college: _blankToNull(college.text),
+          major: _blankToNull(major.text),
+          grade: _blankToNull(grade.text),
+          className: _blankToNull(className.text),
+          interestTags: _splitValues(interests.text),
+          courseCodes: _splitValues(courses.text),
+          session: widget.session,
+        );
+        if (mounted) {
+          setState(() {
+            _profile = updated;
+            _activeTags = updated.interestTags.toSet();
+            for (final tag in updated.interestTags) {
+              if (!_allTags.contains(tag)) _allTags.add(tag);
+            }
+          });
+        }
+      } catch (error) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('个人资料保存失败：$error')),
+          );
+        }
+      }
+    }
+    college.dispose();
+    major.dispose();
+    grade.dispose();
+    className.dispose();
+    interests.dispose();
+    courses.dispose();
+  }
+
+  Widget _profileField(TextEditingController controller, String label) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: TextField(
+        controller: controller,
+        decoration: InputDecoration(labelText: label),
+      ),
+    );
+  }
+
+  static String? _blankToNull(String value) =>
+      value.trim().isEmpty ? null : value.trim();
+
+  static List<String> _splitValues(String value) => value
+      .split(RegExp(r'[,，;；]'))
+      .map((item) => item.trim())
+      .where((item) => item.isNotEmpty)
+      .toSet()
+      .toList();
+
+  String get _profileSubtitle {
+    final values = [_profile?.college, _profile?.major, _profile?.className]
+        .whereType<String>()
+        .where((value) => value.trim().isNotEmpty)
+        .toList();
+    if (values.isNotEmpty) return values.join(' · ');
+    return _profile?.role ?? '学生账号';
   }
 
   Future<void> _exportData() async {
@@ -257,24 +355,25 @@ class _PrototypeProfilePageState extends State<PrototypeProfilePage> {
                             color: Colors.white)),
                     const SizedBox(height: 3),
                     Text(
-                        _profile?.nickname ??
-                            _profile?.email ??
-                            _profile?.role ??
-                            '加载中…',
+                        _profile == null ? '加载中…' : _profileSubtitle,
                         style: TextStyle(
                             fontSize: 12,
                             color: Colors.white.withValues(alpha: 0.9))),
                   ],
                 ),
               ),
-              Container(
-                width: 34,
-                height: 34,
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.2),
-                  borderRadius: BorderRadius.circular(10),
+              InkWell(
+                onTap: _editProfile,
+                borderRadius: BorderRadius.circular(10),
+                child: Container(
+                  width: 34,
+                  height: 34,
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.2),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Icon(Icons.edit, color: Colors.white, size: 16),
                 ),
-                child: const Icon(Icons.edit, color: Colors.white, size: 16),
               ),
             ],
           ),

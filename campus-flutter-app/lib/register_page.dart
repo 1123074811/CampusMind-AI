@@ -18,7 +18,7 @@ class _RegisterPageState extends State<RegisterPage> {
   final _confirmCtrl = TextEditingController();
   bool _obscure = true;
   bool _loading = false;
-  bool _agreed = true;
+  bool _agreed = false;
 
   @override
   void dispose() {
@@ -60,10 +60,9 @@ class _RegisterPageState extends State<RegisterPage> {
       final session =
           await widget.api.register(username, email, password);
       try {
+        final privacy = await widget.api.fetchPrivacyStatus(session);
         await widget.api
-            .updateConsent('PRIVACY_POLICY', true, '2026-07-14', session);
-        await widget.api
-            .updateConsent('PERSONALIZATION', true, '2026-07-14', session);
+            .updateConsent('PRIVACY_POLICY', true, privacy.policyVersion, session);
       } catch (_) {
         // 授权失败不阻断注册成功后的登录，后续可在个人中心补授权。
       }

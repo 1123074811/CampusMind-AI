@@ -259,6 +259,8 @@ class _CatCard extends StatelessWidget {
   }
 }
 
+enum _TodoTab { pending, completed }
+
 class _TodoList extends StatefulWidget {
   const _TodoList({required this.api, required this.session});
   final CampusApi api;
@@ -272,6 +274,8 @@ class _TodoListState extends State<_TodoList> {
   List<ActionItem> _items = [];
   bool _loading = true;
   String? _error;
+  _TodoTab _tab = _TodoTab.pending;
+  final Set<int> _updating = {};
 
   @override
   void initState() {
@@ -308,6 +312,86 @@ class _TodoListState extends State<_TodoList> {
     }
   }
 
+  Future<void> _openDetail(ActionItem item) async {
+    try {
+      final information = await widget.api
+          .fetchInformationDetail(item.informationItemId, widget.session);
+      if (!mounted) return;
+      await Navigator.of(context).push(MaterialPageRoute(
+        builder: (_) => PrototypeDetailPage(
+          item: information,
+          api: widget.api,
+          session: widget.session,
+          onItemChanged: (_) {},
+        ),
+      ));
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('详情加载失败，请稍后重试')),
+      );
+    }
+  }
+
+  Future<void> _complete(ActionItem item) async {
+    setState(() => _updating.add(item.id));
+    try {
+      await widget.api.completeAction(item.id, widget.session);
+      if (!mounted) return;
+      setState(() {
+        final index = _items.indexWhere((value) => value.id == item.id);
+        if (index >= 0) _items[index] = item.copyWith(status: 'COMPLETED');
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('待办已完成')),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('完成待办失败，请重试')),
+      );
+    } finally {
+      if (mounted) setState(() => _updating.remove(item.id));
+    }
+  }
+
+  Future<void> _cancel(ActionItem item) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('取消待办？'),
+        content: Text('“${item.title}”将从待办列表移除，关联提醒也会取消。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('保留'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('确认取消'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    setState(() => _updating.add(item.id));
+    try {
+      await widget.api.cancelAction(item.id, widget.session);
+      if (!mounted) return;
+      setState(() => _items.removeWhere((value) => value.id == item.id));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('待办已取消')),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('取消待办失败，请重试')),
+      );
+    } finally {
+      if (mounted) setState(() => _updating.remove(item.id));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_loading) {
@@ -340,190 +424,272 @@ class _TodoListState extends State<_TodoList> {
         ),
       );
     }
-    if (_items.isEmpty) {
-      return Container(
-        width: double.infinity,
-        padding: const EdgeInsets.symmetric(vertical: 28, horizontal: 16),
-        decoration: BoxDecoration(
-          color: AppTheme.surface,
-          borderRadius: BorderRadius.circular(AppTheme.radiusSm),
-          border: Border.all(color: AppTheme.line),
-        ),
-        child: Column(
-          children: [
-            Icon(Icons.task_alt,
-                size: 36, color: AppTheme.muted.withValues(alpha: 0.55)),
-            const SizedBox(height: 10),
-            const Text('暂无待办',
-                style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w700,
-                    color: AppTheme.muted)),
-            const SizedBox(height: 4),
-            const Text('在信息详情页确认行动后，会出现在这里',
-                style: TextStyle(fontSize: 12, color: AppTheme.muted)),
-          ],
-        ),
-      );
-    }
+    final pending = _items.where((item) => !item.isCompleted).toList();
+    final completed = _items.where((item) => item.isCompleted).toList();
+    final visible = _tab == _TodoTab.pending ? pending : completed;
 
     return Column(
       children: [
-        for (var i = 0; i < _items.length; i++) ...[
+        SizedBox(
+          width: double.infinity,
+          child: SegmentedButton<_TodoTab>(
+            showSelectedIcon: false,
+            segments: [
+              ButtonSegment(
+                  value: _TodoTab.pending,
+                  label: Text('待完成 ${pending.length}')),
+              ButtonSegment(
+                  value: _TodoTab.completed,
+                  label: Text('已完成 ${completed.length}')),
+            ],
+            selected: {_tab},
+            onSelectionChanged: (value) => setState(() => _tab = value.first),
+          ),
+        ),
+        const SizedBox(height: 12),
+        if (visible.isEmpty)
+          _TodoEmpty(completed: _tab == _TodoTab.completed)
+        else
+          for (var i = 0; i < visible.length; i++) ...[
           if (i > 0) const SizedBox(height: 10),
-          _TodoCard(item: _items[i], onOpenUrl: _openUrl),
-        ],
+          _TodoCard(
+            item: visible[i],
+            updating: _updating.contains(visible[i].id),
+            onOpenDetail: () => _openDetail(visible[i]),
+            onOpenUrl: _openUrl,
+            onComplete: () => _complete(visible[i]),
+            onCancel: () => _cancel(visible[i]),
+          ),
+        ]
       ],
     );
   }
 }
 
-class _TodoCard extends StatelessWidget {
-  const _TodoCard({required this.item, required this.onOpenUrl});
-  final ActionItem item;
-  final void Function(String?) onOpenUrl;
+class _TodoEmpty extends StatelessWidget {
+  const _TodoEmpty({required this.completed});
+  final bool completed;
 
   @override
   Widget build(BuildContext context) {
-    final expired = item.isExpired;
-    final dueSoon = item.isDueSoon;
-    final fgColor = expired ? AppTheme.muted : AppTheme.ink;
-    final bgColor = expired ? AppTheme.surface2 : AppTheme.surface;
-
     return Container(
-      padding: const EdgeInsets.all(14),
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(vertical: 28, horizontal: 16),
       decoration: BoxDecoration(
-        color: bgColor,
+        color: AppTheme.surface,
         borderRadius: BorderRadius.circular(AppTheme.radiusSm),
-        border: Border.all(
-            color: expired
-                ? AppTheme.line
-                : (dueSoon ? const Color(0xFFBE123C) : AppTheme.line)),
+        border: Border.all(color: AppTheme.line),
       ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
+          Icon(Icons.task_alt,
+              size: 36, color: AppTheme.muted.withValues(alpha: 0.55)),
+          const SizedBox(height: 10),
+          Text(completed ? '暂无已完成待办' : '暂无待完成事项',
+              style: const TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700,
+                  color: AppTheme.muted)),
+          const SizedBox(height: 4),
+          Text(completed ? '完成的事项会保留在这里' : '在信息详情页确认行动后，会出现在这里',
+              style: const TextStyle(fontSize: 12, color: AppTheme.muted)),
+        ],
+      ),
+    );
+  }
+}
+
+class _TodoCard extends StatelessWidget {
+  const _TodoCard({
+    required this.item,
+    required this.updating,
+    required this.onOpenDetail,
+    required this.onOpenUrl,
+    required this.onComplete,
+    required this.onCancel,
+  });
+  final ActionItem item;
+  final bool updating;
+  final VoidCallback onOpenDetail;
+  final void Function(String?) onOpenUrl;
+  final VoidCallback onComplete;
+  final VoidCallback onCancel;
+
+  @override
+  Widget build(BuildContext context) {
+    final completed = item.isCompleted;
+    final expired = item.isExpired;
+    final dueSoon = item.isDueSoon && !completed;
+    final muted = completed || expired;
+    final statusLabel = completed
+        ? '已完成'
+        : expired
+            ? '已过期'
+            : dueSoon
+                ? '即将到期'
+                : '待完成';
+    final statusColor = completed || expired
+        ? AppTheme.muted
+        : dueSoon
+            ? const Color(0xFFBE123C)
+            : AppTheme.brandInk;
+    final statusBackground = completed || expired
+        ? AppTheme.line
+        : dueSoon
+            ? AppTheme.roseSoft
+            : AppTheme.brandSoft;
+    final shape = RoundedRectangleBorder(
+      borderRadius: BorderRadius.circular(AppTheme.radiusSm),
+      side: BorderSide(
+          color: dueSoon ? const Color(0xFFBE123C) : AppTheme.line),
+    );
+
+    return Material(
+      color: muted ? AppTheme.surface2 : AppTheme.surface,
+      shape: shape,
+      child: InkWell(
+        onTap: onOpenDetail,
+        customBorder: shape,
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              if (dueSoon && !expired)
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-                  decoration: BoxDecoration(
-                      color: AppTheme.roseSoft,
-                      borderRadius: BorderRadius.circular(5)),
-                  child: const Text('即将到期',
-                      style: TextStyle(
-                          fontSize: 10,
-                          fontWeight: FontWeight.w700,
-                          color: Color(0xFFBE123C))),
-                ),
-              if (expired)
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-                  decoration: BoxDecoration(
-                      color: AppTheme.surface2,
-                      borderRadius: BorderRadius.circular(5)),
-                  child: const Text('已过期',
-                      style: TextStyle(
-                          fontSize: 10,
-                          fontWeight: FontWeight.w700,
-                          color: AppTheme.muted)),
-                ),
-              if (!expired && !dueSoon)
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-                  decoration: BoxDecoration(
-                      color: AppTheme.brandSoft,
-                      borderRadius: BorderRadius.circular(5)),
-                  child: const Text('进行中',
-                      style: TextStyle(
-                          fontSize: 10,
-                          fontWeight: FontWeight.w700,
-                          color: AppTheme.brandInk)),
-                ),
-              const SizedBox(width: 8),
-              if (item.sourceName != null)
-                Text(item.sourceName!,
-                    style:
-                        const TextStyle(fontSize: 11, color: AppTheme.muted)),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Text(
-            item.title,
-            style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w700,
-                color: fgColor,
-                height: 1.4),
-          ),
-          if (item.sourceTitle != null) ...[
-            const SizedBox(height: 4),
-            Text(item.sourceTitle!,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(fontSize: 11.5, color: AppTheme.muted)),
-          ],
-          if (item.dueAt != null) ...[
-            const SizedBox(height: 6),
-            Row(
-              children: [
-                Icon(Icons.access_time,
-                    size: 13,
-                    color: expired ? AppTheme.muted : const Color(0xFFBE123C)),
-                const SizedBox(width: 4),
-                Text(
-                  _formatDateTime(item.dueAt!),
-                  style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      color:
-                          expired ? AppTheme.muted : const Color(0xFFBE123C)),
-                ),
-              ],
-            ),
-          ],
-          if (item.requiredMaterials.isNotEmpty) ...[
-            const SizedBox(height: 8),
-            Wrap(
-              spacing: 6,
-              runSpacing: 4,
-              children: item.requiredMaterials
-                  .map((m) => Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 7, vertical: 3),
-                        decoration: BoxDecoration(
-                            color: AppTheme.surface2,
-                            borderRadius: BorderRadius.circular(5)),
-                        child: Text(m,
-                            style: const TextStyle(
-                                fontSize: 11, color: AppTheme.ink2)),
-                      ))
-                  .toList(),
-            ),
-          ],
-          if (item.originalUrl != null && item.originalUrl!.isNotEmpty) ...[
-            const SizedBox(height: 8),
-            GestureDetector(
-              onTap: () => onOpenUrl(item.originalUrl),
-              child: const Row(
-                mainAxisSize: MainAxisSize.min,
+              Row(
                 children: [
-                  Icon(Icons.open_in_new, size: 13, color: AppTheme.brandInk),
-                  SizedBox(width: 4),
-                  Text('查看原文',
-                      style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                          color: AppTheme.brandInk)),
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                    decoration: BoxDecoration(
+                        color: statusBackground,
+                        borderRadius: BorderRadius.circular(5)),
+                    child: Text(statusLabel,
+                        style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w700,
+                            color: statusColor)),
+                  ),
+                  const SizedBox(width: 8),
+                  if (item.sourceName != null)
+                    Expanded(
+                      child: Text(item.sourceName!,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                              fontSize: 11, color: AppTheme.muted)),
+                    )
+                  else
+                    const Spacer(),
+                  const Icon(Icons.chevron_right,
+                      size: 17, color: AppTheme.muted),
                 ],
               ),
-            ),
-          ],
-        ],
+              const SizedBox(height: 8),
+              Text(
+                item.title,
+                style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                    color: muted ? AppTheme.muted : AppTheme.ink,
+                    decoration:
+                        completed ? TextDecoration.lineThrough : null,
+                    height: 1.4),
+              ),
+              if (item.sourceTitle != null) ...[
+                const SizedBox(height: 4),
+                Text(item.sourceTitle!,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style:
+                        const TextStyle(fontSize: 11.5, color: AppTheme.muted)),
+              ],
+              if (item.dueAt != null) ...[
+                const SizedBox(height: 6),
+                Row(
+                  children: [
+                    Icon(Icons.access_time,
+                        size: 13,
+                        color: muted
+                            ? AppTheme.muted
+                            : const Color(0xFFBE123C)),
+                    const SizedBox(width: 4),
+                    Text(_formatDateTime(item.dueAt!),
+                        style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: muted
+                                ? AppTheme.muted
+                                : const Color(0xFFBE123C))),
+                  ],
+                ),
+              ],
+              if (item.requiredMaterials.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 4,
+                  children: item.requiredMaterials
+                      .map((material) => Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 7, vertical: 3),
+                            decoration: BoxDecoration(
+                                color: AppTheme.line,
+                                borderRadius: BorderRadius.circular(5)),
+                            child: Text(material,
+                                style: const TextStyle(
+                                    fontSize: 11, color: AppTheme.ink2)),
+                          ))
+                      .toList(),
+                ),
+              ],
+              if (item.originalUrl != null && item.originalUrl!.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                GestureDetector(
+                  onTap: () => onOpenUrl(item.originalUrl),
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.open_in_new,
+                          size: 13, color: AppTheme.brandInk),
+                      SizedBox(width: 4),
+                      Text('查看原文',
+                          style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: AppTheme.brandInk)),
+                    ],
+                  ),
+                ),
+              ],
+              if (!completed) ...[
+                const SizedBox(height: 10),
+                Divider(height: 1, color: AppTheme.line),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    TextButton(
+                      onPressed: updating ? null : onCancel,
+                      child: const Text('取消待办'),
+                    ),
+                    const Spacer(),
+                    FilledButton.icon(
+                      onPressed: updating ? null : onComplete,
+                      icon: updating
+                          ? const SizedBox(
+                              width: 14,
+                              height: 14,
+                              child: CircularProgressIndicator(
+                                  strokeWidth: 2, color: Colors.white),
+                            )
+                          : const Icon(Icons.check, size: 16),
+                      label: const Text('完成'),
+                    ),
+                  ],
+                ),
+              ],
+            ],
+          ),
+        ),
       ),
     );
   }

@@ -73,6 +73,13 @@ class LoginSession {
 }
 
 class InformationItem {
+  static const _priorityEventTypes = {
+    'EXAM',
+    'HOMEWORK',
+    'COMPETITION',
+    'ACTIVITY',
+  };
+
   const InformationItem({
     required this.id,
     required this.title,
@@ -116,6 +123,22 @@ class InformationItem {
   bool get hasValidAiSummary =>
       aiSummary.trim().isNotEmpty &&
       (aiStatus == 'SUCCESS' || aiStatus == 'REVIEW');
+
+  String? importanceLevelAt(DateTime now) {
+    if (!_priorityEventTypes.contains(eventType.toUpperCase())) return null;
+    final due = _firstAiDate(aiCard, const [
+      'registrationDeadline',
+      'dueAt',
+      'deadline',
+      'endTime',
+      'startTime',
+    ]);
+    if (due == null || due.isBefore(now)) return null;
+    final hours = due.difference(now).inHours;
+    if (hours <= 72) return 'urgent';
+    if (hours <= 168) return 'high';
+    return null;
+  }
 
   List<String> get confirmableActions => aiStatus == 'SUCCESS' && !aiNeedReview
       ? (aiCard['requiredActions'] as List<Object?>? ?? const [])
@@ -212,6 +235,67 @@ class InformationItem {
       recommendReasons: recommendReasons,
     );
   }
+}
+
+class InformationFeedPage {
+  const InformationFeedPage({
+    required this.items,
+    this.nextCursor,
+    this.nextCursorId,
+    this.nextSubscriptionMatch,
+    required this.hasMore,
+    required this.total,
+  });
+
+  final List<InformationItem> items;
+  final String? nextCursor;
+  final int? nextCursorId;
+  final int? nextSubscriptionMatch;
+  final bool hasMore;
+  final int total;
+
+  factory InformationFeedPage.fromJson(Map<String, Object?> json) {
+    final items = json['items'] as List<Object?>? ?? const [];
+    return InformationFeedPage(
+      items: items
+          .cast<Map<String, Object?>>()
+          .map(InformationItem.fromJson)
+          .toList(),
+      nextCursor: json['nextCursor'] as String?,
+      nextCursorId: (json['nextCursorId'] as num?)?.toInt(),
+      nextSubscriptionMatch:
+          (json['nextSubscriptionMatch'] as num?)?.toInt(),
+      hasMore: json['hasMore'] as bool? ?? false,
+      total: (json['total'] as num?)?.toInt() ?? items.length,
+    );
+  }
+}
+
+DateTime? _firstAiDate(Map<String, Object?> card, List<String> keys) {
+  for (final key in keys) {
+    final raw = card[key];
+    if (raw is! String || raw.trim().isEmpty) continue;
+    final normalized = raw.trim()
+        .replaceAll('年', '-')
+        .replaceAll('月', '-')
+        .replaceAll('日', '')
+        .replaceAll('/', '-');
+    final parsed = DateTime.tryParse(normalized);
+    if (parsed != null) return parsed;
+    final parts = RegExp(
+            r'^(\d{4})-(\d{1,2})-(\d{1,2})(?:\s+(\d{1,2}):(\d{1,2}))?')
+        .firstMatch(normalized);
+    if (parts != null) {
+      return DateTime(
+        int.parse(parts[1]!),
+        int.parse(parts[2]!),
+        int.parse(parts[3]!),
+        int.tryParse(parts[4] ?? '') ?? 0,
+        int.tryParse(parts[5] ?? '') ?? 0,
+      );
+    }
+  }
+  return null;
 }
 
 /// 导入结果
@@ -383,6 +467,20 @@ abstract class CampusApi {
 
   Future<List<InformationItem>> fetchInformationFeed(LoginSession? session);
 
+  Future<InformationFeedPage> fetchInformationPage(
+    LoginSession? session, {
+    String? cursor,
+    int? cursorId,
+    int? cursorSubscriptionMatch,
+  }) async {
+    final items = await fetchInformationFeed(session);
+    return InformationFeedPage(
+      items: items,
+      hasMore: false,
+      total: items.length,
+    );
+  }
+
   Future<InformationItem> fetchInformationDetail(int id, LoginSession? session);
 
   Future<InformationItem> updateReadStatus(
@@ -441,6 +539,17 @@ abstract class CampusApi {
   /// 获取当前用户信息
   Future<UserProfile> fetchMe(LoginSession session);
 
+  Future<UserProfile> updateProfile({
+    String? college,
+    String? major,
+    String? grade,
+    String? className,
+    List<String> interestTags = const [],
+    List<String> courseCodes = const [],
+    required LoginSession session,
+  }) =>
+      Future.error(UnsupportedError('当前实现不支持编辑个人资料'));
+
   /// 获取用户统计
   Future<UserStats> fetchStats(LoginSession session);
 
@@ -460,6 +569,12 @@ abstract class CampusApi {
   /// 获取行动列表
   Future<List<ActionItem>> fetchActions(LoginSession session) =>
       Future.value(const []);
+
+  Future<void> completeAction(int actionId, LoginSession session) =>
+      Future.error(UnsupportedError('当前实现不支持完成待办'));
+
+  Future<void> cancelAction(int actionId, LoginSession session) =>
+      Future.error(UnsupportedError('当前实现不支持取消待办'));
 
   /// 获取提醒列表
   Future<List<ReminderItem>> fetchReminders(LoginSession session) =>
@@ -595,19 +710,56 @@ class UserProfile {
       required this.username,
       this.nickname,
       this.email,
-      this.role});
+      this.phone,
+      this.role,
+      this.college,
+      this.major,
+      this.grade,
+      this.className,
+      this.interestTags = const [],
+      this.courseCodes = const []});
   final int id;
   final String username;
   final String? nickname;
   final String? email;
+  final String? phone;
   final String? role;
+  final String? college;
+  final String? major;
+  final String? grade;
+  final String? className;
+  final List<String> interestTags;
+  final List<String> courseCodes;
+
+  List<String> get personalizationScopes => <String>{
+        if (college?.trim().isNotEmpty == true) college!.trim(),
+        if (major?.trim().isNotEmpty == true) major!.trim(),
+        if (grade?.trim().isNotEmpty == true) grade!.trim(),
+        if (className?.trim().isNotEmpty == true) className!.trim(),
+        ...interestTags.map((value) => value.trim()).where((value) => value.isNotEmpty),
+        ...courseCodes.map((value) => value.trim()).where((value) => value.isNotEmpty),
+      }.toList();
+
   factory UserProfile.fromJson(Map<String, Object?> json) {
+    final profile =
+        (json['profile'] as Map?)?.cast<String, Object?>() ?? const {};
     return UserProfile(
       id: (json['id'] as num?)?.toInt() ?? 0,
       username: json['username'] as String? ?? '',
       nickname: json['nickname'] as String?,
       email: json['email'] as String?,
+      phone: json['phone'] as String?,
       role: json['role'] as String?,
+      college: profile['college'] as String?,
+      major: profile['major'] as String?,
+      grade: profile['grade'] as String?,
+      className: profile['className'] as String?,
+      interestTags: (profile['interestTags'] as List<Object?>? ?? const [])
+          .whereType<String>()
+          .toList(),
+      courseCodes: (profile['courseCodes'] as List<Object?>? ?? const [])
+          .whereType<String>()
+          .toList(),
     );
   }
 }
@@ -661,6 +813,20 @@ class ActionItem {
       dueAt != null &&
       !isExpired &&
       dueAt!.difference(DateTime.now()).inDays <= 3;
+  bool get isCompleted => status == 'COMPLETED';
+
+  ActionItem copyWith({String? status}) => ActionItem(
+        id: id,
+        informationItemId: informationItemId,
+        title: title,
+        dueAt: dueAt,
+        originalUrl: originalUrl,
+        status: status ?? this.status,
+        createdAt: createdAt,
+        sourceTitle: sourceTitle,
+        sourceName: sourceName,
+        requiredMaterials: requiredMaterials,
+      );
 
   factory ActionItem.fromJson(Map<String, Object?> json) {
     final materialsRaw =

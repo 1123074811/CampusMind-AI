@@ -8,6 +8,7 @@ export 'information_api_stub.dart'
         CampusApi,
         CampusUser,
         InformationItem,
+        InformationFeedPage,
         LoginSession,
         ImportResult,
         ImportTaskItem,
@@ -46,6 +47,8 @@ class IoCampusApi implements CampusApi {
       onSessionRefreshed;
   final Map<LoginSession, LoginSession> _refreshedSessions = {};
   final Map<LoginSession, Future<void>> _refreshing = {};
+  final Map<int, UserProfile> _profileCache = {};
+  final Map<int, PrivacyStatus> _privacyCache = {};
 
   @override
   Future<LoginSession> login(String username, String password) async {
@@ -163,17 +166,29 @@ class IoCampusApi implements CampusApi {
   @override
   Future<List<InformationItem>> fetchInformationFeed(
       LoginSession? session) async {
+    return (await fetchInformationPage(session)).items;
+  }
+
+  @override
+  Future<InformationFeedPage> fetchInformationPage(
+    LoginSession? session, {
+    String? cursor,
+    int? cursorId,
+    int? cursorSubscriptionMatch,
+  }) async {
+    final query = <String, String>{'size': '30'};
+    if (cursor != null) query['cursor'] = cursor;
+    if (cursorId != null) query['cursorId'] = '$cursorId';
+    if (cursorSubscriptionMatch != null) {
+      query['cursorSubscriptionMatch'] = '$cursorSubscriptionMatch';
+    }
+    final uri = Uri(path: '/api/v1/information/feed', queryParameters: query);
     final root = await _request(
       'GET',
-      '/api/v1/information/feed?size=30',
+      uri.toString(),
       session: session,
     );
-    final data = _data(root);
-    final items = data['items'] as List<Object?>? ?? const [];
-    return items
-        .cast<Map<String, Object?>>()
-        .map(InformationItem.fromJson)
-        .toList();
+    return InformationFeedPage.fromJson(_data(root));
   }
 
   @override
@@ -286,14 +301,18 @@ class IoCampusApi implements CampusApi {
   @override
   Future<PrivacyStatus> fetchPrivacyStatus(LoginSession session) async {
     final root = await _request('GET', '/api/v1/users/me/privacy', session: session);
-    return PrivacyStatus.fromJson(_data(root));
+    final privacy = PrivacyStatus.fromJson(_data(root));
+    _privacyCache[session.user.id] = privacy;
+    return privacy;
   }
 
   @override
   Future<PrivacyStatus> updateConsent(String type, bool granted, String policyVersion, LoginSession session) async {
     final root = await _request('POST', '/api/v1/users/me/privacy/consents', session: session,
         body: {'consentType': type, 'granted': granted, 'policyVersion': policyVersion, 'source': 'APP'});
-    return PrivacyStatus.fromJson(_data(root));
+    final privacy = PrivacyStatus.fromJson(_data(root));
+    _privacyCache[session.user.id] = privacy;
+    return privacy;
   }
 
   @override
@@ -496,6 +515,17 @@ class IoCampusApi implements CampusApi {
   @override
   Future<AiChatResult> aiChat(
       String sessionId, String message, LoginSession session) async {
+    final requestedPersonalization = _isPersonalQuery(message);
+    PrivacyStatus? privacy = _privacyCache[session.user.id];
+    if (requestedPersonalization && privacy == null) {
+      privacy = await fetchPrivacyStatus(session);
+    }
+    final usePersonalProfile = requestedPersonalization &&
+        (privacy?.consents['PERSONALIZATION'] ?? false);
+    UserProfile? profile = _profileCache[session.user.id];
+    if (usePersonalProfile && profile == null) {
+      profile = await fetchMe(session);
+    }
     final root = await _request(
       'POST',
       '/api/v1/ai/chat',
@@ -503,7 +533,9 @@ class IoCampusApi implements CampusApi {
       body: {
         'sessionId': sessionId,
         'message': message,
-        'usePersonalProfile': _isPersonalQuery(message),
+        'usePersonalProfile': usePersonalProfile,
+        if (usePersonalProfile)
+          'userScopes': profile?.personalizationScopes ?? const <String>[],
       },
     );
     return AiChatResult.fromJson(_data(root));
@@ -526,7 +558,35 @@ class IoCampusApi implements CampusApi {
       '/api/v1/users/me',
       session: session,
     );
-    return UserProfile.fromJson(_data(root));
+    final profile = UserProfile.fromJson(_data(root));
+    _profileCache[session.user.id] = profile;
+    return profile;
+  }
+
+  @override
+  Future<UserProfile> updateProfile({
+    String? college,
+    String? major,
+    String? grade,
+    String? className,
+    List<String> interestTags = const [],
+    List<String> courseCodes = const [],
+    required LoginSession session,
+  }) async {
+    await _request(
+      'PUT',
+      '/api/v1/users/me/profile',
+      session: session,
+      body: {
+        'college': college,
+        'major': major,
+        'grade': grade,
+        'className': className,
+        'interestTags': interestTags,
+        'courseCodes': courseCodes,
+      },
+    );
+    return fetchMe(session);
   }
 
   @override
@@ -614,6 +674,24 @@ class IoCampusApi implements CampusApi {
           .toList();
     }
     return const [];
+  }
+
+  @override
+  Future<void> completeAction(int actionId, LoginSession session) async {
+    await _request(
+      'PUT',
+      '/api/v1/information/actions/$actionId/complete',
+      session: session,
+    );
+  }
+
+  @override
+  Future<void> cancelAction(int actionId, LoginSession session) async {
+    await _request(
+      'DELETE',
+      '/api/v1/information/actions/$actionId',
+      session: session,
+    );
   }
 
   @override
