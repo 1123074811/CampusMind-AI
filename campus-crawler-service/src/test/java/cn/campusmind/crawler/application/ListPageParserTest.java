@@ -74,4 +74,35 @@ class ListPageParserTest {
         assertThat(result.links().get(0).dateText()).isEqualTo("2026/04/08");
         assertThat(result.links().get(0).publishedDate()).isEqualTo(java.time.LocalDate.of(2026, 4, 8));
     }
+
+    @Test
+    void parsesAcademicAffairsOfficeListTemplateWithoutNumericCssClasses() {
+        SelectorConfig config = configParser.parse("""
+                {
+                  "parserVersion": "xju-jwc-v1",
+                  "list": {
+                    "item": "tr:has(a[href*='/info/'][title])",
+                    "link": "a[href*='/info/'][title]",
+                    "title": "a[href*='/info/'][title]",
+                    "date": "span[class^='timestyle']"
+                  }
+                }
+                """);
+        String html = """
+                <table>
+                  <tr>
+                    <td><a class="c126031" href="../info/1037/3152.htm" title="日本语能力测试（JLPT）新疆大学考点温馨提示">温馨提示</a></td>
+                    <td><span class="timestyle126031">2026/06/23</span></td>
+                  </tr>
+                </table>
+                """;
+
+        ParsedListPage result = parser.parse(html, "https://jwc.xju.edu.cn/tzgg/tzgg.htm", config);
+
+        assertThat(result.parserVersion()).isEqualTo("xju-jwc-v1");
+        assertThat(result.links()).hasSize(1);
+        assertThat(result.links().get(0).title()).isEqualTo("日本语能力测试（JLPT）新疆大学考点温馨提示");
+        assertThat(result.links().get(0).url()).isEqualTo("https://jwc.xju.edu.cn/info/1037/3152.htm");
+        assertThat(result.links().get(0).publishedDate()).isEqualTo(java.time.LocalDate.of(2026, 6, 23));
+    }
 }

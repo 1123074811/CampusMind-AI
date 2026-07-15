@@ -64,6 +64,34 @@ class DetailPageParserTest {
     }
 
     @Test
+    void parsesAcademicAffairsOfficeDetailTemplateWithoutNumericCssClasses() {
+        SelectorConfig config = configParser.parse("""
+                {
+                  "detail": {
+                    "title": "td[class^='titlestyle']",
+                    "meta": "span[class^='timestyle']",
+                    "content": "#vsb_content .v_news_content",
+                    "publishedAtRegex": "([0-9]{4}-[0-9]{2}-[0-9]{2}(?:\\\\s+[0-9]{2}:[0-9]{2})?)"
+                  }
+                }
+                """);
+        String html = """
+                <table><tr><td class="titlestyle126024">日本语能力测试（JLPT）新疆大学考点温馨提示</td></tr></table>
+                <span class="timestyle126024">2026-06-23 18:44</span>
+                <div id="vsb_newscontent"><div id="vsb_content"><div class="v_news_content">
+                  <p>请考生按通知要求携带准考证和有效身份证件参加考试。</p>
+                </div></div></div>
+                """;
+
+        ParsedDetailPage result = parser.parse(html, "https://jwc.xju.edu.cn/info/1037/3152.htm", config);
+
+        assertThat(result.status()).isEqualTo("DETAIL_SUCCESS");
+        assertThat(result.title()).isEqualTo("日本语能力测试（JLPT）新疆大学考点温馨提示");
+        assertThat(result.publishedAtText()).isEqualTo("2026-06-23 18:44");
+        assertThat(result.content()).contains("有效身份证件");
+    }
+
+    @Test
     void reportsParseFailureWhenContentMissing() {
         SelectorConfig config = configParser.parse("""
                 {

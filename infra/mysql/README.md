@@ -4,7 +4,7 @@
 
 - `init/001_schema.sql`: Docker Compose initialization script. It is mounted into `/docker-entrypoint-initdb.d` and runs automatically when the MySQL volume is created for the first time.
 - `init/002_admin_seed.sql`: Minimal development accounts and internal sources. It never assigns primary keys or inserts demo business records.
-- `init/003_public_sources.sql`: Official public web source seed data for Xinjiang University and Xinjiang University Software College.
+- `init/003_public_sources.sql`: Idempotent official web source seeds for Xinjiang University, its Academic Affairs Office, and Software College.
 - `init/008_enterprise_constraints.sql`: Idempotently adds cross-table foreign keys after every table exists.
 - `campusmind_schema.sql`: Standalone deployable schema export. Use this file when importing into an existing MySQL instance.
 - `migrations/002_enterprise_persistence.sql`: One-time upgrade for databases created before 2026-07-12. It separates read/favorite timestamps, archives orphan states, creates subscriptions, and adds missing foreign keys.
