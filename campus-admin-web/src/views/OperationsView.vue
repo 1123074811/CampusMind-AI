@@ -24,11 +24,12 @@ const crawlStats = computed(() => {
   return { total, success, failed, running, rate: Math.round((success / total) * 100) };
 });
 
-const reviewBacklog = computed(() => {
+const publicationStats = computed(() => {
   const events = props.events ?? [];
-  const needReview = events.filter((e) => e.aiNeedReview || e.status === 'CORRECTED').length;
+  const aiIssues = events.filter((e) => e.aiNeedReview || e.aiStatus === 'REVIEW' || e.aiStatus === 'FAILED').length;
   const total = events.length;
-  return { total, needReview, published: total - needReview };
+  const published = events.filter((e) => e.status !== 'OFFLINE' && e.status !== 'REJECTED').length;
+  return { total, aiIssues, published };
 });
 
 const aiStats = computed(() => {
@@ -102,19 +103,19 @@ onMounted(async () => {
         </article>
 
         <article class="ops-card">
-          <header>审核积压</header>
-          <div class="ops-number" :style="{ color: reviewBacklog.needReview > 10 ? 'var(--warning)' : 'var(--green)' }">
-            {{ reviewBacklog.needReview }}
+          <header>发布状态</header>
+          <div class="ops-number" :style="{ color: publicationStats.aiIssues > 10 ? 'var(--warning)' : 'var(--green)' }">
+            {{ publicationStats.published }}
           </div>
           <div class="ops-detail">
-            <span>待审核 {{ reviewBacklog.needReview }}</span>
-            <span>已发布 {{ reviewBacklog.published }}</span>
+            <span>正在展示 {{ publicationStats.published }}</span>
+            <span>AI 异常 {{ publicationStats.aiIssues }}</span>
           </div>
           <div class="ops-bar">
             <div
               class="ops-bar-fill"
               :style="{
-                width: (reviewBacklog.total > 0 ? ((reviewBacklog.total - reviewBacklog.needReview) / reviewBacklog.total * 100) : 100) + '%',
+                width: (publicationStats.total > 0 ? (publicationStats.published / publicationStats.total * 100) : 100) + '%',
                 background: 'var(--green)'
               }"
             ></div>
@@ -167,10 +168,10 @@ onMounted(async () => {
 
         <article class="ops-card">
           <header>事件总量</header>
-          <div class="ops-number">{{ reviewBacklog.total }}</div>
+          <div class="ops-number">{{ publicationStats.total }}</div>
           <div class="ops-detail">
-            <span>已发布 {{ reviewBacklog.published }}</span>
-            <span>待审核 {{ reviewBacklog.needReview }}</span>
+            <span>正在展示 {{ publicationStats.published }}</span>
+            <span>AI 异常 {{ publicationStats.aiIssues }}</span>
           </div>
         </article>
       </div>

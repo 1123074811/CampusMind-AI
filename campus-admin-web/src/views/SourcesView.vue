@@ -168,17 +168,22 @@ function saveSource() {
       </div>
     </aside>
 
-    <aside v-else-if="selectedSource" class="inspector-panel" aria-label="数据源详情">
-      <p class="eyebrow">Inspector</p>
-      <h3>{{ selectedSource.name }}</h3>
-      <dl class="stacked-list">
+    <aside v-else-if="selectedSource" class="inspector-panel source-inspector" aria-label="数据源详情">
+      <header class="source-inspector-head">
+        <div>
+          <p class="eyebrow">Source Inspector</p>
+          <h3>{{ selectedSource.name }}</h3>
+        </div>
+        <StatusPill :status="selectedSource.status" />
+      </header>
+      <a class="source-origin" :href="selectedSource.sourceUrl" target="_blank" rel="noreferrer">
+        <span>源网址</span>
+        <strong>{{ selectedSource.sourceUrl }}</strong>
+      </a>
+      <dl class="source-facts">
         <div>
           <dt>通道类型</dt>
           <dd>{{ sourceChannelLabel(selectedSource.channel) }}</dd>
-        </div>
-        <div>
-          <dt>源网址</dt>
-          <dd><a :href="selectedSource.sourceUrl" target="_blank" rel="noreferrer">{{ selectedSource.sourceUrl }}</a></dd>
         </div>
         <div>
           <dt>最近同步</dt>
@@ -201,11 +206,11 @@ function saveSource() {
           <dd>{{ selectedSource.parserType }}</dd>
         </div>
       </dl>
-      <div class="decision-actions">
+      <div class="source-actions">
         <button
           v-if="selectedSource.channel === 'PUBLIC_WEB' && selectedSource.status !== 'PAUSED'"
           type="button"
-          class="solid-button"
+          class="solid-button source-crawl-action"
           :disabled="props.crawlingSourceId === selectedSource.id"
           @click="$emit('crawl', selectedSource.id)"
         >
@@ -241,6 +246,98 @@ function saveSource() {
 </template>
 
 <style scoped>
+.source-inspector {
+  min-width: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.source-inspector::-webkit-scrollbar {
+  display: none;
+}
+.source-inspector-head {
+  min-width: 0;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--line-soft, rgba(12, 23, 20, 0.08));
+}
+.source-inspector-head > div {
+  min-width: 0;
+}
+.source-inspector-head h3 {
+  margin-top: 8px;
+  overflow-wrap: anywhere;
+}
+.source-origin {
+  min-width: 0;
+  display: grid;
+  gap: 7px;
+  padding: 14px 16px;
+  border: 1px solid rgba(242, 107, 69, 0.18);
+  border-radius: 16px;
+  background: rgba(242, 107, 69, 0.06);
+  color: var(--accent, #f26b45);
+  text-decoration: none;
+}
+.source-origin span {
+  color: var(--ink-muted, #66736f);
+  font-size: 11px;
+  font-weight: 800;
+}
+.source-origin strong {
+  min-width: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.source-facts {
+  margin: 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+.source-facts div {
+  min-width: 0;
+  min-height: 82px;
+  display: grid;
+  align-content: space-between;
+  gap: 10px;
+  padding: 13px 14px;
+  border-radius: 16px;
+  background: #f6f7f4;
+}
+.source-facts dt {
+  color: var(--ink-muted, #66736f);
+  font-size: 11px;
+  font-weight: 800;
+}
+.source-facts dd {
+  min-width: 0;
+  margin: 0;
+  font-size: 17px;
+  font-weight: 900;
+  overflow-wrap: anywhere;
+}
+.source-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+.source-actions button {
+  min-width: 0;
+}
+.source-crawl-action {
+  grid-column: 1 / -1;
+}
+.source-history {
+  min-width: 0;
+  padding-top: 16px;
+  border-top: 1px solid var(--line-soft, rgba(12, 23, 20, 0.08));
+}
 .health-timeline {
   margin: 0;
   padding: 0;
@@ -250,14 +347,18 @@ function saveSource() {
 }
 .health-timeline li {
   display: grid;
-  grid-template-columns: 100px 1fr;
-  gap: 10px;
+  grid-template-columns: 1fr;
+  gap: 5px;
   align-items: start;
   padding: 8px 10px;
   border-radius: 12px;
   background: #f6f7f4;
   font-size: 13px;
   line-height: 1.4;
+}
+.health-timeline span {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 .health-timeline time {
   font-family: "Cascadia Mono", Consolas, monospace;
@@ -279,5 +380,16 @@ function saveSource() {
   color: var(--ink-muted, #66736f);
   font-size: 13px;
   font-weight: 700;
+}
+.history-entry {
+  min-width: 0;
+}
+.history-entry pre {
+  max-width: 100%;
+  overflow: hidden;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 11px;
+  line-height: 1.5;
 }
 </style>

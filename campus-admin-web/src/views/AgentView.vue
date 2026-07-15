@@ -47,7 +47,7 @@ function saveConfig() {
 /* ---- Event list ---- */
 const visible = computed(() => filter.value === 'ALL' ? props.events : props.events.filter((item) => item.aiStatus === filter.value));
 const selected = computed(() => props.events.find((item) => item.id === selectedId.value) ?? visible.value[0]);
-const statusLabel = (status: string) => ({ PENDING: '待处理', SUCCESS: '提取成功', REVIEW: '需复核', FAILED: '提取失败' }[status] ?? '待处理');
+const statusLabel = (status: string) => ({ PENDING: '待处理', SUCCESS: '提取成功', REVIEW: '提取异常', FAILED: '提取失败' }[status] ?? '待处理');
 const typeLabel = (type: string) => ({ NOTICE: '通知', COURSE: '课程', EXAM: '考试', HOMEWORK: '作业', ACTIVITY: '活动', LECTURE: '讲座', COMPETITION: '竞赛', SERVICE: '服务', OTHER: '其他' }[type] ?? '其他');
 
 /* ---- Metric computations ---- */
@@ -73,8 +73,8 @@ const suggestions = computed(() => {
   const items: { text: string; type: 'warn' | 'info' | 'ok' }[] = [];
   if (aiPending.value > 10) items.push({ text: `${aiPending.value} 条待 AI 处理，建议检查数据源`, type: 'warn' });
   if (aiFailed.value > 0) items.push({ text: `${aiFailed.value} 条 AI 处理失败，建议重试`, type: 'warn' });
-  if (pendingCount.value > 5) items.push({ text: `${pendingCount.value} 条待处理，建议尽快审核`, type: 'warn' });
-  if (reviewCount.value > 0) items.push({ text: `${reviewCount.value} 条需复核，建议人工校验`, type: 'warn' });
+  if (pendingCount.value > 5) items.push({ text: `${pendingCount.value} 条等待 AI 处理`, type: 'warn' });
+  if (reviewCount.value > 0) items.push({ text: `${reviewCount.value} 条提取异常，原文仍正常展示`, type: 'warn' });
   if (failedCount.value > 0) items.push({ text: `${failedCount.value} 条提取失败，建议检查数据源`, type: 'warn' });
   if (props.aiConfig?.mode === 'rule') items.push({ text: '当前为规则模式，切换 LLM 可提升质量', type: 'info' });
   if (pendingCount.value === 0 && failedCount.value === 0 && aiPending.value === 0) items.push({ text: '所有卡片处理完毕', type: 'ok' });
@@ -131,7 +131,7 @@ const detailRows = computed(() => {
         <strong>{{ pendingCount }}</strong>
         <div class="metric-sub">
           <span class="metric-tag green">{{ successCount }} 成功</span>
-          <span v-if="reviewCount" class="metric-tag amber">{{ reviewCount }} 复核</span>
+          <span v-if="reviewCount" class="metric-tag amber">{{ reviewCount }} 异常</span>
           <span v-if="failedCount" class="metric-tag red">{{ failedCount }} 失败</span>
         </div>
       </article>
@@ -179,7 +179,7 @@ const detailRows = computed(() => {
           <div class="filters">
             <select v-model="filter" aria-label="智能提取状态">
               <option value="ALL">全部状态</option><option value="SUCCESS">提取成功</option>
-              <option value="REVIEW">需复核</option><option value="PENDING">待处理</option><option value="FAILED">提取失败</option>
+              <option value="REVIEW">提取异常</option><option value="PENDING">待处理</option><option value="FAILED">提取失败</option>
             </select>
             <button class="ghost-button tiny" type="button" @click="$emit('refresh')">刷新</button>
           </div>

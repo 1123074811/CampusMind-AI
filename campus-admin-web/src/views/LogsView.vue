@@ -12,15 +12,16 @@ defineEmits<{
 }>();
 
 const actionFilter = ref('ALL');
-const actions = ['ALL', 'MANUAL_CRAWL', 'AUTO_CRAWL', 'REVIEW', 'CORRECT', 'REJECT', 'OFFLINE'];
+const actions = ['ALL', 'MANUAL_CRAWL', 'AUTO_CRAWL', 'CORRECT', 'OFFLINE', 'RESTORE'];
 const actionLabels: Record<string, string> = {
   ALL: '全部',
   MANUAL_CRAWL: '手动抓取',
   AUTO_CRAWL: '自动抓取',
-  REVIEW: '审核通过',
+  REVIEW: '历史确认',
   CORRECT: '人工修正',
   REJECT: '驳回',
-  OFFLINE: '下线'
+  OFFLINE: '下线',
+  RESTORE: '恢复展示'
 };
 
 const visibleLogs = computed(() => {
@@ -42,6 +43,9 @@ function actionStatus(action: string) {
   }
   if (action === 'OFFLINE') {
     return 'OFFLINE';
+  }
+  if (action === 'RESTORE') {
+    return 'AI_PUBLISHED';
   }
   if (action === 'MANUAL_CRAWL' || action === 'AUTO_CRAWL') {
     return 'SUCCESS';
