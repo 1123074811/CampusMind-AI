@@ -2,8 +2,9 @@ import type { ApiResponse, DashboardResponse, EventImpact, ReviewEvent } from '.
 import type { AdminSession } from '../adminTypes';
 import { authorizedFetch } from './auth';
 
-export async function fetchDashboard(session: AdminSession | null) {
-  const response = await authorizedFetch('/api/admin/dashboard', {}, session);
+export async function fetchDashboard(session: AdminSession | null, page = 0, size = 20) {
+  const params = new URLSearchParams({ page: String(page), size: String(size) });
+  const response = await authorizedFetch(`/api/admin/dashboard?${params}`, {}, session);
   if (!response.ok) {
     if (response.status === 401) {
       throw new Error('登录已失效，请重新登录');

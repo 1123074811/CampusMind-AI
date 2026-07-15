@@ -32,7 +32,6 @@ import type { DataSourcePayload } from './api/admin';
 import { crawlEnabledSources, crawlSource, fetchCrawlItems } from './api/crawler';
 import AdminSidebar from './components/AdminSidebar.vue';
 import AdminTopbar from './components/AdminTopbar.vue';
-import MetricsBand from './components/MetricsBand.vue';
 import type {
   AdminAuditLog,
   AdminManagedUser,
@@ -46,7 +45,6 @@ import type {
   EventImpact,
   NavItem,
   NavKey,
-  PageMetric,
   ReviewEvent
 } from './adminTypes';
 import LoginView from './views/LoginView.vue';
@@ -59,7 +57,7 @@ import AgentView from './views/AgentView.vue';
 import DatabaseView from './views/DatabaseView.vue';
 import NotificationView from './views/NotificationView.vue';
 import OperationsView from './views/OperationsView.vue';
-import { buildEventMetrics, dashboardConnectionMessage } from './pageLogic';
+import { dashboardConnectionMessage } from './pageLogic';
 
 const route = useRoute();
 const router = useRouter();
@@ -84,13 +82,28 @@ const currentViewProps = computed(() => {
   const nav = activeNav.value;
   switch (nav) {
     case 'review':
-      return { events: reviewEvents.value, selectedId: selectedId.value, impact: eventImpact.value, impactLoading: eventImpactLoading.value };
+      return {
+        events: reviewEvents.value,
+        selectedId: selectedId.value,
+        impact: eventImpact.value,
+        impactLoading: eventImpactLoading.value,
+        page: eventPage.value,
+        pageSize: eventPageSize.value,
+        total: eventTotal.value,
+      };
     case 'agent':
       return { events: reviewEvents.value, metrics: metrics.value, aiConfig: aiConfig.value, configLoading: loading.value, configMessage: apiMessage.value };
     case 'sources':
       return { dataSources: visibleDataSources.value, crawlingSourceId: crawlingSourceId.value, canManage: isAdmin.value, versions: sourceVersions.value, tasks: visibleCrawlTasks.value, crawlItems: crawlItems.value };
     case 'tasks':
-      return { tasks: visibleCrawlTasks.value, crawlItems: crawlItems.value, crawlerRunning: crawlerRunning.value };
+      return {
+        tasks: visibleCrawlTasks.value,
+        crawlItems: crawlItems.value,
+        crawlerRunning: crawlerRunning.value,
+        crawlPage: crawlPage.value,
+        crawlPageSize: crawlPageSize.value,
+        crawlTotal: crawlTotal.value,
+      };
     case 'users':
       return { users: adminUsers.value, loading: loading.value };
     case 'logs':
@@ -112,15 +125,15 @@ const currentViewEvents = computed(() => {
     case 'review':
       return {
         select: selectEvent, unarchive: restoreSelected, archive: offlineSelected, refresh: loadDashboard,
-        edit: editEvent, delete: deleteEventById, 'batch-offline': batchOfflineSelected,
-        'request-impact': loadEventImpact,
+        edit: editEvent, delete: deleteEventById, batchOffline: batchOfflineSelected,
+        requestImpact: loadEventImpact, pageChange: changeEventPage,
       };
     case 'agent':
       return { refresh: loadDashboard, refreshConfig: loadAiConfig, saveConfig: saveAiConfig };
     case 'sources':
       return { crawl: crawlSelectedSource, create: createSource, update: updateSource, toggle: toggleSource, history: loadSourceVersions, rollback: rollbackSource };
     case 'tasks':
-      return { runNow: runCrawlerNow };
+      return { runNow: runCrawlerNow, crawlPageChange: changeCrawlPage };
     case 'users':
       return { refresh: loadUsers, create: createUser, toggle: toggleUser, resetPassword: resetUserPassword };
     case 'logs':
@@ -146,12 +159,18 @@ watch(() => route.params.id, (id) => {
 });
 const selectedId = ref(0);
 const reviewEvents = ref<ReviewEvent[]>([]);
+const eventPage = ref(0);
+const eventPageSize = ref(20);
+const eventTotal = ref(0);
 const eventImpact = ref<EventImpact | null>(null);
 const eventImpactLoading = ref(false);
 const dataSources = ref<DataSource[]>([]);
 const sourceVersions = ref<DataSourceVersion[]>([]);
 const crawlTasks = ref<CrawlTask[]>([]);
 const crawlItems = ref<CrawlItem[]>([]);
+const crawlPage = ref(0);
+const crawlPageSize = ref(20);
+const crawlTotal = ref(0);
 const adminUsers = ref<AdminManagedUser[]>([]);
 const auditLogs = ref<AdminAuditLog[]>([]);
 const aiConfig = ref<AiConfig | null>(null);
@@ -175,7 +194,7 @@ const dashboardMetrics = ref<DashboardMetrics>({
 const isAdmin = computed(() => session.value?.user.role === 'ADMIN');
 
 const navItems = computed<NavItem[]>(() => [
-  { key: 'review', label: '校园事件', count: reviewEvents.value.length },
+  { key: 'review', label: '校园事件', count: eventTotal.value },
   { key: 'sources', label: '数据源', count: visibleDataSources.value.length },
   { key: 'tasks', label: '采集任务', count: visibleCrawlTasks.value.length },
   { key: 'logs', label: '日志管理', count: auditLogs.value.length },
@@ -215,65 +234,6 @@ const metrics = computed<DashboardMetrics>(() => {
   };
 });
 
-const pageMetrics = computed<PageMetric[]>(() => {
-  const events = reviewEvents.value;
-  switch (activeNav.value) {
-    case 'review': {
-      return buildEventMetrics(events);
-    }
-    case 'sources': {
-      const sources = visibleDataSources.value;
-      const running = sources.filter((s) => s.status === 'RUNNING' || s.status === 'HEALTHY').length;
-      const paused = sources.filter((s) => s.status === 'PAUSED').length;
-      const needAuth = sources.filter((s) => s.status === 'NEEDS_AUTH').length;
-      return [
-        { label: '总数据源', value: sources.length, hint: '公开网页渠道' },
-        { label: '运行中', value: running, hint: '正常采集', accent: 'green' },
-        { label: '已暂停', value: paused, hint: '手动暂停', accent: paused > 0 ? 'amber' : 'default' },
-        { label: '需授权', value: needAuth, hint: '等待配置凭证', accent: needAuth > 0 ? 'red' : 'default' }
-      ];
-    }
-    case 'tasks': {
-      const tasks = visibleCrawlTasks.value;
-      const success = tasks.filter((t) => t.status === 'SUCCESS').length;
-      const running = tasks.filter((t) => t.status === 'RUNNING').length;
-      const failed = tasks.filter((t) => t.status === 'FAILED').length;
-      return [
-        { label: '总任务', value: tasks.length, hint: '可见采集任务' },
-        { label: '已完成', value: success, hint: tasks.length > 0 ? `成功率 ${Math.round((success / tasks.length) * 100)}%` : '暂无任务', accent: 'green' },
-        { label: '运行中', value: running, hint: crawlerRunning.value ? '爬虫执行中' : '空闲', accent: running > 0 ? 'amber' : 'default' },
-        { label: '已失败', value: failed, hint: failed > 0 ? '需检查日志' : '无异常', accent: failed > 0 ? 'red' : 'default' }
-      ];
-    }
-    case 'users': {
-      const users = adminUsers.value;
-      const active = users.filter((u) => u.status === 1).length;
-      const disabled = users.filter((u) => u.status === 0).length;
-      const admins = users.filter((u) => u.role === 'ADMIN').length;
-      return [
-        { label: '总用户', value: users.length, hint: '已注册用户' },
-        { label: '正常', value: active, hint: '已启用账号', accent: 'green' },
-        { label: '已禁用', value: disabled, hint: disabled > 0 ? '需要关注' : '无异常', accent: disabled > 0 ? 'amber' : 'default' },
-        { label: '管理员', value: admins, hint: 'ADMIN 角色' }
-      ];
-    }
-    case 'logs': {
-      const logs = auditLogs.value;
-      const today = new Date().toISOString().slice(0, 10);
-      const todayLogs = logs.filter((l) => l.createdAt?.startsWith(today)).length;
-      const contentLogs = logs.filter((l) => ['CORRECT', 'OFFLINE', 'RESTORE', 'DELETE'].includes(l.action)).length;
-      return [
-        { label: '总日志', value: logs.length, hint: '审计记录' },
-        { label: '今日新增', value: todayLogs, hint: today, accent: todayLogs > 0 ? 'green' : 'default' },
-        { label: '内容操作', value: contentLogs, hint: '修正/下线/恢复' },
-        { label: '其他操作', value: logs.length - contentLogs, hint: '登录/采集/配置' }
-      ];
-    }
-    default:
-      return [];
-  }
-});
-
 function selectEvent(id: number) {
   selectedId.value = id;
 }
@@ -293,7 +253,7 @@ async function loadEventImpact(id: number) {
   }
 }
 
-async function loadDashboard() {
+async function loadDashboard(page = eventPage.value, size = eventPageSize.value) {
   if (!session.value) {
     return;
   }
@@ -301,13 +261,20 @@ async function loadDashboard() {
   loading.value = true;
   try {
     const partialFailures: string[] = [];
-    const dashboard = await fetchDashboard(session.value);
+    const dashboard = await fetchDashboard(session.value, page, size);
     dashboardMetrics.value = dashboard.metrics;
     reviewEvents.value = dashboard.events;
+    eventPage.value = dashboard.eventPage;
+    eventPageSize.value = dashboard.eventPageSize;
+    eventTotal.value = dashboard.eventTotal;
     dataSources.value = dashboard.dataSources;
     crawlTasks.value = dashboard.tasks;
     try {
-      crawlItems.value = await fetchCrawlItems(session.value);
+      const crawlResult = await fetchCrawlItems(session.value, crawlPage.value, crawlPageSize.value);
+      crawlItems.value = crawlResult.items;
+      crawlPage.value = crawlResult.page;
+      crawlPageSize.value = crawlResult.pageSize;
+      crawlTotal.value = crawlResult.total;
     } catch (error) {
       partialFailures.push('采集明细');
     }
@@ -350,13 +317,32 @@ async function loadDashboard() {
       session.value = null;
     }
     reviewEvents.value = [];
+    eventTotal.value = 0;
     dataSources.value = [];
     crawlTasks.value = [];
     crawlItems.value = [];
+    crawlTotal.value = 0;
     adminUsers.value = [];
     auditLogs.value = [];
   } finally {
     loading.value = false;
+  }
+}
+
+function changeEventPage(page: number, size: number) {
+  loadDashboard(page, size);
+}
+
+async function changeCrawlPage(page: number, size: number) {
+  if (!session.value) return;
+  try {
+    const result = await fetchCrawlItems(session.value, page, size);
+    crawlItems.value = result.items;
+    crawlPage.value = result.page;
+    crawlPageSize.value = result.pageSize;
+    crawlTotal.value = result.total;
+  } catch (error) {
+    apiMessage.value = error instanceof Error ? error.message : '采集明细加载失败';
   }
 }
 
@@ -535,10 +521,10 @@ async function deleteEventById(id: number) {
   if (apiMode.value === 'live') {
     try {
       await deleteEvent(session.value, id);
-      reviewEvents.value = reviewEvents.value.filter((item) => item.id !== id);
-      if (selectedId.value === id) {
-        selectedId.value = reviewEvents.value[0]?.id ?? 0;
-      }
+      const targetPage = reviewEvents.value.length === 1 && eventPage.value > 0
+        ? eventPage.value - 1
+        : eventPage.value;
+      await loadDashboard(targetPage, eventPageSize.value);
       apiMessage.value = '事件已删除';
       return;
     } catch (error) {
@@ -685,9 +671,13 @@ async function logout() {
   apiMode.value = 'fallback';
   apiMessage.value = '等待连接后端';
   reviewEvents.value = [];
+  eventPage.value = 0;
+  eventTotal.value = 0;
   dataSources.value = [];
   crawlTasks.value = [];
   crawlItems.value = [];
+  crawlPage.value = 0;
+  crawlTotal.value = 0;
   adminUsers.value = [];
   auditLogs.value = [];
   aiConfig.value = null;
@@ -719,8 +709,6 @@ onMounted(async () => {
         @refresh="loadDashboard"
         @logout="logout"
       />
-      <MetricsBand v-if="activeNav !== 'agent'" :items="pageMetrics" />
-
       <component
         v-if="currentView"
         :is="currentView"

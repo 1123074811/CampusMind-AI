@@ -120,6 +120,13 @@ export interface CrawlItem {
   favoriteCount: number;
 }
 
+export interface CrawlItemPage {
+  items: CrawlItem[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
 export interface DashboardMetrics {
   reviewCount: number;
   urgentCount: number;
@@ -149,6 +156,9 @@ export interface ApiResponse<T> {
 export interface DashboardResponse {
   metrics: DashboardMetrics;
   events: ReviewEvent[];
+  eventTotal: number;
+  eventPage: number;
+  eventPageSize: number;
   dataSources: DataSource[];
   tasks: CrawlTask[];
 }

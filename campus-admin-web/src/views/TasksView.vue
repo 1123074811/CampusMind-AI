@@ -1,16 +1,21 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
 import StatusPill from '../components/StatusPill.vue';
+import PaginationBar from '../components/PaginationBar.vue';
 import type { CrawlItem, CrawlTask, TaskStatus } from '../adminTypes';
 
 const props = defineProps<{
   tasks: CrawlTask[];
   crawlItems: CrawlItem[];
   crawlerRunning: boolean;
+  crawlPage: number;
+  crawlPageSize: number;
+  crawlTotal: number;
 }>();
 
 defineEmits<{
   runNow: [];
+  crawlPageChange: [page: number, pageSize: number];
 }>();
 
 const statusFilter = ref<'ALL' | TaskStatus>('ALL');
@@ -146,6 +151,12 @@ function selectItem(id: number) {
             <StatusPill :status="item.parseStatus === 'DETAIL_SUCCESS' ? 'SUCCESS' : item.parseStatus === 'DETAIL_FAILED' ? 'FAILED' : 'PENDING'" />
           </li>
         </ol>
+        <PaginationBar
+          :page="crawlPage"
+          :page-size="crawlPageSize"
+          :total="crawlTotal"
+          @change="(page, size) => $emit('crawlPageChange', page, size)"
+        />
       </section>
     </div>
 

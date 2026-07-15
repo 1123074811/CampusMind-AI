@@ -2,6 +2,7 @@
 import { onMounted, ref, watch, computed } from 'vue';
 import type { AdminSession, DeliveryStats, DeliveryRecord } from '../adminTypes';
 import { fetchDeliveryStats, fetchDeliveries, retryDelivery, withdrawDelivery } from '../api/admin';
+import PaginationBar from '../components/PaginationBar.vue';
 
 const props = defineProps<{
   session?: AdminSession | null;
@@ -11,7 +12,7 @@ const stats = ref<DeliveryStats | null>(null);
 const records = ref<DeliveryRecord[]>([]);
 const statusFilter = ref('ALL');
 const page = ref(0);
-const pageSize = 50;
+const pageSize = ref(50);
 const loading = ref(false);
 const error = ref('');
 const message = ref('');
@@ -45,7 +46,7 @@ async function loadRecords() {
   loading.value = true;
   error.value = '';
   try {
-    records.value = await fetchDeliveries(props.session, statusFilter.value, page.value, pageSize);
+    records.value = await fetchDeliveries(props.session, statusFilter.value, page.value, pageSize.value);
   } catch (e) {
     error.value = e instanceof Error ? e.message : '投递记录加载失败';
     records.value = [];
@@ -60,18 +61,10 @@ function changeStatus(status: string) {
   loadRecords();
 }
 
-function nextPage() {
-  if (records.value.length >= pageSize) {
-    page.value++;
-    loadRecords();
-  }
-}
-
-function prevPage() {
-  if (page.value > 0) {
-    page.value--;
-    loadRecords();
-  }
+function changePage(nextPage: number, nextSize: number) {
+  page.value = nextPage;
+  pageSize.value = nextSize;
+  loadRecords();
 }
 
 async function handleRetry(id: number) {
@@ -201,11 +194,13 @@ watch(() => props.session, () => {
         </li>
       </ul>
 
-      <div v-if="records.length > 0" class="delivery-pagination">
-        <button type="button" class="ghost-button tiny" :disabled="page === 0" @click="prevPage">上一页</button>
-        <span class="batch-count">第 {{ page + 1 }} 页 · 本页 {{ records.length }} 条</span>
-        <button type="button" class="ghost-button tiny" :disabled="records.length < pageSize" @click="nextPage">下一页</button>
-      </div>
+      <PaginationBar
+        v-if="records.length > 0"
+        :page="page"
+        :page-size="pageSize"
+        :total="filteredCount"
+        @change="changePage"
+      />
     </div>
   </section>
 </template>
@@ -228,13 +223,6 @@ watch(() => props.session, () => {
 .delivery-actions {
   display: flex;
   gap: 6px;
-}
-.delivery-pagination {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 12px 18px;
-  border-top: 1px solid var(--line-soft, rgba(12,23,20,0.07));
 }
 .notification-message {
   color: var(--green, #16845f);

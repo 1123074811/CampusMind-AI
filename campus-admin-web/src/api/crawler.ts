@@ -1,4 +1,4 @@
-import type { AdminSession, ApiResponse, BatchCrawlResult, CrawlItem, CrawlSourceResult } from '../adminTypes';
+import type { AdminSession, ApiResponse, BatchCrawlResult, CrawlItemPage, CrawlSourceResult } from '../adminTypes';
 import { authorizedFetch } from './auth';
 
 export async function crawlSource(session: AdminSession | null, sourceId: number, days = 30) {
@@ -35,15 +35,15 @@ export async function crawlEnabledSources(session: AdminSession | null) {
   throw new Error('批量采集接口不可用');
 }
 
-export async function fetchCrawlItems(session: AdminSession | null, size = 30) {
-  const params = new URLSearchParams({ size: String(size) });
+export async function fetchCrawlItems(session: AdminSession | null, page = 0, size = 20) {
+  const params = new URLSearchParams({ page: String(page), size: String(size) });
   const response = await authorizedFetch(`/api/admin/crawler/items?${params.toString()}`, {}, session);
 
   if (!response.ok) {
     throw new Error(`HTTP ${response.status}`);
   }
 
-  const payload = await response.json() as ApiResponse<CrawlItem[]>;
+  const payload = await response.json() as ApiResponse<CrawlItemPage>;
   if (!payload.success) {
     throw new Error(payload.message);
   }

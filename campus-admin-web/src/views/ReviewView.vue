@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import StatusPill from '../components/StatusPill.vue';
+import PaginationBar from '../components/PaginationBar.vue';
 import type { EventImpact, EventType, ReviewEvent } from '../adminTypes';
 
 const props = defineProps<{
@@ -8,6 +9,9 @@ const props = defineProps<{
   selectedId: number;
   impact: EventImpact | null;
   impactLoading: boolean;
+  page: number;
+  pageSize: number;
+  total: number;
 }>();
 
 const emit = defineEmits<{
@@ -19,6 +23,7 @@ const emit = defineEmits<{
   delete: [id: number];
   batchOffline: [ids: number[]];
   requestImpact: [id: number];
+  pageChange: [page: number, pageSize: number];
 }>();
 
 type QueueTab = 'LIVE' | 'ALL' | 'UPDATED' | 'OFFLINE';
@@ -398,6 +403,12 @@ onUnmounted(() => {
         </div>
         <p v-if="!filteredEvents.length" class="empty-queue">当前筛选条件下没有事件</p>
       </div>
+      <PaginationBar
+        :page="page"
+        :page-size="pageSize"
+        :total="total"
+        @change="(nextPage, nextSize) => emit('pageChange', nextPage, nextSize)"
+      />
     </section>
 
     <aside v-if="selectedEvent" class="detail-panel" aria-label="事件详情与对比">
