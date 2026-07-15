@@ -16,6 +16,8 @@ public interface InformationItemMapper extends BaseMapper<InformationItem> {
             FROM information_item i
             WHERE i.item_status IN ('ACTIVE', 'UPDATED')
               AND i.parse_status = 'DETAIL_SUCCESS'
+              AND (i.submitted_by_user_id IS NULL
+                OR (#{userId} IS NOT NULL AND i.submitted_by_user_id = #{userId}))
             <if test="onlySubscribed">
               AND #{userId} IS NOT NULL
               AND EXISTS (

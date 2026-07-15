@@ -76,13 +76,13 @@ public class InformationService {
             throw new BusinessException("FEED_MODE_INVALID", "信息流模式仅支持 ALL 或 SUBSCRIBED_ONLY", HttpStatus.BAD_REQUEST);
         }
         boolean onlySubscribed = "SUBSCRIBED_ONLY".equals(normalizedMode);
+        Set<Long> subscribedSourceIds = subscribedSourceIds(userId);
         List<InformationItem> records = informationItemMapper.selectRankedFeed(
                 userId, onlySubscribed, cursor, cursorId, cursorSubscriptionMatch, safeSize + 1);
         boolean hasMore = records.size() > safeSize;
         List<InformationItem> visibleRecords = records.stream().limit(safeSize).toList();
-        Set<Long> subscribedSourceIds = subscribedSourceIds(userId);
         Map<Long, String> readStatuses = readStatuses(userId, visibleRecords);
-        UserProfile userProfile = userId != null ? loadUserProfile(userId) : null;
+        UserProfile userProfile = hasPersonalizationConsent(userId) ? loadUserProfile(userId) : null;
         List<InformationFeedItemResponse> items = visibleRecords.stream()
                 .map(item -> toFeedItem(item,
                         normalizeReadStatus(readStatuses.getOrDefault(item.getId(), "NEW")),
@@ -95,7 +95,24 @@ public class InformationService {
         Long nextCursorId = items.isEmpty() ? null : visibleRecords.get(visibleRecords.size() - 1).getId();
         Integer nextSubscriptionMatch = items.isEmpty() ? null
                 : (subscribedSourceIds.contains(visibleRecords.get(visibleRecords.size() - 1).getSourceId()) ? 1 : 0);
-        return new InformationFeedResponse(items, nextCursor, nextCursorId, nextSubscriptionMatch, hasMore);
+        LambdaQueryWrapper<InformationItem> totalQuery = new LambdaQueryWrapper<InformationItem>()
+                .in(InformationItem::getItemStatus, VISIBLE_ITEM_STATUS)
+                .eq(InformationItem::getParseStatus, "DETAIL_SUCCESS")
+                .and(query -> {
+                    query.isNull(InformationItem::getSubmittedByUserId);
+                    if (userId != null) {
+                        query.or().eq(InformationItem::getSubmittedByUserId, userId);
+                    }
+                });
+        if (onlySubscribed) {
+            if (subscribedSourceIds.isEmpty()) {
+                return new InformationFeedResponse(items, nextCursor, nextCursorId,
+                        nextSubscriptionMatch, hasMore, 0);
+            }
+            totalQuery.in(InformationItem::getSourceId, subscribedSourceIds);
+        }
+        long total = informationItemMapper.selectCount(totalQuery);
+        return new InformationFeedResponse(items, nextCursor, nextCursorId, nextSubscriptionMatch, hasMore, total);
     }
 
     private Set<Long> subscribedSourceIds(Long userId) {
@@ -108,10 +125,22 @@ public class InformationService {
                 .stream().map(UserSourceSubscription::getSourceId).collect(Collectors.toSet());
     }
 
+    private boolean hasPersonalizationConsent(Long userId) {
+        if (userId == null) {
+            return false;
+        }
+        List<Integer> grants = jdbcTemplate.queryForList("""
+                SELECT granted FROM user_consent_record
+                WHERE user_id = ? AND consent_type = 'PERSONALIZATION'
+                ORDER BY id DESC LIMIT 1
+                """, Integer.class, userId);
+        return !grants.isEmpty() && grants.get(0) == 1;
+    }
+
     @Transactional(readOnly = true)
     public InformationDetailResponse detail(Long userId, Long itemId) {
         InformationItem item = informationItemMapper.selectById(itemId);
-        if (item == null || !isVisible(item)) {
+        if (item == null || !isVisible(item, userId)) {
             throw new BusinessException("INFORMATION_ITEM_NOT_FOUND", "信息条目不存在", HttpStatus.NOT_FOUND);
         }
         String readStatus = normalizeReadStatus(readStatus(userId, itemId));
@@ -144,10 +173,14 @@ public class InformationService {
      */
     @Transactional
     public Long createItem(CreateInformationItemRequest request) {
-        InformationItem existing = informationItemMapper.selectOne(
-                new LambdaQueryWrapper<InformationItem>()
-                        .eq(InformationItem::getContentHash, request.contentHash())
-                        .last("LIMIT 1"));
+        LambdaQueryWrapper<InformationItem> duplicateQuery = new LambdaQueryWrapper<InformationItem>()
+                .eq(InformationItem::getContentHash, request.contentHash());
+        if (request.submittedByUserId() == null) {
+            duplicateQuery.isNull(InformationItem::getSubmittedByUserId);
+        } else {
+            duplicateQuery.eq(InformationItem::getSubmittedByUserId, request.submittedByUserId());
+        }
+        InformationItem existing = informationItemMapper.selectOne(duplicateQuery.last("LIMIT 1"));
         if (existing != null) {
             return existing.getId();
         }
@@ -164,7 +197,13 @@ public class InformationService {
         item.setDetailContent(request.detailContent());
         item.setSourceName(request.sourceName());
         item.setSourceUrl(request.sourceUrl() == null ? "" : request.sourceUrl());
-        item.setItemUrl(request.itemUrl() == null ? "campusmind://user-import" : request.itemUrl());
+        String itemUrl = request.itemUrl();
+        if (!StringUtils.hasText(itemUrl)) {
+            itemUrl = request.submittedByUserId() == null
+                    ? "campusmind://information/" + request.contentHash()
+                    : "campusmind://user-import/" + request.submittedByUserId() + "/" + request.contentHash();
+        }
+        item.setItemUrl(itemUrl);
         item.setContentHash(request.contentHash());
         item.setFetchedAt(now);
         item.setItemStatus("ACTIVE");
@@ -188,7 +227,7 @@ public class InformationService {
             throw new BusinessException("READ_STATUS_INVALID", "阅读状态无效", HttpStatus.BAD_REQUEST);
         }
         InformationItem item = informationItemMapper.selectById(itemId);
-        if (item == null || !isVisible(item)) {
+        if (item == null || !isVisible(item, userId)) {
             throw new BusinessException("INFORMATION_ITEM_NOT_FOUND", "信息条目不存在", HttpStatus.NOT_FOUND);
         }
         UserInformationState existing = userInformationStateMapper.selectOne(new LambdaQueryWrapper<UserInformationState>()
@@ -362,9 +401,11 @@ public class InformationService {
         }
     }
 
-    private boolean isVisible(InformationItem item) {
+    private boolean isVisible(InformationItem item, Long userId) {
         return VISIBLE_ITEM_STATUS.contains(item.getItemStatus())
-                && "DETAIL_SUCCESS".equals(item.getParseStatus());
+                && "DETAIL_SUCCESS".equals(item.getParseStatus())
+                && (item.getSubmittedByUserId() == null
+                    || Objects.equals(item.getSubmittedByUserId(), userId));
     }
 
     private String preview(String text) {
@@ -419,7 +460,7 @@ public class InformationService {
         List<InformationFeedItemResponse> responses = states.stream()
                 .map(s -> items.get(s.getItemId()))
                 .filter(Objects::nonNull)
-                .filter(this::isVisible)
+                .filter(item -> isVisible(item, userId))
                 .map(item -> toFeedItem(item, "FAVORITED"))
                 .toList();
         return new InformationFeedResponse(responses, null, false);
@@ -447,7 +488,7 @@ public class InformationService {
                 .stream().collect(Collectors.toMap(InformationItem::getId, i -> i));
         List<InformationFeedItemResponse> responses = states.stream()
                 .filter(state -> items.containsKey(state.getItemId()))
-                .filter(state -> isVisible(items.get(state.getItemId())))
+                .filter(state -> isVisible(items.get(state.getItemId()), userId))
                 .map(state -> toFeedItem(items.get(state.getItemId()), readStatus(state)))
                 .toList();
         return new InformationFeedResponse(responses, null, false);
@@ -521,7 +562,7 @@ public class InformationService {
             throw new BusinessException("USER_REQUIRED", "确认行动需要用户身份", HttpStatus.UNAUTHORIZED);
         }
         InformationItem item = informationItemMapper.selectById(itemId);
-        if (item == null || !isVisible(item)) {
+        if (item == null || !isVisible(item, userId)) {
             throw new BusinessException("INFORMATION_ITEM_NOT_FOUND", "信息条目不存在", HttpStatus.NOT_FOUND);
         }
         Map<String, Object> card = aiCard(item);
@@ -572,13 +613,16 @@ public class InformationService {
                        a.due_at AS dueAt, a.original_url AS originalUrl,
                        a.status, a.created_at AS createdAt
                 FROM user_action_item a
-                WHERE a.user_id = ?
+                WHERE a.user_id = ? AND a.status <> 'CANCELLED'
                 ORDER BY a.due_at IS NULL, a.due_at, a.id DESC
                 """, userId);
         return rows.stream().map(row -> {
             Long itemId = ((Number) row.get("informationItemId")).longValue();
             InformationItem info = informationItemMapper.selectById(itemId);
-            Map<String, Object> card = info != null ? aiCard(info) : Map.of();
+            if (info == null || !isVisible(info, userId)) {
+                return null;
+            }
+            Map<String, Object> card = aiCard(info);
             List<String> materials = stringList(card.get("requiredMaterials"));
             return new ActionItemResponse(
                     ((Number) row.get("id")).longValue(),
@@ -588,11 +632,47 @@ public class InformationService {
                     (String) row.get("originalUrl"),
                     (String) row.get("status"),
                     toLocalDateTime(row.get("createdAt")),
-                    info != null ? info.getTitle() : null,
-                    info != null ? info.getSourceName() : null,
+                    info.getTitle(),
+                    info.getSourceName(),
                     materials
             );
-        }).toList();
+        }).filter(Objects::nonNull).toList();
+    }
+
+    @Transactional
+    public Map<String, Object> completeAction(Long userId, Long actionId) {
+        return updateActionStatus(userId, actionId, "COMPLETED");
+    }
+
+    @Transactional
+    public Map<String, Object> cancelAction(Long userId, Long actionId) {
+        return updateActionStatus(userId, actionId, "CANCELLED");
+    }
+
+    private Map<String, Object> updateActionStatus(Long userId, Long actionId, String status) {
+        if (userId == null) {
+            throw new BusinessException("USER_REQUIRED", "操作待办需要用户身份", HttpStatus.UNAUTHORIZED);
+        }
+        int updated = jdbcTemplate.update("""
+                UPDATE user_action_item SET status = ?, updated_at = CURRENT_TIMESTAMP
+                WHERE id = ? AND user_id = ? AND status = 'CONFIRMED'
+                """, status, actionId, userId);
+        if (updated == 0) {
+            List<String> existing = jdbcTemplate.queryForList(
+                    "SELECT status FROM user_action_item WHERE id = ? AND user_id = ?",
+                    String.class, actionId, userId);
+            if (existing.isEmpty()) {
+                throw new BusinessException("ACTION_NOT_FOUND", "待办不存在", HttpStatus.NOT_FOUND);
+            }
+            if (!status.equals(existing.get(0))) {
+                throw new BusinessException("ACTION_ALREADY_PROCESSED", "待办已经处理", HttpStatus.CONFLICT);
+            }
+        }
+        jdbcTemplate.update("""
+                UPDATE user_reminder SET status = 'DISMISSED'
+                WHERE action_item_id = ? AND user_id = ? AND status IN ('PENDING', 'DUE')
+                """, actionId, userId);
+        return Map.of("id", actionId, "status", status);
     }
 
     @Transactional(readOnly = true)
@@ -706,9 +786,9 @@ public class InformationService {
     // ========== 相关信息（去重融合） ==========
 
     @Transactional(readOnly = true)
-    public List<RelatedItemResponse> relatedItems(Long itemId) {
+    public List<RelatedItemResponse> relatedItems(Long userId, Long itemId) {
         InformationItem item = informationItemMapper.selectById(itemId);
-        if (item == null || !isVisible(item)) {
+        if (item == null || !isVisible(item, userId)) {
             return List.of();
         }
         // 查找同来源或同事件类型的其他可见条目（最多 5 条）
@@ -721,6 +801,12 @@ public class InformationService {
                 .eq(InformationItem::getParseStatus, "DETAIL_SUCCESS")
                 .orderByDesc(InformationItem::getFetchedAt)
                 .last("LIMIT 5");
+        if (userId == null) {
+            query.isNull(InformationItem::getSubmittedByUserId);
+        } else {
+            query.and(w -> w.isNull(InformationItem::getSubmittedByUserId)
+                    .or().eq(InformationItem::getSubmittedByUserId, userId));
+        }
         List<InformationItem> related = informationItemMapper.selectList(query);
         return related.stream().map(r -> new RelatedItemResponse(
                 r.getId(),
@@ -734,7 +820,7 @@ public class InformationService {
     // ========== 热门/趋势 ==========
 
     @Transactional(readOnly = true)
-    public List<TrendingItemResponse> trending(int size) {
+    public List<TrendingItemResponse> trending(Long userId, int size) {
         int safeSize = Math.min(Math.max(size, 1), 10);
         // 按阅读量+收藏量排序的热门条目
         List<Map<String, Object>> rows = jdbcTemplate.queryForList("""
@@ -744,10 +830,11 @@ public class InformationService {
                 LEFT JOIN user_information_state s ON s.item_id = i.id
                 WHERE i.item_status IN ('ACTIVE', 'UPDATED')
                   AND i.parse_status = 'DETAIL_SUCCESS'
+                  AND (i.submitted_by_user_id IS NULL OR i.submitted_by_user_id = ?)
                 GROUP BY i.id, i.title
                 ORDER BY heat DESC, i.fetched_at DESC
                 LIMIT ?
-                """, safeSize);
+                """, userId, safeSize);
         List<TrendingItemResponse> result = new ArrayList<>();
         for (int idx = 0; idx < rows.size(); idx++) {
             Map<String, Object> row = rows.get(idx);

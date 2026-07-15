@@ -78,12 +78,15 @@ public class AdminDashboardService {
     }
 
     @Transactional(readOnly = true)
-    public AdminDashboardResponse dashboard(Long userId, String role) {
-        List<InformationItem> events = informationItemMapper.selectList(new LambdaQueryWrapper<InformationItem>()
+    public AdminDashboardResponse dashboard(Long userId, String role, int page, int size) {
+        int safePage = Math.max(page, 0);
+        int safeSize = Math.min(Math.max(size, 10), 100);
+        Page<InformationItem> eventPage = informationItemMapper.selectPage(Page.of(safePage + 1L, safeSize),
+                new LambdaQueryWrapper<InformationItem>()
                 .in(InformationItem::getItemStatus, VISIBLE_ITEM_STATUSES)
                 .eq(InformationItem::getParseStatus, "DETAIL_SUCCESS")
-                .orderByDesc(InformationItem::getFetchedAt)
-                .last("LIMIT 30"));
+                .orderByDesc(InformationItem::getFetchedAt));
+        List<InformationItem> events = eventPage.getRecords();
         List<DataSource> sources = dataSourceMapper.selectList(new LambdaQueryWrapper<DataSource>()
                 .orderByDesc(DataSource::getLastCrawledAt));
         List<CrawlTask> tasks = crawlTaskMapper.selectPage(Page.of(1, 20), new LambdaQueryWrapper<CrawlTask>()
@@ -101,6 +104,9 @@ public class AdminDashboardService {
         return new AdminDashboardResponse(
                 metrics,
                 events.stream().map(this::toEvent).toList(),
+                eventPage.getTotal(),
+                safePage,
+                safeSize,
                 sources.stream().map(source -> toSource(source, tasks)).toList(),
                 mergedTasks
         );

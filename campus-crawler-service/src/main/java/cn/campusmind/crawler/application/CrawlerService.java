@@ -3,6 +3,7 @@ package cn.campusmind.crawler.application;
 import cn.campusmind.common.exception.BusinessException;
 import cn.campusmind.crawler.config.CrawlerProperties;
 import cn.campusmind.crawler.controller.CrawlItemResponse;
+import cn.campusmind.crawler.controller.CrawlItemPageResponse;
 import cn.campusmind.crawler.domain.CrawlTask;
 import cn.campusmind.crawler.domain.DataSource;
 import cn.campusmind.crawler.domain.InformationItem;
@@ -12,6 +13,7 @@ import cn.campusmind.crawler.infrastructure.mapper.DataSourceMapper;
 import cn.campusmind.crawler.infrastructure.mapper.InformationItemMapper;
 import cn.campusmind.crawler.infrastructure.mapper.WebCrawlItemMapper;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
@@ -141,14 +143,17 @@ public class CrawlerService {
     }
 
     @Transactional(readOnly = true)
-    public List<CrawlItemResponse> latestItems(Long sourceId, int size) {
+    public CrawlItemPageResponse latestItems(Long sourceId, int page, int size) {
+        int safePage = Math.max(page, 0);
         int safeSize = Math.min(Math.max(size, 1), 100);
-        List<WebCrawlItem> items = webCrawlItemMapper.selectList(new LambdaQueryWrapper<WebCrawlItem>()
+        Page<WebCrawlItem> result = webCrawlItemMapper.selectPage(Page.of(safePage + 1L, safeSize),
+                new LambdaQueryWrapper<WebCrawlItem>()
                 .eq(sourceId != null, WebCrawlItem::getSourceId, sourceId)
                 .orderByDesc(WebCrawlItem::getFetchedAt)
-                .orderByDesc(WebCrawlItem::getId)
-                .last("LIMIT " + safeSize));
-        return items.stream().map(this::toItemResponse).toList();
+                .orderByDesc(WebCrawlItem::getId));
+        return new CrawlItemPageResponse(
+                result.getRecords().stream().map(this::toItemResponse).toList(),
+                result.getTotal(), safePage, safeSize);
     }
 
     @Transactional

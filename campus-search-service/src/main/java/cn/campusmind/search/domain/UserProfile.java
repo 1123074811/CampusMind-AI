@@ -45,6 +45,10 @@ public class UserProfile {
         return grade;
     }
 
+    public String getClassName() {
+        return className;
+    }
+
     public String getInterestTags() {
         return interestTags;
     }

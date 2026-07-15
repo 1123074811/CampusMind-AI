@@ -4,7 +4,10 @@ import cn.campusmind.common.exception.BusinessException;
 import cn.campusmind.search.controller.SearchItemResponse;
 import cn.campusmind.search.controller.SearchResponse;
 import cn.campusmind.search.domain.CampusEvent;
+import cn.campusmind.search.domain.UserProfile;
 import cn.campusmind.search.feign.VectorSearchFeignClient;
+import cn.campusmind.search.infrastructure.mapper.UserProfileMapper;
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -16,6 +19,7 @@ import org.springframework.util.StringUtils;
 import java.sql.Timestamp;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.HashMap;
 import java.util.Map;
@@ -34,24 +38,29 @@ public class SearchService {
     private final ObjectMapper objectMapper;
     private final VectorSearchFeignClient vectorSearchClient;
     private final JdbcTemplate jdbcTemplate;
+    private final UserProfileMapper userProfileMapper;
 
     public SearchService(DecisionClient decisionClient,
                          EventSearchService eventSearchService,
                          ObjectMapper objectMapper,
                          VectorSearchFeignClient vectorSearchClient,
-                         JdbcTemplate jdbcTemplate) {
+                         JdbcTemplate jdbcTemplate,
+                         UserProfileMapper userProfileMapper) {
         this.decisionClient = decisionClient;
         this.eventSearchService = eventSearchService;
         this.objectMapper = objectMapper;
         this.vectorSearchClient = vectorSearchClient;
         this.jdbcTemplate = jdbcTemplate;
+        this.userProfileMapper = userProfileMapper;
     }
 
     public SearchResponse search(CurrentUser user, String query, boolean usePersonalProfile) {
         if (!StringUtils.hasText(query)) {
             throw new BusinessException("QUERY_REQUIRED", "搜索内容不能为空", HttpStatus.BAD_REQUEST);
         }
-        DecisionPlan plan = decisionClient.plan(query, List.of(), usePersonalProfile);
+        boolean personalize = usePersonalProfile && hasPersonalizationConsent(user.userId());
+        DecisionPlan plan = decisionClient.plan(
+                query, profileScopes(user.userId(), personalize), personalize);
 
         List<CampusEvent> events;
         List<SearchItemResponse> directItems = null;
@@ -111,7 +120,7 @@ public class SearchService {
                         .toList();
                 Map<String, Double> scores = new HashMap<>();
                 response.data().hits().forEach(hit -> scores.putIfAbsent(hit.docId(), hit.score()));
-                List<SearchItemResponse> informationItems = informationByVector(docIds, scores, topK);
+                List<SearchItemResponse> informationItems = informationByVector(userId, docIds, scores, topK);
                 if (!informationItems.isEmpty()) {
                     return new SemanticResult(informationItems, "SEMANTIC", false,
                             "已按 AI 语义相关性检索信息");
@@ -126,7 +135,7 @@ public class SearchService {
         } catch (RuntimeException ignored) {
             // 向量服务异常不应阻断基础搜索，下面返回带显式标记的关键词降级结果。
         }
-        List<SearchItemResponse> informationItems = informationByKeyword(query, topK);
+        List<SearchItemResponse> informationItems = informationByKeyword(userId, query, topK);
         if (informationItems.isEmpty()) {
             informationItems = eventSearchService.keywordSearch(userId, query, plan).stream()
                     .map(event -> toItem(event, "KEYWORD", null)).toList();
@@ -135,7 +144,7 @@ public class SearchService {
                 "AI 语义检索暂不可用，已降级为关键词检索");
     }
 
-    private List<SearchItemResponse> informationByVector(List<String> docIds,
+    private List<SearchItemResponse> informationByVector(Long userId, List<String> docIds,
                                                          Map<String, Double> scores, int topK) {
         Map<Long, String> ids = new LinkedHashMap<>();
         for (String docId : docIds) {
@@ -144,7 +153,7 @@ public class SearchService {
             }
         }
         if (ids.isEmpty()) return List.of();
-        Map<Long, SearchItemResponse> items = informationRows(ids.keySet().stream().toList(), null, topK,
+        Map<Long, SearchItemResponse> items = informationRows(userId, ids.keySet().stream().toList(), null, topK,
                 id -> scores.get(ids.get(id)), "VECTOR").stream()
                 .collect(java.util.stream.Collectors.toMap(SearchItemResponse::id, item -> item));
         List<SearchItemResponse> ranked = new ArrayList<>();
@@ -154,11 +163,11 @@ public class SearchService {
         return ranked.stream().limit(topK).toList();
     }
 
-    private List<SearchItemResponse> informationByKeyword(String query, int topK) {
-        return informationRows(List.of(), query, topK, ignored -> null, "KEYWORD");
+    private List<SearchItemResponse> informationByKeyword(Long userId, String query, int topK) {
+        return informationRows(userId, List.of(), query, topK, ignored -> null, "KEYWORD");
     }
 
-    private List<SearchItemResponse> informationRows(List<Long> ids, String keyword, int topK,
+    private List<SearchItemResponse> informationRows(Long userId, List<Long> ids, String keyword, int topK,
                                                      java.util.function.Function<Long, Double> score,
                                                      String matchedBy) {
         int limit = Math.min(Math.max(topK, 1), 50);
@@ -172,12 +181,14 @@ public class SearchService {
             String pattern = "%" + keyword.trim() + "%";
             args.add(pattern); args.add(pattern); args.add(pattern);
         }
+        args.add(userId);
         args.add(limit);
         return jdbcTemplate.query("""
                 SELECT id,title,source_name,publish_time,fetched_at,detail_content,item_status,
                        ai_status,ai_event_type,ai_summary
                 FROM information_item
                 WHERE item_status IN ('ACTIVE','UPDATED') AND parse_status='DETAIL_SUCCESS' AND %s
+                  AND (submitted_by_user_id IS NULL OR submitted_by_user_id = ?)
                 ORDER BY fetched_at DESC,id DESC LIMIT ?
                 """.formatted(where), (rs, rowNum) -> {
             long id = rs.getLong("id");
@@ -192,6 +203,44 @@ public class SearchService {
                     publishedAt == null ? null : publishedAt.toLocalDateTime(), null, null, sourceName,
                     List.of(), score.apply(id), matchedBy, sourceName, snippet);
         }, args.toArray());
+    }
+
+    private List<String> profileScopes(Long userId, boolean usePersonalProfile) {
+        if (!usePersonalProfile || userId == null) {
+            return List.of();
+        }
+        UserProfile profile = userProfileMapper.selectOne(new LambdaQueryWrapper<UserProfile>()
+                .eq(UserProfile::getUserId, userId)
+                .last("LIMIT 1"));
+        if (profile == null) {
+            return List.of();
+        }
+        LinkedHashSet<String> scopes = new LinkedHashSet<>();
+        addScope(scopes, profile.getCollege());
+        addScope(scopes, profile.getMajor());
+        addScope(scopes, profile.getGrade());
+        addScope(scopes, profile.getClassName());
+        parseTags(profile.getInterestTags()).forEach(value -> addScope(scopes, value));
+        parseTags(profile.getCourseCodes()).forEach(value -> addScope(scopes, value));
+        return List.copyOf(scopes);
+    }
+
+    private boolean hasPersonalizationConsent(Long userId) {
+        if (userId == null) {
+            return false;
+        }
+        List<Integer> grants = jdbcTemplate.queryForList("""
+                SELECT granted FROM user_consent_record
+                WHERE user_id = ? AND consent_type = 'PERSONALIZATION'
+                ORDER BY id DESC LIMIT 1
+                """, Integer.class, userId);
+        return !grants.isEmpty() && grants.get(0) == 1;
+    }
+
+    private static void addScope(LinkedHashSet<String> scopes, String value) {
+        if (StringUtils.hasText(value)) {
+            scopes.add(value.trim());
+        }
     }
 
     private static String preview(String text) {

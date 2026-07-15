@@ -12,8 +12,6 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.util.List;
-
 @RestController
 @RequestMapping("/api/admin/crawler")
 public class CrawlerController {
@@ -42,11 +40,12 @@ public class CrawlerController {
     }
 
     @GetMapping("/items")
-    public ApiResponse<List<CrawlItemResponse>> latestItems(
+    public ApiResponse<CrawlItemPageResponse> latestItems(
             @RequestParam(required = false) Long sourceId,
-            @RequestParam(defaultValue = "30") Integer size
+            @RequestParam(defaultValue = "0") Integer page,
+            @RequestParam(defaultValue = "20") Integer size
     ) {
-        return ApiResponse.ok(crawlerService.latestItems(sourceId, size));
+        return ApiResponse.ok(crawlerService.latestItems(sourceId, page, size));
     }
 
     @PostMapping("/items/publish")

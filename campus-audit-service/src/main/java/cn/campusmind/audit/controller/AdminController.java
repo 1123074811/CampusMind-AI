@@ -62,9 +62,11 @@ public class AdminController {
 
     @GetMapping("/dashboard")
     public ApiResponse<AdminDashboardResponse> dashboard(
-            @RequestHeader(value = "Authorization", required = false) String authorization) {
+            @RequestHeader(value = "Authorization", required = false) String authorization,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size) {
         var operator = auditTokenService.requireOperatorOrAdmin(authorization);
-        return ApiResponse.ok(adminDashboardService.dashboard(operator.userId(), operator.role()));
+        return ApiResponse.ok(adminDashboardService.dashboard(operator.userId(), operator.role(), page, size));
     }
 
     @PostMapping("/sources")

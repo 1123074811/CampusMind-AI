@@ -319,7 +319,8 @@ class CrawlerControllerTest {
 
         mockMvc.perform(get("/api/admin/crawler/items").param("size", "10"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data[0].favoriteCount").value(1));
+                .andExpect(jsonPath("$.data.total").value(1))
+                .andExpect(jsonPath("$.data.items[0].favoriteCount").value(1));
     }
 
     @Test

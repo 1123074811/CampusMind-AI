@@ -107,6 +107,20 @@ public class InformationController {
         return ApiResponse.ok(informationService.actions(userId));
     }
 
+    @PutMapping("/actions/{id}/complete")
+    public ApiResponse<java.util.Map<String, Object>> completeAction(
+            @RequestHeader(value = "X-User-Id", required = false) Long userId,
+            @PathVariable Long id) {
+        return ApiResponse.ok(informationService.completeAction(userId, id));
+    }
+
+    @DeleteMapping("/actions/{id}")
+    public ApiResponse<java.util.Map<String, Object>> cancelAction(
+            @RequestHeader(value = "X-User-Id", required = false) Long userId,
+            @PathVariable Long id) {
+        return ApiResponse.ok(informationService.cancelAction(userId, id));
+    }
+
     @GetMapping("/reminders")
     public ApiResponse<List<ReminderItemResponse>> reminders(
             @RequestHeader(value = "X-User-Id", required = false) Long userId) {
@@ -122,14 +136,16 @@ public class InformationController {
 
     @GetMapping("/items/{id}/related")
     public ApiResponse<List<RelatedItemResponse>> relatedItems(
+            @RequestHeader(value = "X-User-Id", required = false) Long userId,
             @PathVariable Long id) {
-        return ApiResponse.ok(informationService.relatedItems(id));
+        return ApiResponse.ok(informationService.relatedItems(userId, id));
     }
 
     @GetMapping("/trending")
     public ApiResponse<List<TrendingItemResponse>> trending(
+            @RequestHeader(value = "X-User-Id", required = false) Long userId,
             @RequestParam(defaultValue = "5") int size) {
-        return ApiResponse.ok(informationService.trending(size));
+        return ApiResponse.ok(informationService.trending(userId, size));
     }
 
     public record ConfirmActionRequest(String title) {}

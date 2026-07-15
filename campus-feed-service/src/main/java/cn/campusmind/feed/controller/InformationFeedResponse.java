@@ -8,11 +8,12 @@ public record InformationFeedResponse(
         LocalDateTime nextCursor,
         Long nextCursorId,
         Integer nextSubscriptionMatch,
-        boolean hasMore
+        boolean hasMore,
+        long total
 ) {
     public InformationFeedResponse(List<InformationFeedItemResponse> items,
                                    LocalDateTime nextCursor,
                                    boolean hasMore) {
-        this(items, nextCursor, null, null, hasMore);
+        this(items, nextCursor, null, null, hasMore, items.size());
     }
 }
