@@ -198,7 +198,7 @@ public class AdminDashboardService {
         if (ids == null || ids.isEmpty()) {
             return List.of();
         }
-        String safeComment = StringUtils.hasText(comment) ? comment : "批量审核";
+        String safeComment = StringUtils.hasText(comment) ? comment : "批量处理";
         return ids.stream()
                 .distinct()
                 .map(id -> review(id, operatorId, status, safeComment))
@@ -635,7 +635,7 @@ public class AdminDashboardService {
 
     private String riskText(InformationItem event) {
         return switch (event.getItemStatus()) {
-            case "UPDATED" -> "原文已更新，建议复核";
+            case "UPDATED" -> "原文已更新，学生端已同步展示";
             case "OFFLINE" -> "已从学生端下线";
             default -> "原文已解析，学生端正在展示";
         };
@@ -709,6 +709,7 @@ public class AdminDashboardService {
 
     private static String toAction(String status) {
         return switch (status) {
+            case "ACTIVE" -> "RESTORE";
             case "REVIEWED" -> "REVIEW";
             case "REJECTED" -> "REJECT";
             case "CORRECTED" -> "CORRECT";

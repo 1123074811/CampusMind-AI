@@ -257,6 +257,26 @@ class AdminControllerTest {
     }
 
     @Test
+    void restoreMakesOfflineItemVisibleAndWritesRestoreLog() throws Exception {
+        mockMvc.perform(put("/api/admin/events/1005/review")
+                        .header("Authorization", adminToken())
+                        .contentType("application/json")
+                        .content("""
+                                {
+                                  "status": "ACTIVE",
+                                  "comment": "恢复展示"
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("AI_PUBLISHED"));
+
+        mockMvc.perform(get("/api/admin/logs?action=RESTORE").header("Authorization", adminToken()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.total").value(1))
+                .andExpect(jsonPath("$.data.items[0].action").value("RESTORE"));
+    }
+
+    @Test
     void logsReturnsAuditLogList() throws Exception {
         mockMvc.perform(get("/api/admin/logs?action=CORRECT").header("Authorization", adminToken()))
                 .andExpect(status().isOk())
