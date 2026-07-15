@@ -19,7 +19,7 @@ export async function fetchDashboard(session: AdminSession | null) {
   return payload.data;
 }
 
-export async function reviewEvent(session: AdminSession | null, id: number, status: 'REVIEWED' | 'REJECTED' | 'CORRECTED' | 'OFFLINE', comment: string) {
+export async function reviewEvent(session: AdminSession | null, id: number, status: 'ACTIVE' | 'OFFLINE', comment: string) {
   const response = await authorizedFetch(`/api/admin/events/${id}/review`, {
     method: 'PUT',
     headers: {

@@ -1,14 +1,14 @@
 import type { PageMetric, ReviewEvent } from './adminTypes';
 
-export function buildReviewMetrics(events: ReviewEvent[]): PageMetric[] {
-  const published = events.filter((event) => event.status === 'AI_PUBLISHED').length;
+export function buildEventMetrics(events: ReviewEvent[]): PageMetric[] {
+  const published = events.filter((event) => event.status !== 'OFFLINE' && event.status !== 'REJECTED').length;
   const corrected = events.filter((event) => event.status === 'CORRECTED').length;
-  const reviewed = events.filter((event) => event.status === 'REVIEWED').length;
+  const aiIssues = events.filter((event) => event.aiStatus === 'REVIEW' || event.aiStatus === 'FAILED').length;
   const offline = events.filter((event) => event.status === 'OFFLINE' || event.status === 'REJECTED').length;
   return [
-    { label: '待审核', value: published, hint: 'AI 已提取，待人工确认', accent: published > 0 ? 'amber' : 'default' },
-    { label: '已修正', value: corrected, hint: '人工修正过' },
-    { label: '已发布', value: reviewed, hint: '人工确认通过' },
+    { label: '正在展示', value: published, hint: '采集后直接发布', accent: 'green' },
+    { label: '原文更新', value: corrected, hint: '仍在正常展示' },
+    { label: 'AI 异常', value: aiIssues, hint: '不影响原文展示', accent: aiIssues > 0 ? 'amber' : 'default' },
     { label: '已下线', value: offline, hint: `共 ${events.length} 条事件` }
   ];
 }

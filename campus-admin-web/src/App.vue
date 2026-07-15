@@ -59,7 +59,7 @@ import AgentView from './views/AgentView.vue';
 import DatabaseView from './views/DatabaseView.vue';
 import NotificationView from './views/NotificationView.vue';
 import OperationsView from './views/OperationsView.vue';
-import { buildReviewMetrics, dashboardConnectionMessage } from './pageLogic';
+import { buildEventMetrics, dashboardConnectionMessage } from './pageLogic';
 
 const route = useRoute();
 const router = useRouter();
@@ -111,9 +111,8 @@ const currentViewEvents = computed(() => {
   switch (nav) {
     case 'review':
       return {
-        select: selectEvent, approve: approveSelected, reject: rejectSelected,
-        unarchive: approveSelected, archive: rejectSelected, refresh: loadDashboard,
-        edit: editEvent, delete: deleteEventById, 'batch-review': batchReviewSelected,
+        select: selectEvent, unarchive: restoreSelected, archive: offlineSelected, refresh: loadDashboard,
+        edit: editEvent, delete: deleteEventById, 'batch-offline': batchOfflineSelected,
         'request-impact': loadEventImpact,
       };
     case 'agent':
@@ -173,8 +172,6 @@ const dashboardMetrics = ref<DashboardMetrics>({
   vectorPending: 0
 });
 
-const urgentCount = computed(() => reviewEvents.value.filter((item) => item.status === 'CORRECTED').length);
-const reviewCount = computed(() => reviewEvents.value.filter((item) => item.status === 'AI_PUBLISHED' || item.status === 'CORRECTED').length);
 const isAdmin = computed(() => session.value?.user.role === 'ADMIN');
 
 const navItems = computed<NavItem[]>(() => [
@@ -222,7 +219,7 @@ const pageMetrics = computed<PageMetric[]>(() => {
   const events = reviewEvents.value;
   switch (activeNav.value) {
     case 'review': {
-      return buildReviewMetrics(events);
+      return buildEventMetrics(events);
     }
     case 'sources': {
       const sources = visibleDataSources.value;
@@ -264,12 +261,12 @@ const pageMetrics = computed<PageMetric[]>(() => {
       const logs = auditLogs.value;
       const today = new Date().toISOString().slice(0, 10);
       const todayLogs = logs.filter((l) => l.createdAt?.startsWith(today)).length;
-      const reviewLogs = logs.filter((l) => l.action?.includes('REVIEW') || l.action?.includes('CORRECT') || l.action?.includes('OFFLINE')).length;
+      const contentLogs = logs.filter((l) => ['CORRECT', 'OFFLINE', 'RESTORE', 'DELETE'].includes(l.action)).length;
       return [
         { label: '总日志', value: logs.length, hint: '审计记录' },
         { label: '今日新增', value: todayLogs, hint: today, accent: todayLogs > 0 ? 'green' : 'default' },
-        { label: '审核操作', value: reviewLogs, hint: '审核/修正/下线' },
-        { label: '其他操作', value: logs.length - reviewLogs, hint: '登录/采集/配置' }
+        { label: '内容操作', value: contentLogs, hint: '修正/下线/恢复' },
+        { label: '其他操作', value: logs.length - contentLogs, hint: '登录/采集/配置' }
       ];
     }
     default:
@@ -461,14 +458,14 @@ async function resetUserPassword(user: AdminManagedUser) {
 
 function recomputeReviewMetrics() {
   dashboardMetrics.value.reviewCount = reviewEvents.value.filter(
-    (item) => item.status === 'AI_PUBLISHED' || item.status === 'CORRECTED' || item.aiNeedReview
+    (item) => item.status !== 'OFFLINE' && item.status !== 'REJECTED'
   ).length;
   dashboardMetrics.value.urgentCount = reviewEvents.value.filter(
-    (item) => item.aiNeedReview || item.status === 'CORRECTED'
+    (item) => item.aiStatus === 'FAILED' || item.aiStatus === 'REVIEW'
   ).length;
 }
 
-async function reviewSelected(status: 'REVIEWED' | 'REJECTED' | 'CORRECTED' | 'OFFLINE', comment: string) {
+async function setSelectedVisibility(status: 'ACTIVE' | 'OFFLINE', comment: string) {
   const event = reviewEvents.value.find((item) => item.id === selectedId.value);
   if (!event) {
     return;
@@ -490,32 +487,32 @@ async function reviewSelected(status: 'REVIEWED' | 'REJECTED' | 'CORRECTED' | 'O
   }
 }
 
-function approveSelected() {
-  reviewSelected('REVIEWED', '审核通过');
+function restoreSelected() {
+  setSelectedVisibility('ACTIVE', '管理员恢复展示');
 }
 
-function rejectSelected() {
-  reviewSelected('OFFLINE', '管理员驳回下线');
+function offlineSelected() {
+  setSelectedVisibility('OFFLINE', '管理员下线');
 }
 
-async function batchReviewSelected(ids: number[], status: 'REVIEWED' | 'OFFLINE', comment: string) {
+async function batchOfflineSelected(ids: number[]) {
   if (!ids.length) return;
   if (apiMode.value !== 'live') {
-    apiMessage.value = '后端未连接，无法批量审核';
+    apiMessage.value = '后端未连接，无法批量下线';
     return;
   }
   try {
-    const updatedList = await batchReviewEvents(session.value, ids, status, comment);
+    const updatedList = await batchReviewEvents(session.value, ids, 'OFFLINE', '批量下线');
     const map = new Map(updatedList.map((item) => [item.id, item]));
     reviewEvents.value = reviewEvents.value.map((item) => {
       const updated = map.get(item.id);
       return updated ? { ...item, ...updated } : item;
     });
     recomputeReviewMetrics();
-    apiMessage.value = `已批量处理 ${updatedList.length} 条`;
+    apiMessage.value = `已下线 ${updatedList.length} 条`;
     if (selectedId.value) await loadEventImpact(selectedId.value);
   } catch (error) {
-    apiMessage.value = error instanceof Error ? error.message : '批量审核失败';
+    apiMessage.value = error instanceof Error ? error.message : '批量下线失败';
   }
 }
 
@@ -1361,14 +1358,32 @@ h3 {
   font-size: 12px;
 }
 
-.workbench-filters {
-  padding: 12px 18px;
-  flex-wrap: wrap;
+.filters.workbench-filters {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(112px, 0.72fr)) minmax(360px, 2.6fr);
+  gap: 10px;
+  padding: 14px 18px;
+  align-items: center;
 }
 
-.workbench-filters select,
-.workbench-filters input {
-  min-width: 140px;
+.filters.workbench-filters select,
+.filters.workbench-filters input {
+  width: 100%;
+  min-width: 0;
+  height: 38px;
+  padding-block: 0;
+  font-size: 13px;
+}
+
+.filters.workbench-filters select {
+  padding-inline: 22px;
+  line-height: 38px;
+  text-align: center;
+  text-align-last: center;
+}
+
+.filters.workbench-filters input {
+  padding-inline: 18px;
 }
 
 .batch-bar {
@@ -1416,64 +1431,58 @@ h3 {
   place-items: center;
 }
 
-.need-review-flag {
-  font-size: 11px;
-  font-weight: 900;
-  color: #9a6b00;
-  background: #fff0c4;
-  border: 1px solid #d4b75c;
-  padding: 2px 6px;
-}
-
 .empty-queue {
   padding: 28px 18px;
   color: var(--ink-muted);
   font-weight: 700;
 }
 
-.diff-grid {
+.event-summary {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 10px;
+  gap: 12px;
+  padding: 18px 0;
+  border-top: 1px solid var(--line-soft);
+  border-bottom: 1px solid var(--line-soft);
 }
 
-.diff-grid article {
-  border: 1px solid var(--line-soft);
-  background: #fffdf8;
-  padding: 12px;
-  display: grid;
-  gap: 8px;
-  align-content: start;
-}
-
-.diff-grid h4,
+.event-summary h4,
 .impact-box h4 {
   margin: 0;
   font-size: 13px;
 }
 
-.diff-grid p,
-.impact-box p,
-.diff-grid li {
+.event-summary p,
+.impact-box p {
   margin: 0;
-  font-size: 13px;
-  line-height: 1.55;
+  font-size: 14px;
+  line-height: 1.75;
   color: #314044;
 }
 
-.diff-grid ul {
-  margin: 0;
-  padding-left: 0;
-  list-style: none;
-  display: grid;
+.event-summary .source-url {
+  width: fit-content;
+  display: inline-flex;
+  align-items: center;
   gap: 6px;
+  padding-bottom: 2px;
+  border-bottom: 1px solid currentColor;
+  font-size: 13px;
+  font-weight: 800;
+  white-space: normal;
 }
 
-.diff-grid li strong {
-  display: inline-block;
-  min-width: 48px;
-  margin-right: 6px;
-  color: var(--ink-muted);
+.review-workbench > .detail-panel {
+  position: sticky;
+  top: 24px;
+  max-height: calc(100vh - 48px);
+  overflow-x: hidden;
+  overflow-y: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.review-workbench > .detail-panel::-webkit-scrollbar {
+  display: none;
 }
 
 .impact-box {
@@ -1489,12 +1498,26 @@ h3 {
 }
 
 @media (max-width: 1180px) {
-  .diff-grid {
-    grid-template-columns: 1fr;
+  .filters.workbench-filters {
+    grid-template-columns: repeat(2, minmax(160px, 1fr));
+  }
+
+  .filters.workbench-filters input {
+    grid-column: 1 / -1;
   }
 
   .event-pick {
     grid-template-columns: 56px minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 600px) {
+  .filters.workbench-filters {
+    grid-template-columns: 1fr;
+  }
+
+  .filters.workbench-filters input {
+    grid-column: auto;
   }
 }
 
