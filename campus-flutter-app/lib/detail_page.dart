@@ -1,5 +1,8 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:file_selector/file_selector.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'app_theme.dart';
@@ -28,6 +31,7 @@ class _PrototypeDetailPageState extends State<PrototypeDetailPage> {
   final Set<String> _confirmedActions = {};
   List<RelatedItem> _relatedItems = [];
   bool _relatedLoading = true;
+  bool _downloadingOriginal = false;
   String? _loadError;
 
   @override
@@ -129,6 +133,31 @@ class _PrototypeDetailPageState extends State<PrototypeDetailPage> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('原文链接不可用')),
       );
+    }
+  }
+
+  Future<void> _downloadOriginal() async {
+    setState(() => _downloadingOriginal = true);
+    try {
+      final original =
+          await widget.api.downloadOriginal(_item.contentHash, widget.session);
+      final location =
+          await getSaveLocation(suggestedName: original.fileName);
+      if (location == null) return;
+      await XFile.fromData(
+        Uint8List.fromList(original.bytes),
+        name: original.fileName,
+        mimeType: original.contentType,
+      ).saveTo(location.path);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('原文已下载')));
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('原文下载失败：$error')));
+    } finally {
+      if (mounted) setState(() => _downloadingOriginal = false);
     }
   }
 
@@ -371,6 +400,15 @@ class _PrototypeDetailPageState extends State<PrototypeDetailPage> {
                       onPressed: _openOriginal,
                       icon: const Icon(Icons.open_in_new, size: 16),
                       label: const Text('查看原文'),
+                    ),
+                  ],
+                  if (_item.isUserUpload && _item.contentHash.isNotEmpty) ...[
+                    const SizedBox(height: 8),
+                    TextButton.icon(
+                      onPressed:
+                          _downloadingOriginal ? null : _downloadOriginal,
+                      icon: const Icon(Icons.download_outlined, size: 16),
+                      label: Text(_downloadingOriginal ? '下载中…' : '下载原文'),
                     ),
                   ],
                 ],

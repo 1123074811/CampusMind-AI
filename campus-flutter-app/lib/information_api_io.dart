@@ -7,6 +7,7 @@ export 'information_api_stub.dart'
     show
         CampusApi,
         CampusUser,
+        DownloadedOriginal,
         InformationItem,
         InformationFeedPage,
         LoginSession,
@@ -200,6 +201,64 @@ class IoCampusApi implements CampusApi {
       session: session,
     );
     return InformationItem.fromJson(_data(root));
+  }
+
+  @override
+  Future<DownloadedOriginal> downloadOriginal(
+      String contentHash, LoginSession session) {
+    return _downloadOriginal(contentHash, session, true);
+  }
+
+  Future<DownloadedOriginal> _downloadOriginal(
+      String contentHash, LoginSession session, bool allowRefresh) async {
+    final client = HttpClient();
+    try {
+      final uri = Uri.parse(
+          '$baseUrl/api/v1/import/original/${Uri.encodeComponent(contentHash)}');
+      final request = await client.getUrl(uri);
+      final current = _effective(session);
+      request.headers.set(HttpHeaders.acceptHeader, 'application/octet-stream');
+      request.headers.set(HttpHeaders.authorizationHeader,
+          '${current.tokenType} ${current.accessToken}');
+      final response = await request.close();
+      final bytes = await response.fold<List<int>>(
+          <int>[], (buffer, chunk) => buffer..addAll(chunk));
+      if (response.statusCode == 401) {
+        if (allowRefresh) {
+          await _refresh(session);
+          return _downloadOriginal(contentHash, session, false);
+        }
+        throw const SessionExpiredException();
+      }
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        String message = '原文下载失败';
+        try {
+          final error = jsonDecode(utf8.decode(bytes)) as Map<String, Object?>;
+          message = error['message'] as String? ?? message;
+        } catch (_) {}
+        throw HttpException(message);
+      }
+      final disposition =
+          response.headers.value('content-disposition') ?? '';
+      final encodedName = RegExp("filename\\*=UTF-8''([^;]+)",
+              caseSensitive: false)
+          .firstMatch(disposition)
+          ?.group(1);
+      final plainName = RegExp('filename="([^"]+)"', caseSensitive: false)
+          .firstMatch(disposition)
+          ?.group(1);
+      final fileName = encodedName == null
+          ? (plainName ?? '原文.txt')
+          : Uri.decodeComponent(encodedName);
+      return DownloadedOriginal(
+        bytes: bytes,
+        fileName: fileName,
+        contentType: response.headers.contentType?.mimeType ??
+            'application/octet-stream',
+      );
+    } finally {
+      client.close();
+    }
   }
 
   @override

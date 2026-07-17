@@ -72,6 +72,18 @@ class LoginSession {
       };
 }
 
+class DownloadedOriginal {
+  const DownloadedOriginal({
+    required this.bytes,
+    required this.fileName,
+    required this.contentType,
+  });
+
+  final List<int> bytes;
+  final String fileName;
+  final String contentType;
+}
+
 class InformationItem {
   static const _priorityEventTypes = {
     'EXAM',
@@ -99,6 +111,7 @@ class InformationItem {
     this.aiNeedReview = false,
     this.publishTime,
     this.recommendReasons = const [],
+    this.submittedByUserId,
   });
 
   final int id;
@@ -119,6 +132,10 @@ class InformationItem {
   final bool aiNeedReview;
   final DateTime? publishTime;
   final List<String> recommendReasons;
+  final int? submittedByUserId;
+
+  bool get isUserUpload =>
+      submittedByUserId != null || sourceName == '用户文件上传';
 
   bool get hasValidAiSummary =>
       aiSummary.trim().isNotEmpty &&
@@ -157,8 +174,9 @@ class InformationItem {
   }
 
   String get displayTime {
-    final value = publishTime ?? fetchedAt;
-    if (publishTime != null &&
+    final value = isUserUpload ? fetchedAt : (publishTime ?? fetchedAt);
+    if (!isUserUpload &&
+        publishTime != null &&
         value.hour == 0 &&
         value.minute == 0 &&
         value.second == 0) {
@@ -204,6 +222,7 @@ class InformationItem {
       recommendReasons: (json['recommendReasons'] as List<Object?>? ?? const [])
           .whereType<String>()
           .toList(),
+      submittedByUserId: (json['submittedByUserId'] as num?)?.toInt(),
     );
   }
 
@@ -233,6 +252,7 @@ class InformationItem {
       aiNeedReview: aiNeedReview,
       publishTime: publishTime,
       recommendReasons: recommendReasons,
+      submittedByUserId: submittedByUserId,
     );
   }
 }
@@ -482,6 +502,10 @@ abstract class CampusApi {
   }
 
   Future<InformationItem> fetchInformationDetail(int id, LoginSession? session);
+
+  Future<DownloadedOriginal> downloadOriginal(
+          String contentHash, LoginSession session) =>
+      Future.error(UnsupportedError('当前实现不支持下载原文'));
 
   Future<InformationItem> updateReadStatus(
     int id,
