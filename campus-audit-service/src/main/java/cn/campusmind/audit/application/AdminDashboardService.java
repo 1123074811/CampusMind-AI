@@ -26,7 +26,10 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.JsonNode;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -34,6 +37,10 @@ import org.springframework.util.StringUtils;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
@@ -43,6 +50,8 @@ import java.util.stream.Collectors;
 
 @Service
 public class AdminDashboardService {
+
+    private static final Logger log = LoggerFactory.getLogger(AdminDashboardService.class);
 
     private static final TypeReference<List<String>> STRING_LIST = new TypeReference<>() {
     };
@@ -58,6 +67,9 @@ public class AdminDashboardService {
     private final EventAuditLogMapper eventAuditLogMapper;
     private final ObjectMapper objectMapper;
     private final JdbcTemplate jdbcTemplate;
+    private final String vectorDeleteUrl;
+    private final HttpClient vectorHttpClient = HttpClient.newBuilder()
+            .connectTimeout(Duration.ofSeconds(2)).build();
 
     public AdminDashboardService(
             InformationItemMapper informationItemMapper,
@@ -66,7 +78,8 @@ public class AdminDashboardService {
             ImportTaskMapper importTaskMapper,
             EventAuditLogMapper eventAuditLogMapper,
             ObjectMapper objectMapper,
-            JdbcTemplate jdbcTemplate
+            JdbcTemplate jdbcTemplate,
+            @Value("${campus.ai.vector-delete-url:http://localhost:8089/internal/ai/vectors}") String vectorDeleteUrl
     ) {
         this.informationItemMapper = informationItemMapper;
         this.dataSourceMapper = dataSourceMapper;
@@ -75,6 +88,7 @@ public class AdminDashboardService {
         this.eventAuditLogMapper = eventAuditLogMapper;
         this.objectMapper = objectMapper;
         this.jdbcTemplate = jdbcTemplate;
+        this.vectorDeleteUrl = vectorDeleteUrl;
     }
 
     @Transactional(readOnly = true)
@@ -131,6 +145,7 @@ public class AdminDashboardService {
         log.setAfterSnapshot(writeJson(Map.of("status", status)));
         log.setComment("信息#" + eventId + "：" + comment);
         eventAuditLogMapper.insert(log);
+        if ("OFFLINE".equals(event.getItemStatus())) deleteInformationVector(eventId);
         return toEvent(event);
     }
 
@@ -190,6 +205,31 @@ public class AdminDashboardService {
         log.setAfterSnapshot(writeJson(Map.of("status", "OFFLINE")));
         log.setComment("信息#" + eventId + "：管理员删除");
         eventAuditLogMapper.insert(log);
+        deleteInformationVector(eventId);
+    }
+
+    private void deleteInformationVector(Long eventId) {
+        try {
+            HttpRequest request = HttpRequest.newBuilder(URI.create(vectorDeleteUrl))
+                    .timeout(Duration.ofSeconds(5))
+                    .header("Content-Type", "application/json")
+                    .method("DELETE", HttpRequest.BodyPublishers.ofString(
+                            objectMapper.writeValueAsString(Map.of("docIds", List.of("info-" + eventId)))))
+                    .build();
+            vectorHttpClient.sendAsync(request, HttpResponse.BodyHandlers.discarding())
+                    .thenAccept(response -> {
+                        if (response.statusCode() / 100 != 2) {
+                            log.warn("信息 {} 的向量删除返回 HTTP {}", eventId, response.statusCode());
+                        }
+                    })
+                    .exceptionally(ex -> {
+                        log.warn("信息 {} 已下线，但向量删除暂时失败", eventId, ex);
+                        return null;
+                    });
+        } catch (Exception ex) {
+            // 数据库状态仍是最终权限边界；向量服务恢复后可通过回填重新同步。
+            log.warn("信息 {} 已下线，但向量删除暂时失败", eventId, ex);
+        }
     }
 
     @Transactional

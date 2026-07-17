@@ -105,6 +105,10 @@ public class InformationItem {
 
     public String getAiSummary() { return aiSummary; }
 
+    public String getAiCardJson() { return aiCardJson; }
+
+    public String getItemStatus() { return itemStatus; }
+
     public void setId(Long id) {
         this.id = id;
     }

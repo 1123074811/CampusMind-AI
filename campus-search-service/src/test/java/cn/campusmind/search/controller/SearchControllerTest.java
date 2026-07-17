@@ -175,7 +175,7 @@ class SearchControllerTest {
                 .thenReturn(ApiResponse.ok(new VectorSearchFeignClient.VectorSearchResult(List.of(
                         new VectorSearchFeignClient.VectorHit("event-algorithm", "", 0.93, Map.of()),
                         new VectorSearchFeignClient.VectorHit("event-db", "", 0.82, Map.of())
-                ), 2)));
+                ), 2, "SEMANTIC", false)));
 
         mockMvc.perform(get("/api/v1/search")
                         .param("query", "适合我的编程竞赛")
@@ -198,7 +198,7 @@ class SearchControllerTest {
         when(vectorSearchFeignClient.search(org.mockito.ArgumentMatchers.anyMap()))
                 .thenReturn(ApiResponse.ok(new VectorSearchFeignClient.VectorSearchResult(List.of(
                         new VectorSearchFeignClient.VectorHit("info-91", "", 0.88, Map.of())
-                ), 1)));
+                ), 1, "SEMANTIC", false)));
 
         mockMvc.perform(get("/api/v1/search")
                         .param("query", "硕士补录机会")
@@ -209,6 +209,23 @@ class SearchControllerTest {
                 .andExpect(jsonPath("$.data.items[0].sourceName").value("软件学院"))
                 .andExpect(jsonPath("$.data.items[0].snippet").value("模型生成的调剂要点"))
                 .andExpect(jsonPath("$.data.items[0].score").value(0.88));
+    }
+
+    @Test
+    void emptySemanticResultIsNotReportedAsServiceFallback() throws Exception {
+        when(decisionClient.plan(anyString(), anyList(), anyBoolean()))
+                .thenReturn(new DecisionPlan("SEMANTIC_SEARCH", List.of(), "ANY", List.of(), true, false, 10));
+        when(vectorSearchFeignClient.search(org.mockito.ArgumentMatchers.anyMap()))
+                .thenReturn(ApiResponse.ok(new VectorSearchFeignClient.VectorSearchResult(
+                        List.of(), 0, "SEMANTIC", false)));
+
+        mockMvc.perform(get("/api/v1/search")
+                        .param("query", "不存在的语义概念")
+                        .header(AUTHORIZATION, bearerToken(1L, "alice", "STUDENT")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.total").value(0))
+                .andExpect(jsonPath("$.data.mode").value("SEMANTIC"))
+                .andExpect(jsonPath("$.data.fallback").value(false));
     }
 
     @Test

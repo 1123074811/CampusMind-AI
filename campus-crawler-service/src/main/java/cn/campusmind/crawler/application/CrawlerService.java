@@ -112,9 +112,7 @@ public class CrawlerService {
         int pushed = 0;
         for (InformationItem item : items) {
             if (item.getTitle() == null || item.getTitle().isBlank()) continue;
-            vectorPusher.push(item.getId(), item.getTitle(), item.getAiEventType(),
-                    item.getAiSummary(), item.getPublishTime(), item.getDetailContent(),
-                    item.getSourceName(), item.getContentHash());
+            vectorPusher.push(item, null);
             pushed++;
         }
         return pushed;
@@ -512,9 +510,7 @@ public class CrawlerService {
             }
             aiProcessingRecordStore.succeed(item.getId(), contentHash, promptVersion, result, finishedAt);
             try {
-                vectorPusher.push(item.getId(), item.getTitle(), result.eventType(),
-                        result.summary(), item.getPublishTime(), item.getDetailContent(),
-                        item.getSourceName(), item.getContentHash());
+                vectorPusher.push(item, result);
             } catch (Exception vectorError) {
                 // ponytail: 向量回填失败不回滚已验证的摘要；后续定时回填会补齐。
                 org.slf4j.LoggerFactory.getLogger(CrawlerService.class)

@@ -20,6 +20,8 @@ campus:
     jwt:
       issuer: ${AUTH_JWT_ISSUER:campusmind-auth}
       secret: ${AUTH_JWT_SECRET}
+  ai:
+    vector-delete-url: ${AI_VECTOR_DELETE_URL:http://localhost:8089/internal/ai/vectors}
 
 management:
   endpoints:

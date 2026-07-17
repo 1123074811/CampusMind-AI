@@ -15,7 +15,7 @@ public interface VectorSearchFeignClient {
     @PostMapping("/api/v1/ai/vector/search")
     ApiResponse<VectorSearchResult> search(@RequestBody Map<String, Object> body);
 
-    record VectorSearchResult(List<VectorHit> hits, int total) {
+    record VectorSearchResult(List<VectorHit> hits, int total, String mode, boolean fallback) {
     }
 
     record VectorHit(String docId, String text, double score, Map<String, Object> metadata) {

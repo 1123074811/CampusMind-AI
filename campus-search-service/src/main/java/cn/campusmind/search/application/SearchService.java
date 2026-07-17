@@ -114,6 +114,8 @@ public class SearchService {
             var response = vectorSearchClient.search(Map.of("query", query, "topK", topK));
             if (response != null && response.success() && response.data() != null
                     && response.data().hits() != null) {
+                String mode = StringUtils.hasText(response.data().mode()) ? response.data().mode() : "SEMANTIC";
+                boolean degraded = response.data().fallback() || !"SEMANTIC".equals(mode);
                 List<String> docIds = response.data().hits().stream()
                         .map(VectorSearchFeignClient.VectorHit::docId)
                         .filter(StringUtils::hasText)
@@ -122,14 +124,18 @@ public class SearchService {
                 response.data().hits().forEach(hit -> scores.putIfAbsent(hit.docId(), hit.score()));
                 List<SearchItemResponse> informationItems = informationByVector(userId, docIds, scores, topK);
                 if (!informationItems.isEmpty()) {
-                    return new SemanticResult(informationItems, "SEMANTIC", false,
-                            "已按 AI 语义相关性检索信息");
+                    return new SemanticResult(informationItems, mode, degraded,
+                            degraded ? "已使用关键词降级检索信息" : "已按 AI 语义相关性检索信息");
                 }
                 List<CampusEvent> vectorEvents = eventSearchService.findVectorHits(userId, docIds, topK);
                 if (!vectorEvents.isEmpty()) {
                     return new SemanticResult(vectorEvents.stream()
-                            .map(event -> toItem(event, "SEMANTIC", scores.get(event.getVectorDocId())))
-                            .toList(), "SEMANTIC", false, "已按 AI 语义相关性检索事件");
+                            .map(event -> toItem(event, mode, scores.get(event.getVectorDocId())))
+                            .toList(), mode, degraded,
+                            degraded ? "已使用关键词降级检索事件" : "已按 AI 语义相关性检索事件");
+                }
+                if (!degraded) {
+                    return new SemanticResult(List.of(), "SEMANTIC", false, "未找到语义相关的信息");
                 }
             }
         } catch (RuntimeException ignored) {
