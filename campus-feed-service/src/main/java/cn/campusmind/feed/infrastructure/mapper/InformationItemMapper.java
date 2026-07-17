@@ -34,22 +34,26 @@ public interface InformationItemMapper extends BaseMapper<InformationItem> {
             </if>
             <if test="cursor != null and cursorSubscriptionMatch != null">
               AND (
-                CASE WHEN #{userId} IS NOT NULL AND EXISTS (
+                CASE WHEN #{userId} IS NOT NULL AND i.submitted_by_user_id = #{userId} THEN 2
+                WHEN #{userId} IS NOT NULL AND EXISTS (
                   SELECT 1 FROM user_source_subscription cs
                   WHERE cs.user_id = #{userId} AND cs.source_id = i.source_id AND cs.enabled = 1
                 ) THEN 1 ELSE 0 END &lt; #{cursorSubscriptionMatch}
-                OR (CASE WHEN #{userId} IS NOT NULL AND EXISTS (
+                OR (CASE WHEN #{userId} IS NOT NULL AND i.submitted_by_user_id = #{userId} THEN 2
+                WHEN #{userId} IS NOT NULL AND EXISTS (
                   SELECT 1 FROM user_source_subscription cs
                   WHERE cs.user_id = #{userId} AND cs.source_id = i.source_id AND cs.enabled = 1
                 ) THEN 1 ELSE 0 END = #{cursorSubscriptionMatch} AND i.fetched_at &lt; #{cursor})
-                OR (CASE WHEN #{userId} IS NOT NULL AND EXISTS (
+                OR (CASE WHEN #{userId} IS NOT NULL AND i.submitted_by_user_id = #{userId} THEN 2
+                WHEN #{userId} IS NOT NULL AND EXISTS (
                   SELECT 1 FROM user_source_subscription cs
                   WHERE cs.user_id = #{userId} AND cs.source_id = i.source_id AND cs.enabled = 1
                 ) THEN 1 ELSE 0 END = #{cursorSubscriptionMatch}
                   AND i.fetched_at = #{cursor} AND i.id &lt; #{cursorId})
               )
             </if>
-            ORDER BY CASE WHEN #{userId} IS NOT NULL AND EXISTS (
+            ORDER BY CASE WHEN #{userId} IS NOT NULL AND i.submitted_by_user_id = #{userId} THEN 2
+            WHEN #{userId} IS NOT NULL AND EXISTS (
               SELECT 1 FROM user_source_subscription os
               WHERE os.user_id = #{userId} AND os.source_id = i.source_id AND os.enabled = 1
             ) THEN 1 ELSE 0 END DESC,

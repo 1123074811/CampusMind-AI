@@ -20,6 +20,7 @@ public record InformationFeedItemResponse(
         Boolean aiNeedReview,
         Map<String, Object> aiCard,
         int recommendationScore,
-        List<String> recommendReasons
+        List<String> recommendReasons,
+        Long submittedByUserId
 ) {
 }

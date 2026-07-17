@@ -97,8 +97,10 @@ public class InformationService {
                 ? null
                 : visibleRecords.get(visibleRecords.size() - 1).getFetchedAt();
         Long nextCursorId = items.isEmpty() ? null : visibleRecords.get(visibleRecords.size() - 1).getId();
-        Integer nextSubscriptionMatch = items.isEmpty() ? null
-                : (subscribedSourceIds.contains(visibleRecords.get(visibleRecords.size() - 1).getSourceId()) ? 1 : 0);
+        InformationItem lastVisible = items.isEmpty() ? null : visibleRecords.get(visibleRecords.size() - 1);
+        Integer nextSubscriptionMatch = lastVisible == null ? null
+                : (userId != null && userId.equals(lastVisible.getSubmittedByUserId()) ? 2
+                : (subscribedSourceIds.contains(lastVisible.getSourceId()) ? 1 : 0));
         LambdaQueryWrapper<InformationItem> totalQuery = new LambdaQueryWrapper<InformationItem>()
                 .in(InformationItem::getItemStatus, VISIBLE_ITEM_STATUS)
                 .eq(InformationItem::getParseStatus, "DETAIL_SUCCESS")
@@ -376,7 +378,8 @@ public class InformationService {
                 item.getAiNeedReview(),
                 aiCard(item),
                 subscribed ? sourceSubscriptionWeight : 0,
-                reasons
+                reasons,
+                item.getSubmittedByUserId()
         );
     }
 
