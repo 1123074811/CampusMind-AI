@@ -18,6 +18,8 @@ class PrototypeHomePage extends StatefulWidget {
     this.onLoadMore,
     this.hasMore = false,
     this.loadingMore = false,
+    this.feedMode = 'ALL',
+    required this.onFeedModeChanged,
   });
   final List<InformationItem> items;
   final ValueChanged<InformationItem> onOpenDetail;
@@ -30,6 +32,8 @@ class PrototypeHomePage extends StatefulWidget {
   final Future<void> Function()? onLoadMore;
   final bool hasMore;
   final bool loadingMore;
+  final String feedMode;
+  final ValueChanged<String> onFeedModeChanged;
 
   @override
   State<PrototypeHomePage> createState() => _PrototypeHomePageState();
@@ -412,6 +416,16 @@ class _PrototypeHomePageState extends State<PrototypeHomePage> {
           },
         ),
         const SizedBox(height: 18),
+        SegmentedButton<String>(
+          segments: const [
+            ButtonSegment(value: 'ALL', label: Text('全部')),
+            ButtonSegment(value: 'SUBSCRIBED_ONLY', label: Text('仅订阅')),
+          ],
+          selected: {widget.feedMode},
+          showSelectedIcon: false,
+          onSelectionChanged: (value) => widget.onFeedModeChanged(value.first),
+        ),
+        const SizedBox(height: 12),
         // Chips with real counts
         _CategoryChips(
           chips: _chipStats,

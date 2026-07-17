@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:campus_flutter_app/detail_page.dart';
 import 'package:campus_flutter_app/discover_page.dart';
+import 'package:campus_flutter_app/home_page.dart';
 import 'package:campus_flutter_app/information_api.dart';
 
 void main() {
@@ -62,6 +63,28 @@ void main() {
         event('ACTIVITY', '2026-07-10 12:00').importanceLevelAt(now), isNull);
   });
 
+  testWidgets('home exposes all and subscribed-only feed modes', (tester) async {
+    var selectedMode = 'ALL';
+    await tester.pumpWidget(MaterialApp(
+      home: PrototypeHomePage(
+        items: const [],
+        onOpenDetail: (_) {},
+        onOpenImport: () {},
+        userName: 'tester',
+        api: _FakeCampusApi(_item()),
+        session: _session(),
+        total: 0,
+        feedMode: selectedMode,
+        onFeedModeChanged: (mode) => selectedMode = mode,
+      ),
+    ));
+
+    await tester.tap(find.text('仅订阅'));
+    await tester.pump();
+
+    expect(selectedMode, 'SUBSCRIBED_ONLY');
+  });
+
   testWidgets('detail page separates a persisted AI summary from the body',
       (tester) async {
     final item = _item(aiStatus: 'SUCCESS', aiSummary: '模型生成的三点摘要。');
@@ -70,8 +93,14 @@ void main() {
 
     expect(find.text('AI 智能摘要'), findsOneWidget);
     expect(find.text('模型生成的三点摘要。'), findsOneWidget);
-    expect(find.text('这里是完整原文正文。'), findsOneWidget);
+    await tester.drag(find.byType(ListView).first, const Offset(0, -600));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('这里是完整原文正文。'), findsOneWidget);
+    await tester.drag(find.byType(ListView).first, const Offset(0, -600));
+    await tester.pumpAndSettle();
     expect(find.text('查看原文'), findsOneWidget);
+    expect(find.text('发布时间：2026-07-09 09:00'), findsOneWidget);
+    expect(find.text('内容哈希：aaaaaaaa…aaaaaaaa'), findsOneWidget);
     expect(find.text('紧急'), findsNothing);
   });
 
@@ -84,7 +113,9 @@ void main() {
 
     expect(find.text('AI 智能摘要'), findsNothing);
     expect(find.text('不应展示的旧摘要'), findsNothing);
-    expect(find.text('这里是完整原文正文。'), findsOneWidget);
+    await tester.drag(find.byType(ListView).first, const Offset(0, -600));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('这里是完整原文正文。'), findsOneWidget);
   });
 
   testWidgets('detail page hides an unsafe original URL', (tester) async {
@@ -199,6 +230,7 @@ InformationItem _item({
       contentHash: List.filled(64, 'a').join(),
       readStatus: 'READ',
       itemStatus: 'ACTIVE',
+      publishTime: DateTime(2026, 7, 9, 9),
       fetchedAt: DateTime(2026, 7, 9, 10),
       aiStatus: aiStatus,
       eventType: 'NOTICE',

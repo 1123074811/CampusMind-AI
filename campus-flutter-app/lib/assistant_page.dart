@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'app_theme.dart';
 import 'information_api.dart';
 
@@ -36,7 +37,7 @@ class _PrototypeAssistantPageState extends State<PrototypeAssistantPage> {
       if (!mounted) return;
       setState(() {
         _sessionId = result.sessionId.isNotEmpty ? result.sessionId : _sessionId;
-        _messages.add(_Msg.ai(result.answer));
+        _messages.add(_Msg.ai(_formatAnswer(result)));
         _loading = false;
       });
     } catch (e) {
@@ -46,6 +47,27 @@ class _PrototypeAssistantPageState extends State<PrototypeAssistantPage> {
         _loading = false;
       });
     }
+  }
+
+  String _formatAnswer(AiChatResult result) {
+    final buffer = StringBuffer(result.answer);
+    buffer.write(result.grounded
+        ? '\n\n> 已根据 ${result.sources.length} 条校园数据回答 · ${result.retrievalMode}'
+        : '\n\n> 当前回答没有可核验的校园数据依据 · ${result.retrievalMode}');
+    if (result.sources.isNotEmpty) {
+      buffer.write('\n\n**信息来源**\n');
+      for (var i = 0; i < result.sources.length; i++) {
+        final source = result.sources[i];
+        final title = source.title.replaceAll('[', '［').replaceAll(']', '］');
+        final uri = Uri.tryParse(source.originalUrl ?? '');
+        final safeUrl = uri != null && (uri.scheme == 'https' || uri.scheme == 'http');
+        buffer.write('\n${i + 1}. ${safeUrl ? '[$title]($uri)' : title}');
+        if (source.sourceName?.isNotEmpty == true) {
+          buffer.write(' — ${source.sourceName}');
+        }
+      }
+    }
+    return buffer.toString();
   }
 
   @override
@@ -319,6 +341,12 @@ class _Bubble extends StatelessWidget {
                 child: MarkdownBody(
                   data: msg.text,
                   selectable: true,
+                  onTapLink: (_, href, __) {
+                    final uri = Uri.tryParse(href ?? '');
+                    if (uri != null && (uri.scheme == 'https' || uri.scheme == 'http')) {
+                      launchUrl(uri, mode: LaunchMode.externalApplication);
+                    }
+                  },
                   styleSheet: MarkdownStyleSheet(
                     p: const TextStyle(fontSize: 13, color: AppTheme.ink2, height: 1.55),
                     h3: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: AppTheme.ink, height: 1.6),

@@ -176,8 +176,9 @@ class IoCampusApi implements CampusApi {
     String? cursor,
     int? cursorId,
     int? cursorSubscriptionMatch,
+    String mode = 'ALL',
   }) async {
-    final query = <String, String>{'size': '30'};
+    final query = <String, String>{'size': '30', 'mode': mode};
     if (cursor != null) query['cursor'] = cursor;
     if (cursorId != null) query['cursorId'] = '$cursorId';
     if (cursorSubscriptionMatch != null) {

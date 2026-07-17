@@ -1,5 +1,3 @@
-import 'dart:typed_data';
-
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:file_selector/file_selector.dart';
@@ -185,6 +183,9 @@ class _PrototypeDetailPageState extends State<PrototypeDetailPage> {
         : const Color(0xFFB45309);
     final importanceBackground =
         importance == 'urgent' ? AppTheme.roseSoft : AppTheme.accentSoft;
+    final displayedHash = _item.contentHash.length > 20
+        ? '${_item.contentHash.substring(0, 8)}…${_item.contentHash.substring(_item.contentHash.length - 8)}'
+        : _item.contentHash;
     return Scaffold(
       backgroundColor: AppTheme.bg,
       body: SafeArea(
@@ -371,6 +372,11 @@ class _PrototypeDetailPageState extends State<PrototypeDetailPage> {
                       style:
                           const TextStyle(fontSize: 12, color: AppTheme.ink2)),
                   const SizedBox(height: 5),
+                  Text(
+                      '发布时间：${_item.publishTime == null ? '未知' : _item.displayTime}',
+                      style:
+                          const TextStyle(fontSize: 12, color: AppTheme.ink2)),
+                  const SizedBox(height: 5),
                   Text('抓取时间：${_item.fetchedDisplayTime}',
                       style:
                           const TextStyle(fontSize: 12, color: AppTheme.ink2)),
@@ -380,7 +386,7 @@ class _PrototypeDetailPageState extends State<PrototypeDetailPage> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Expanded(
-                          child: SelectableText('内容哈希：${_item.contentHash}',
+                          child: SelectableText('内容哈希：$displayedHash',
                               style: const TextStyle(
                                   fontSize: 11, color: AppTheme.muted)),
                         ),
@@ -563,8 +569,10 @@ List<String> _articleBlocks(String source) {
 
 int _articleHeadingLevel(String text) {
   if (text.length > 32) return 0;
-  if (RegExp(r'^(?:[一二三四五六七八九十]+、|第[一二三四五六七八九十]+[章节])').hasMatch(text))
+  if (RegExp(r'^(?:[一二三四五六七八九十]+、|第[一二三四五六七八九十]+[章节])')
+      .hasMatch(text)) {
     return 1;
+  }
   return RegExp(r'^（[一二三四五六七八九十]+）').hasMatch(text) ? 2 : 0;
 }
 

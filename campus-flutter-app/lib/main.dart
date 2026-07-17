@@ -223,6 +223,7 @@ class _CampusShellState extends State<CampusShell> {
   int _total = 0;
   bool _hasMore = true;
   bool _loadingMore = false;
+  String _feedMode = 'ALL';
 
   @override
   void initState() {
@@ -231,10 +232,14 @@ class _CampusShellState extends State<CampusShell> {
   }
 
   Future<void> _refresh() async {
+    final requestedMode = _feedMode;
     setState(() {});
     try {
-      final page = await widget.api.fetchInformationPage(widget.session);
-      if (!mounted) return;
+      final page = await widget.api.fetchInformationPage(
+        widget.session,
+        mode: requestedMode,
+      );
+      if (!mounted || requestedMode != _feedMode) return;
       setState(() {
         _items
           ..clear()
@@ -257,6 +262,7 @@ class _CampusShellState extends State<CampusShell> {
 
   Future<void> _loadMore() async {
     if (_loadingMore || !_hasMore) return;
+    final requestedMode = _feedMode;
     setState(() => _loadingMore = true);
     try {
       final page = await widget.api.fetchInformationPage(
@@ -264,8 +270,9 @@ class _CampusShellState extends State<CampusShell> {
         cursor: _nextCursor,
         cursorId: _nextCursorId,
         cursorSubscriptionMatch: _nextSubscriptionMatch,
+        mode: requestedMode,
       );
-      if (!mounted) return;
+      if (!mounted || requestedMode != _feedMode) return;
       final knownIds = _items.map((item) => item.id).toSet();
       setState(() {
         _items.addAll(page.items.where((item) => knownIds.add(item.id)));
@@ -286,6 +293,19 @@ class _CampusShellState extends State<CampusShell> {
     } finally {
       if (mounted) setState(() => _loadingMore = false);
     }
+  }
+
+  Future<void> _changeFeedMode(String mode) async {
+    if (_feedMode == mode) return;
+    setState(() {
+      _feedMode = mode;
+      _items.clear();
+      _nextCursor = null;
+      _nextCursorId = null;
+      _nextSubscriptionMatch = null;
+      _hasMore = true;
+    });
+    await _refresh();
   }
 
   void _replaceItem(InformationItem item) {
@@ -339,6 +359,8 @@ class _CampusShellState extends State<CampusShell> {
         onLoadMore: _loadMore,
         hasMore: _hasMore,
         loadingMore: _loadingMore,
+        feedMode: _feedMode,
+        onFeedModeChanged: _changeFeedMode,
       ),
       PrototypeDiscoverPage(
           onOpenImport: _openImport, api: widget.api, session: widget.session),

@@ -492,6 +492,7 @@ abstract class CampusApi {
     String? cursor,
     int? cursorId,
     int? cursorSubscriptionMatch,
+    String mode = 'ALL',
   }) async {
     final items = await fetchInformationFeed(session);
     return InformationFeedPage(
@@ -657,15 +658,64 @@ class PrivacyStatus {
 }
 
 class AiChatResult {
-  const AiChatResult({required this.sessionId, required this.answer});
+  const AiChatResult({
+    required this.sessionId,
+    required this.answer,
+    this.sources = const [],
+    this.grounded = false,
+    this.retrievalMode = 'NONE',
+  });
   final String sessionId;
   final String answer;
+  final List<AiChatSource> sources;
+  final bool grounded;
+  final String retrievalMode;
   factory AiChatResult.fromJson(Map<String, Object?> json) {
+    final rawSources = json['sources'] as List<Object?>? ?? const [];
     return AiChatResult(
       sessionId: json['sessionId'] as String? ?? '',
       answer: json['answer'] as String? ?? '抱歉，暂时无法回答。',
+      sources: rawSources
+          .whereType<Map<String, Object?>>()
+          .map(AiChatSource.fromJson)
+          .toList(),
+      grounded: json['grounded'] as bool? ?? false,
+      retrievalMode: json['retrievalMode'] as String? ?? 'NONE',
     );
   }
+}
+
+class AiChatSource {
+  const AiChatSource({
+    required this.docId,
+    required this.title,
+    required this.score,
+    this.businessId,
+    this.sourceName,
+    this.sourceType,
+    this.publishedAt,
+    this.originalUrl,
+  });
+
+  final int? businessId;
+  final String docId;
+  final String title;
+  final String? sourceName;
+  final String? sourceType;
+  final String? publishedAt;
+  final String? originalUrl;
+  final double score;
+
+  factory AiChatSource.fromJson(Map<String, Object?> json) => AiChatSource(
+        businessId: (json['businessId'] as num?)?.toInt(),
+        docId: json['docId'] as String? ?? '',
+        title: json['title'] as String? ?? '校园信息',
+        sourceName: json['sourceName'] as String?,
+        sourceType: json['sourceType'] as String?,
+        publishedAt: json['publishedAt'] as String?,
+        originalUrl: json['originalUrl'] as String?,
+        score: (json['score'] as num?)?.toDouble() ?? 0,
+      );
 }
 
 class SearchResult {
