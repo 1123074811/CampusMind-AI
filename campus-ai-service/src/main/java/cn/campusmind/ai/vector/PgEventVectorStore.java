@@ -31,12 +31,20 @@ public class PgEventVectorStore implements EventVectorStore {
 
     private static final Logger log = LoggerFactory.getLogger(PgEventVectorStore.class);
 
-    private static final String SCORE_KEY = "distance";
-
     private final VectorStore vectorStore;
 
     public PgEventVectorStore(VectorStore vectorStore) {
         this.vectorStore = vectorStore;
+    }
+
+    @Override
+    public String retrievalMode() {
+        return "SEMANTIC";
+    }
+
+    @Override
+    public boolean fallback() {
+        return false;
     }
 
     @Override
@@ -90,7 +98,7 @@ public class PgEventVectorStore implements EventVectorStore {
             return hits;
         } catch (RuntimeException ex) {
             log.warn("PG 向量检索失败 query={}", query, ex);
-            return List.of();
+            throw ex;
         }
     }
 
@@ -124,14 +132,6 @@ public class PgEventVectorStore implements EventVectorStore {
     }
 
     private static double extractScore(Document doc) {
-        Map<String, Object> metadata = doc.getMetadata();
-        if (metadata == null) {
-            return 1.0;
-        }
-        Object raw = metadata.get(SCORE_KEY);
-        if (raw instanceof Number number) {
-            return number.doubleValue();
-        }
-        return 1.0;
+        return doc.getScore() == null ? 0.0 : doc.getScore();
     }
 }

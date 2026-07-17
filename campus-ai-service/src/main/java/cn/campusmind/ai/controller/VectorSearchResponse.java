@@ -12,6 +12,8 @@ import java.util.List;
  */
 public record VectorSearchResponse(
         List<VectorSearchHit> hits,
-        int total
+        int total,
+        String mode,
+        boolean fallback
 ) {
 }

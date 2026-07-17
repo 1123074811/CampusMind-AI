@@ -19,6 +19,8 @@ public record VectorStoreRequest(
 
         String sourceName,
 
+        String originalUrl,
+
         String sourceType,
 
         String publishedAt,

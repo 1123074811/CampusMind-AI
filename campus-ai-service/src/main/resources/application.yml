@@ -40,6 +40,9 @@ campus:
     mode: ${CAMPUS_AI_MODE:rule}
     model-version: ${CAMPUS_AI_MODEL_VERSION:${OPENAI_CHAT_MODEL:rule-v1}}
     prompt-version: ${CAMPUS_AI_PROMPT_VERSION:rule-v1}
+    rag:
+      # 不同 embedding 模型的分数分布不同，保留环境变量用于实测校准。
+      min-score: ${CAMPUS_AI_RAG_MIN_SCORE:0.05}
 
 management:
   endpoints:

@@ -6,6 +6,7 @@ import jakarta.validation.constraints.Size;
 import java.util.List;
 
 public record ChatRequest(
+        @Size(max = 128)
         String sessionId,
 
         @NotBlank

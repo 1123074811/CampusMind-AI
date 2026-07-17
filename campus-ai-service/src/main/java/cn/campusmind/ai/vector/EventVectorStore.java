@@ -18,6 +18,14 @@ import java.util.Map;
  */
 public interface EventVectorStore {
 
+    default String retrievalMode() {
+        return "KEYWORD";
+    }
+
+    default boolean fallback() {
+        return true;
+    }
+
     /**
      * 存储一条事件向量文本。
      *

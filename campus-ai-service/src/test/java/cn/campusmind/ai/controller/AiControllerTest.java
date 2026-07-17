@@ -198,7 +198,9 @@ class AiControllerTest {
                                 """))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.hits[?(@.docId == 'evt-1')]", hasSize(1)))
-                .andExpect(jsonPath("$.data.hits[?(@.docId == 'evt-1')].text", hasItem(containsString("人工智能主题讲座"))));
+                .andExpect(jsonPath("$.data.hits[?(@.docId == 'evt-1')].text", hasItem(containsString("人工智能主题讲座"))))
+                .andExpect(jsonPath("$.data.mode").value("KEYWORD"))
+                .andExpect(jsonPath("$.data.fallback").value(true));
     }
 
     @Test
@@ -208,6 +210,9 @@ class AiControllerTest {
                         .content("""
                                 {
                                   "docId": "evt-rag",
+                                  "businessId": 42,
+                                  "sourceName": "软件学院",
+                                  "originalUrl": "https://example.edu/notice/42",
                                   "event": {
                                     "title": "人工智能主题讲座",
                                     "eventType": "LECTURE",
@@ -230,6 +235,11 @@ class AiControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.sessionId").value("rag-test"))
                 .andExpect(jsonPath("$.data.plan.intent").value("QA_EXPLAIN"))
-                .andExpect(jsonPath("$.data.answer", containsString("人工智能主题讲座")));
+                .andExpect(jsonPath("$.data.answer", containsString("人工智能主题讲座")))
+                .andExpect(jsonPath("$.data.grounded").value(true))
+                .andExpect(jsonPath("$.data.retrievalMode").value("VECTOR_RULES"))
+                .andExpect(jsonPath("$.data.sources[?(@.docId == 'evt-rag')]", hasSize(1)))
+                .andExpect(jsonPath("$.data.sources[?(@.docId == 'evt-rag')].originalUrl",
+                        hasItem("https://example.edu/notice/42")));
     }
 }
