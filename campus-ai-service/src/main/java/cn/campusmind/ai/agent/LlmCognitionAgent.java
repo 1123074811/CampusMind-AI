@@ -33,7 +33,10 @@ public class LlmCognitionAgent implements CognitionAgent {
             字段含义：title 标题、eventType 事件类型(EXAM/HOMEWORK/COURSE/LECTURE/COMPETITION/ACTIVITY/SERVICE/NOTICE/OTHER)、
             summary 摘要（70-160 字，2-3 句独立改写，说明事项、关键结论和明确的下一步/时间）、startTime/endTime ISO8601 时间、location 地点、organizer 主办方、
             targetScopes 面向范围、tags 标签、needHumanReview 是否需人工复核、reason 判断依据。
-            keyDates 关键时间集合、requiredActions 用户需要执行的动作。
+            keyDates 关键时间集合。requiredActions 只记录用户可提前完成、适合加入待办并能明确勾选完成的动作，
+            例如报名、提交或上传材料、缴费、预约、申请、填写、打印下载、领取办理、提前准备材料，最多 3 项。
+            考场纪律、禁止事项、到场安检、迟到及入场离场规则、结果查询或公告说明不得写入 requiredActions；
+            没有可形成待办的动作时返回空数组。
             所有事件优先抽取实际出现的时间、地点、主办方、面向对象、关键日期、需办理事项和附件。
             仅 COMPETITION 或确有报名流程的 ACTIVITY 才抽取 registrationStartTime 报名开始时间、registrationDeadline 报名截止时间、
             eventDuration 持续时间、requiredMaterials 所需材料、registrationUrl 报名网址、

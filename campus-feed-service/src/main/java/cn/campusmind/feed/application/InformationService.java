@@ -32,6 +32,10 @@ public class InformationService {
 
     private static final Set<String> VISIBLE_ITEM_STATUS = Set.of("ACTIVE", "UPDATED");
     private static final Set<String> READ_STATUSES = Set.of("NEW", "READ", "FAVORITED", "ARCHIVED");
+    private static final List<String> ACTION_VERBS = List.of(
+            "报名", "提交", "上传", "缴费", "预约", "申请", "填写", "打印", "下载", "领取", "办理", "准备");
+    private static final List<String> NON_ACTION_RULES = List.of(
+            "不得", "禁止", "严禁", "不准", "不可", "迟到", "入场", "离场", "安检", "查询成绩", "公布成绩");
     private static final int PREVIEW_LENGTH = 160;
     private static final TypeReference<Map<String, Object>> AI_CARD = new TypeReference<>() { };
 
@@ -395,10 +399,26 @@ public class InformationService {
             return Map.of();
         }
         try {
-            return objectMapper.readValue(item.getAiCardJson(), AI_CARD);
+            Map<String, Object> card = objectMapper.readValue(item.getAiCardJson(), AI_CARD);
+            List<String> actions = stringList(card.get("requiredActions")).stream()
+                    .map(String::trim)
+                    .filter(InformationService::isConfirmableAction)
+                    .distinct()
+                    .limit(3)
+                    .toList();
+            Map<String, Object> sanitized = new LinkedHashMap<>(card);
+            sanitized.put("requiredActions", actions);
+            return sanitized;
         } catch (Exception ignored) {
             return Map.of();
         }
+    }
+
+    private static boolean isConfirmableAction(String action) {
+        return StringUtils.hasText(action)
+                && action.length() <= 80
+                && NON_ACTION_RULES.stream().noneMatch(action::contains)
+                && ACTION_VERBS.stream().anyMatch(action::contains);
     }
 
     private boolean isVisible(InformationItem item, Long userId) {

@@ -104,9 +104,9 @@ public final class CognitionRules {
     private static List<String> detectActions(String text) {
         List<String> actions = new ArrayList<>();
         if (text.contains("报名")) actions.add("完成报名");
-        if (text.contains("提交") || text.contains("材料")) actions.add("提交所需材料");
+        if (text.contains("提交") || text.contains("上传")) actions.add("提交所需材料");
         if (text.contains("缴费")) actions.add("完成缴费");
-        if (text.contains("签到") || text.contains("到场")) actions.add("按时到场");
+        if (text.contains("打印") && text.contains("准考证")) actions.add("打印准考证");
         return actions.stream().distinct().toList();
     }
 

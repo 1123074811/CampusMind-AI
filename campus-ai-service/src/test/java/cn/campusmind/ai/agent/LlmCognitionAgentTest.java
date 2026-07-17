@@ -54,6 +54,7 @@ class LlmCognitionAgentTest {
         var prompt = org.mockito.ArgumentCaptor.forClass(Prompt.class);
         verify(chatModel).call(prompt.capture());
         assertTrue(prompt.getValue().getInstructions().get(0).getText().contains("不得截取原文开头"));
+        assertTrue(prompt.getValue().getInstructions().get(0).getText().contains("考场纪律"));
     }
 
     @Test
