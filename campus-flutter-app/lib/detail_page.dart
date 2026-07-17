@@ -316,12 +316,10 @@ class _PrototypeDetailPageState extends State<PrototypeDetailPage> {
               const SizedBox(height: 18),
             ],
             // Body
-            Text(
-              _item.detailContent.isNotEmpty
+            _ArticleBody(
+              text: _item.detailContent.isNotEmpty
                   ? _item.detailContent
                   : _item.preview,
-              style: const TextStyle(
-                  fontSize: 13, color: AppTheme.ink2, height: 1.7),
             ),
             const SizedBox(height: 20),
             Container(
@@ -442,6 +440,94 @@ class _PrototypeDetailPageState extends State<PrototypeDetailPage> {
       ),
     );
   }
+}
+
+class _ArticleBody extends StatelessWidget {
+  const _ArticleBody({required this.text});
+
+  final String text;
+
+  Widget _buildBlock(String block) {
+    final headingLevel = _articleHeadingLevel(block);
+    return Padding(
+      padding: EdgeInsets.only(
+        left: headingLevel == 2 ? 16 : 0,
+        top: headingLevel > 0 ? 8 : 0,
+        bottom: headingLevel > 0 ? 8 : 12,
+      ),
+      child: SelectableText(
+        headingLevel > 0 ? block : '\u3000\u3000$block',
+        style: TextStyle(
+          fontSize: headingLevel == 1 ? 16 : 15,
+          fontWeight: headingLevel == 1
+              ? FontWeight.w700
+              : headingLevel == 2
+                  ? FontWeight.w600
+                  : FontWeight.w400,
+          color: headingLevel > 0 ? AppTheme.ink : AppTheme.ink2,
+          height: headingLevel > 0 ? 1.5 : 1.75,
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final blocks = _articleBlocks(text);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [for (final block in blocks) _buildBlock(block)],
+    );
+  }
+}
+
+List<String> _articleBlocks(String source) {
+  var text = source
+      .replaceAll('\r\n', '\n')
+      .replaceAll('\r', '\n')
+      .replaceAll(RegExp(r'[ \t]+'), ' ')
+      .trim();
+  text = text.replaceAllMapped(
+    RegExp(r'([。！？；])\s*([一二三四五六七八九十]+、|（[一二三四五六七八九十]+）|\d+[.、])'),
+    (match) => '${match[1]}\n${match[2]}',
+  );
+  text = text.replaceAllMapped(
+    RegExp(r'(^|\n)([一二三四五六七八九十]+、[^，。；\s（\n]{2,18})\s*'),
+    (match) => '${match[1]}${match[2]}\n',
+  );
+  text = text.replaceAllMapped(
+    RegExp(r'(^|\n)(（[一二三四五六七八九十]+）[^，。；\s\n]{2,18})\s+'),
+    (match) => '${match[1]}${match[2]}\n',
+  );
+
+  final blocks = <String>[];
+  for (final line in text.split(RegExp(r'\n+'))) {
+    final trimmed = line.trim();
+    if (trimmed.isEmpty ||
+        _articleHeadingLevel(trimmed) > 0 ||
+        trimmed.length <= 180) {
+      if (trimmed.isNotEmpty) blocks.add(trimmed);
+      continue;
+    }
+    var paragraph = '';
+    for (final match in RegExp(r'[^。！？；]+[。！？；]?').allMatches(trimmed)) {
+      final sentence = match.group(0)!.trim();
+      if (paragraph.isNotEmpty && paragraph.length + sentence.length > 180) {
+        blocks.add(paragraph);
+        paragraph = '';
+      }
+      paragraph += sentence;
+    }
+    if (paragraph.isNotEmpty) blocks.add(paragraph);
+  }
+  return blocks;
+}
+
+int _articleHeadingLevel(String text) {
+  if (text.length > 32) return 0;
+  if (RegExp(r'^(?:[一二三四五六七八九十]+、|第[一二三四五六七八九十]+[章节])').hasMatch(text))
+    return 1;
+  return RegExp(r'^（[一二三四五六七八九十]+）').hasMatch(text) ? 2 : 0;
 }
 
 class _IconBtn extends StatelessWidget {
