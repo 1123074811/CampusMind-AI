@@ -5,7 +5,14 @@ import cn.campusmind.importing.application.AuthTokenService;
 import cn.campusmind.importing.application.CurrentUser;
 import cn.campusmind.importing.application.ImportService;
 import cn.campusmind.importing.domain.ImportTask;
+import cn.campusmind.importing.domain.RawDocument;
 import jakarta.validation.Valid;
+import org.springframework.http.ContentDisposition;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.InvalidMediaTypeException;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
+import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -19,6 +26,7 @@ import org.springframework.web.multipart.MultipartFile;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.nio.charset.StandardCharsets;
 
 @RestController
 @RequestMapping("/api/v1/import")
@@ -93,11 +101,59 @@ public class ImportController {
         return ApiResponse.ok(result);
     }
 
+    @GetMapping("/original/{contentHash}")
+    public ResponseEntity<byte[]> downloadOriginal(
+            @RequestHeader(value = "Authorization", required = false) String authorization,
+            @org.springframework.web.bind.annotation.PathVariable String contentHash) {
+        CurrentUser user = authTokenService.parseBearerToken(authorization);
+        RawDocument document = importService.getOwnedOriginalFile(user, contentHash);
+        boolean hasOriginalFile = document.getOriginalFile() != null;
+        byte[] body = hasOriginalFile
+                ? document.getOriginalFile()
+                : document.getPlainText().getBytes(StandardCharsets.UTF_8);
+        String storedFileName = document.getOriginalFileName();
+        if (!StringUtils.hasText(storedFileName) && document.getOcrMeta() != null
+                && document.getOcrMeta().get("fileName") instanceof String legacyFileName) {
+            storedFileName = legacyFileName;
+        }
+        String fileName = safeFileName(storedFileName, hasOriginalFile);
+        MediaType contentType = hasOriginalFile
+                ? safeMediaType(document.getOriginalContentType())
+                : MediaType.TEXT_PLAIN;
+        return ResponseEntity.ok()
+                .contentType(contentType)
+                .contentLength(body.length)
+                .header(HttpHeaders.CONTENT_DISPOSITION,
+                        ContentDisposition.attachment().filename(fileName, StandardCharsets.UTF_8).build().toString())
+                .body(body);
+    }
+
     @DeleteMapping("/tasks/{taskId}/raw")
     public ApiResponse<ImportTaskResponse> deleteRawDocument(
             @RequestHeader(value = "Authorization", required = false) String authorization,
             @org.springframework.web.bind.annotation.PathVariable Long taskId) {
         CurrentUser user = authTokenService.parseBearerToken(authorization);
         return ApiResponse.ok(importService.deleteRawDocument(user, taskId));
+    }
+
+    private static String safeFileName(String originalFileName, boolean hasOriginalFile) {
+        String clean = StringUtils.hasText(originalFileName)
+                ? StringUtils.getFilename(StringUtils.cleanPath(originalFileName.replace('\r', '_').replace('\n', '_')))
+                : "原文";
+        if (!hasOriginalFile) {
+            int extension = clean.lastIndexOf('.');
+            clean = (extension > 0 ? clean.substring(0, extension) : clean) + ".txt";
+        }
+        return clean;
+    }
+
+    private static MediaType safeMediaType(String contentType) {
+        try {
+            return StringUtils.hasText(contentType)
+                    ? MediaType.parseMediaType(contentType)
+                    : MediaType.APPLICATION_OCTET_STREAM;
+        } catch (InvalidMediaTypeException ignored) {
+            return MediaType.APPLICATION_OCTET_STREAM;
+        }
     }
 }

@@ -9,6 +9,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.mongodb.core.query.Criteria;
 import org.springframework.data.mongodb.core.query.Query;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
@@ -80,6 +81,14 @@ public class RawDocumentService {
 
     public List<RawDocument> listOwned(Long ownerUserId) {
         return mongoTemplate.find(Query.query(Criteria.where("ownerUserId").is(ownerUserId)), RawDocument.class);
+    }
+
+    public RawDocument findOwnedUserFile(String contentHash, Long ownerUserId) {
+        Query query = Query.query(Criteria.where("contentHash").is(contentHash)
+                .and("ownerUserId").is(ownerUserId)
+                .and("sourceType").is("USER_FILE"));
+        query.with(Sort.by(Sort.Direction.DESC, "createdAt"));
+        return mongoTemplate.findOne(query, RawDocument.class);
     }
 
     public long deleteOwnedByUser(Long ownerUserId) {

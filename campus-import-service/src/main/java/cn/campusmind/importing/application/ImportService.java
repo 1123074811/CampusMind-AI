@@ -191,7 +191,11 @@ public class ImportService {
             fileMeta.put("fileName", originalFilename);
             fileMeta.put("fileSize", size);
             fileMeta.put("extension", getExtension(originalFilename));
-            RawDocument doc = rawDocumentService.save(buildRawDocument("USER_FILE", user.userId(), null, text, contentHash, fileMeta));
+            RawDocument rawDocument = buildRawDocument("USER_FILE", user.userId(), null, text, contentHash, fileMeta);
+            rawDocument.setOriginalFile(file.getBytes());
+            rawDocument.setOriginalFileName(originalFilename);
+            rawDocument.setOriginalContentType(file.getContentType());
+            RawDocument doc = rawDocumentService.save(rawDocument);
             task.setRawDocId(doc.getId());
             importTaskMapper.updateById(task);
 
@@ -387,13 +391,19 @@ public class ImportService {
                                          String contentHash, CurrentUser user) {
         String title = StringUtils.hasText(candidate.title()) ? candidate.title() : "未命名信息";
         String content = StringUtils.hasText(candidate.summary()) ? candidate.summary() : text;
-        // 优先从 AI 提取的 startTime 解析为发布时间，解析失败则使用当前时间
-        LocalDateTime publishTime = parseDateTime(candidate.startTime());
-        if (publishTime == null) {
-            publishTime = LocalDateTime.now();
-        }
         return informationServiceClient.createItem(title, content, sourceName, null, null, contentHash,
-                publishTime, user.username(), user.userId());
+                LocalDateTime.now(), user.username(), user.userId());
+    }
+
+    public RawDocument getOwnedOriginalFile(CurrentUser user, String contentHash) {
+        if (!StringUtils.hasText(contentHash) || !contentHash.matches("(?i)[0-9a-f]{64}")) {
+            throw new BusinessException("CONTENT_HASH_INVALID", "内容哈希格式不正确", HttpStatus.BAD_REQUEST);
+        }
+        RawDocument document = rawDocumentService.findOwnedUserFile(contentHash, user.userId());
+        if (document == null || (document.getOriginalFile() == null && !StringUtils.hasText(document.getPlainText()))) {
+            throw new BusinessException("ORIGINAL_FILE_NOT_FOUND", "原文件不存在或已过保留期", HttpStatus.NOT_FOUND);
+        }
+        return document;
     }
 
     private RawDocument buildRawDocument(String sourceType, Long ownerUserId, String sourceUrl,

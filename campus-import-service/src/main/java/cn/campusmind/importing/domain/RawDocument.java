@@ -1,5 +1,6 @@
 package cn.campusmind.importing.domain;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import org.springframework.data.annotation.Id;
 import org.springframework.data.mongodb.core.index.Indexed;
 import org.springframework.data.mongodb.core.mapping.Document;
@@ -37,6 +38,13 @@ public class RawDocument {
     private String plainText;
 
     private String contentHash;
+
+    @JsonIgnore
+    private byte[] originalFile;
+
+    private String originalFileName;
+
+    private String originalContentType;
 
     private Map<String, Object> httpMeta;
 
@@ -130,6 +138,30 @@ public class RawDocument {
 
     public void setContentHash(String contentHash) {
         this.contentHash = contentHash;
+    }
+
+    public byte[] getOriginalFile() {
+        return originalFile;
+    }
+
+    public void setOriginalFile(byte[] originalFile) {
+        this.originalFile = originalFile;
+    }
+
+    public String getOriginalFileName() {
+        return originalFileName;
+    }
+
+    public void setOriginalFileName(String originalFileName) {
+        this.originalFileName = originalFileName;
+    }
+
+    public String getOriginalContentType() {
+        return originalContentType;
+    }
+
+    public void setOriginalContentType(String originalContentType) {
+        this.originalContentType = originalContentType;
     }
 
     public Map<String, Object> getHttpMeta() {
