@@ -69,7 +69,7 @@ foreach ($prefix in @("AUTH", "USER", "EVENT", "FEED", "IMPORT", "CRAWLER", "AUD
     Set-Item -Path "Env:${prefix}_DB_PASSWORD" -Value $LocalDbPassword
     Set-Item -Path "Env:${prefix}_DB_URL" -Value "jdbc:mysql://localhost:$($env:MYSQL_PORT)/$($env:MYSQL_DATABASE)?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai"
 }
-foreach ($prefix in @("AUTH", "USER", "IMPORT", "CRAWLER", "GATEWAY")) {
+foreach ($prefix in @("AUTH", "USER", "IMPORT", "CRAWLER", "GATEWAY", "AI")) {
     Set-Item -Path "Env:${prefix}_REDIS_HOST" -Value "localhost"
     Set-Item -Path "Env:${prefix}_REDIS_PORT" -Value $env:REDIS_PORT
 }

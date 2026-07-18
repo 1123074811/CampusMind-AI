@@ -184,9 +184,10 @@ OPENAI_API_KEY=<secret>
 OPENAI_BASE_URL=https://api.deepseek.com
 OPENAI_CHAT_MODEL=deepseek-chat
 PGVECTOR_PASSWORD=<secret>
+TAVILY_API_KEY=<secret>
 ```
 
-一键脚本会自动使用 `llm,pg` profiles。规则模式和搜索关键字降级会在接口和页面中明确标识。
+一键脚本会自动使用 `llm,pg` profiles。配置 `TAVILY_API_KEY` 后，智能体会在内部知识库无结果或问题明确要求最新、历年数据时调用联网搜索，并返回网页来源；规则模式也可返回搜索结果列表。
 
 ## API 路由
 

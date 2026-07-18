@@ -33,6 +33,7 @@ x-backend: &backend
     IMPORT_REDIS_HOST: redis
     CRAWLER_REDIS_HOST: redis
     USER_REDIS_HOST: redis
+    AI_REDIS_HOST: redis
     IMPORT_MONGO_URI: mongodb://mongo:27017/campusmind
   depends_on:
     - mysql
@@ -94,6 +95,9 @@ services:
       OPENAI_API_KEY: ${OPENAI_API_KEY:?OPENAI_API_KEY is required}
       OPENAI_BASE_URL: ${OPENAI_BASE_URL:?OPENAI_BASE_URL is required}
       OPENAI_CHAT_MODEL: ${OPENAI_CHAT_MODEL:?OPENAI_CHAT_MODEL is required}
+      TAVILY_API_KEY: ${TAVILY_API_KEY:-}
+      CAMPUS_AI_WEB_SEARCH_ENABLED: ${CAMPUS_AI_WEB_SEARCH_ENABLED:-true}
+      CAMPUS_AI_WEB_SEARCH_MAX_RESULTS: ${CAMPUS_AI_WEB_SEARCH_MAX_RESULTS:-5}
       PGVECTOR_URL: jdbc:postgresql://postgres:5432/${PGVECTOR_DATABASE:-campusmind_vector}
       PGVECTOR_USERNAME: ${PGVECTOR_USERNAME:-campusmind}
       PGVECTOR_PASSWORD: ${PGVECTOR_PASSWORD:?PGVECTOR_PASSWORD is required}

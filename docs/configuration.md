@@ -109,7 +109,7 @@ SEARCH_DB_URL / SEARCH_DB_USERNAME / SEARCH_DB_PASSWORD
 
 `dev-start.ps1` 和 `infra/docker-compose.app.yml` 会根据通用的 `MYSQL_*` 变量自动生成这些值，一般不需要在 `.env` 重复填写。
 
-Redis 同理支持 `AUTH_`、`USER_`、`IMPORT_`、`CRAWLER_`、`GATEWAY_` 前缀的 `REDIS_HOST`、`REDIS_PORT`、`REDIS_PASSWORD` 和 `REDIS_DATABASE`。导入服务默认使用 Redis DB 8，其余服务默认 DB 0。
+Redis 同理支持 `AUTH_`、`USER_`、`IMPORT_`、`CRAWLER_`、`GATEWAY_`、`AI_` 前缀的 `REDIS_HOST`、`REDIS_PORT`、`REDIS_PASSWORD` 和 `REDIS_DATABASE`。AI 短期会话默认保留 24 小时，可用 `CAMPUS_AI_SHORT_TERM_MEMORY_TTL`（ISO-8601 Duration）调整；导入服务默认使用 Redis DB 8，其余服务默认 DB 0。
 
 ## 5. 认证、会话与密码找回
 
@@ -236,6 +236,7 @@ OPENAI_CHAT_MODEL=deepseek-chat
 PGVECTOR_DATABASE=campusmind_vector
 PGVECTOR_USERNAME=campusmind
 PGVECTOR_PASSWORD=<secret>
+TAVILY_API_KEY=<secret>
 ```
 
 `dev-start.ps1` 检测到 `CAMPUS_AI_MODE=llm` 后会：
@@ -252,6 +253,10 @@ PGVECTOR_PASSWORD=<secret>
 | `CAMPUS_AI_MODEL_VERSION` | 当前模型名或 `rule-v1` | 记录模型版本 |
 | `CAMPUS_AI_PROMPT_VERSION` | 规则模式 `rule-v1`、LLM 模式 `llm-v1` | 记录提示词版本 |
 | `CAMPUS_AI_REQUIRE_LLM` | `true` | 采集结果是否必须来自 LLM |
+| `TAVILY_API_KEY` | 空 | Tavily 联网搜索密钥；为空时禁用联网工具 |
+| `TAVILY_BASE_URL` | `https://api.tavily.com` | Tavily 兼容 API 地址 |
+| `CAMPUS_AI_WEB_SEARCH_ENABLED` | `true` | 是否允许智能体联网搜索 |
+| `CAMPUS_AI_WEB_SEARCH_MAX_RESULTS` | `5` | 单次最多返回网页结果，限制为 1–10 |
 | `CAMPUS_AI_BACKFILL_INITIAL_DELAY_MS` | `10000` | AI 回填首次延迟 |
 | `CAMPUS_AI_BACKFILL_DELAY_MS` | `60000` | AI 回填扫描间隔 |
 | `TRANSFORMER_MODEL_URI` | 固定版本 Hugging Face URI | ONNX 模型地址，可改为 `file:` URI |
