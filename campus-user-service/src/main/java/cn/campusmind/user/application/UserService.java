@@ -392,14 +392,15 @@ public class UserService {
     public PrivacyStatusResponse privacyStatus(CurrentUser currentUser, String policyVersion, int retentionDays) {
         requireAccount(currentUser.userId());
         List<PrivacyStatusResponse.Consent> consents = jdbcTemplate.query("""
-                SELECT c.id, c.consent_type, c.policy_version, c.granted, c.source, c.occurred_at
+                SELECT c.id, c.consent_type, c.policy_version, c.granted, c.source, c.scopes_json, c.occurred_at
                 FROM user_consent_record c
                 JOIN (SELECT consent_type, MAX(id) id FROM user_consent_record WHERE user_id = ? GROUP BY consent_type) latest
                   ON latest.id = c.id
                 ORDER BY c.consent_type
                 """, (rs, rowNum) -> new PrivacyStatusResponse.Consent(
                 rs.getLong("id"), rs.getString("consent_type"), rs.getString("policy_version"),
-                rs.getBoolean("granted"), rs.getString("source"), rs.getTimestamp("occurred_at").toLocalDateTime()),
+                rs.getBoolean("granted"), rs.getString("source"), fromJson(rs.getString("scopes_json")),
+                rs.getTimestamp("occurred_at").toLocalDateTime()),
                 currentUser.userId());
         return new PrivacyStatusResponse(policyVersion, retentionDays, consents);
     }
@@ -409,10 +410,11 @@ public class UserService {
                                                String policyVersion, int retentionDays) {
         requireAccount(currentUser.userId());
         jdbcTemplate.update("""
-                INSERT INTO user_consent_record(user_id, consent_type, policy_version, granted, source)
-                VALUES (?, ?, ?, ?, ?)
+                INSERT INTO user_consent_record(user_id, consent_type, policy_version, granted, source, scopes_json)
+                VALUES (?, ?, ?, ?, ?, ?)
                 """, currentUser.userId(), request.consentType(), request.policyVersion(), request.granted() ? 1 : 0,
-                StringUtils.hasText(request.source()) ? request.source().trim().toUpperCase() : "APP");
+                StringUtils.hasText(request.source()) ? request.source().trim().toUpperCase() : "APP",
+                toJson(request.scopes()));
         if ("PERSONALIZATION".equals(request.consentType()) && !request.granted()) {
             jdbcTemplate.update("UPDATE user_profile SET interest_tags = JSON_ARRAY(), course_codes = JSON_ARRAY() WHERE user_id = ?",
                     currentUser.userId());

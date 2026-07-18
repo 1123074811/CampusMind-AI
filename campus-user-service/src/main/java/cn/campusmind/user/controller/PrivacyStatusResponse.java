@@ -5,5 +5,5 @@ import java.util.List;
 
 public record PrivacyStatusResponse(String currentPolicyVersion, int retentionDays, List<Consent> consents) {
     public record Consent(Long id, String consentType, String policyVersion, boolean granted,
-                          String source, LocalDateTime occurredAt) { }
+                          String source, List<String> scopes, LocalDateTime occurredAt) { }
 }
