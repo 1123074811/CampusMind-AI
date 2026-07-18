@@ -34,7 +34,9 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.data.redis.core.StringRedisTemplate;
 
 import java.time.Instant;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 import java.time.Duration;
 
@@ -151,6 +153,7 @@ public class UserService {
                 String.class, userId);
         dataLifecycleClient.deleteRawDocuments(userId);
         dataLifecycleClient.deleteVectors(vectorDocIds);
+        dataLifecycleClient.deleteChatMemory(userId);
 
         jdbcTemplate.update("DELETE FROM notification_delivery WHERE user_id = ?", userId);
         jdbcTemplate.update("DELETE FROM user_device WHERE user_id = ?", userId);
@@ -353,6 +356,36 @@ public class UserService {
                 fromJson(profile.getInterestTags()),
                 profile.getSensitivity() != null ? profile.getSensitivity() : 0.5
         );
+    }
+
+    @Transactional
+    public ProfileTagsResponse learnProfileTags(CurrentUser currentUser, List<String> learnedTags) {
+        requireAccount(currentUser.userId());
+        ensurePersonalizationNotRevoked(currentUser.userId());
+        UserProfile profile = findProfile(currentUser.userId());
+        boolean creating = profile == null;
+        if (creating) {
+            profile = new UserProfile();
+            profile.setUserId(currentUser.userId());
+            profile.setSensitivity(0.5);
+        }
+        Set<String> merged = new LinkedHashSet<>(fromJson(profile.getInterestTags()));
+        if (learnedTags != null) {
+            learnedTags.stream()
+                    .filter(StringUtils::hasText)
+                    .map(String::trim)
+                    .limit(8)
+                    .forEach(merged::add);
+        }
+        List<String> tags = merged.stream().limit(20).toList();
+        profile.setInterestTags(toJson(tags));
+        if (creating) {
+            userProfileMapper.insert(profile);
+        } else {
+            userProfileMapper.updateById(profile);
+        }
+        return new ProfileTagsResponse(tags,
+                profile.getSensitivity() != null ? profile.getSensitivity() : 0.5);
     }
 
     @Transactional(readOnly = true)

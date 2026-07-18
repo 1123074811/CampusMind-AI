@@ -54,4 +54,11 @@ public class UserDataLifecycleClient {
                 .retrieve()
                 .toBodilessEntity();
     }
+
+    public void deleteChatMemory(Long userId) {
+        aiClient.delete()
+                .uri("/internal/ai/users/{userId}/chat-memory", userId)
+                .retrieve()
+                .toBodilessEntity();
+    }
 }

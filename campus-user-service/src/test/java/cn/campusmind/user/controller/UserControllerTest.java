@@ -153,6 +153,40 @@ class UserControllerTest {
     }
 
     @Test
+    void learnedProfileTagsAreMergedAndPersisted() throws Exception {
+        String token = bearerToken(1L, "alice", "STUDENT");
+        try (Connection connection = dataSource.getConnection();
+             Statement statement = connection.createStatement()) {
+            statement.execute("INSERT INTO user_consent_record "
+                    + "(user_id, consent_type, policy_version, granted, source) "
+                    + "VALUES (1, 'PERSONALIZATION', '2026-07-01', 1, 'TEST')");
+        }
+        mockMvc.perform(put("/api/v1/users/profile-tags")
+                        .header(AUTHORIZATION, token)
+                        .contentType(APPLICATION_JSON)
+                        .content("""
+                                {"tags":["课程学术"],"sensitivity":0.8}
+                                """))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(post("/api/v1/users/profile-tags/learn")
+                        .header(AUTHORIZATION, token)
+                        .contentType(APPLICATION_JSON)
+                        .content("""
+                                {"tags":["课程学术","竞赛比赛"]}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.tags[0]").value("课程学术"))
+                .andExpect(jsonPath("$.data.tags[1]").value("竞赛比赛"))
+                .andExpect(jsonPath("$.data.sensitivity").value(0.8));
+
+        mockMvc.perform(get("/api/v1/users/profile-tags")
+                        .header(AUTHORIZATION, token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.tags.length()").value(2));
+    }
+
+    @Test
     void updateProfileUpsertsProfile() throws Exception {
         try (Connection connection = dataSource.getConnection();
              Statement statement = connection.createStatement()) {
@@ -265,6 +299,7 @@ class UserControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.status").value(0))
                 .andExpect(jsonPath("$.data.phone").doesNotExist());
+        org.mockito.Mockito.verify(dataLifecycleClient).deleteChatMemory(1L);
     }
 
     private void insertUser(Long id, String username, String phone, String role) throws Exception {

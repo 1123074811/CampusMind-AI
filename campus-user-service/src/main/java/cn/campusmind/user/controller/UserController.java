@@ -137,4 +137,12 @@ public class UserController {
         CurrentUser currentUser = authTokenService.parseBearerToken(authorization);
         return ApiResponse.ok(userService.updateProfileTags(currentUser, request.tags(), request.sensitivity()));
     }
+
+    @PostMapping("/profile-tags/learn")
+    public ApiResponse<ProfileTagsResponse> learnProfileTags(
+            @RequestHeader(value = "Authorization", required = false) String authorization,
+            @Valid @RequestBody LearnProfileTagsRequest request) {
+        CurrentUser currentUser = authTokenService.parseBearerToken(authorization);
+        return ApiResponse.ok(userService.learnProfileTags(currentUser, request.tags()));
+    }
 }
