@@ -10,6 +10,12 @@ spring:
         server-addr: ${NACOS_SERVER_ADDR:127.0.0.1:8848}
         namespace: ${NACOS_NAMESPACE:public}
         group: ${NACOS_GROUP:DEFAULT_GROUP}
+  data:
+    redis:
+      host: ${AI_REDIS_HOST:localhost}
+      port: ${AI_REDIS_PORT:6379}
+      password: ${AI_REDIS_PASSWORD:}
+      database: ${AI_REDIS_DATABASE:0}
   autoconfigure:
     exclude:
       # rule 模式默认不启用 LLM/向量库/数据源/Mongo，避免本地开发依赖
@@ -43,6 +49,13 @@ campus:
     rag:
       # 不同 embedding 模型的分数分布不同，保留环境变量用于实测校准。
       min-score: ${CAMPUS_AI_RAG_MIN_SCORE:0.05}
+    web-search:
+      enabled: ${CAMPUS_AI_WEB_SEARCH_ENABLED:true}
+      base-url: ${TAVILY_BASE_URL:https://api.tavily.com}
+      api-key: ${TAVILY_API_KEY:}
+      max-results: ${CAMPUS_AI_WEB_SEARCH_MAX_RESULTS:5}
+    memory:
+      short-term-ttl: ${CAMPUS_AI_SHORT_TERM_MEMORY_TTL:PT24H}
 
 management:
   endpoints:

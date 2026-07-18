@@ -6,6 +6,15 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.data.redis.core.ListOperations;
+import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.junit.jupiter.api.BeforeEach;
+
+import java.util.List;
+
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.when;
 
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.hasItem;
@@ -25,6 +34,19 @@ class AiControllerTest {
 
     @Autowired
     private MockMvc mockMvc;
+
+    @MockitoBean
+    private StringRedisTemplate redisTemplate;
+
+    @MockitoBean
+    private ListOperations<String, String> listOperations;
+
+    @BeforeEach
+    void setUpMemory() {
+        when(redisTemplate.opsForList()).thenReturn(listOperations);
+        when(listOperations.range(anyString(), org.mockito.ArgumentMatchers.anyLong(),
+                org.mockito.ArgumentMatchers.anyLong())).thenReturn(List.of());
+    }
 
     @Test
     void cognitionExtractsCampusEventCandidate() throws Exception {
