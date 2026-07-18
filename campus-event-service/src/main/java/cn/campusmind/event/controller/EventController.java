@@ -6,6 +6,7 @@ import cn.campusmind.event.application.EventCommandService.UpsertEventRequest;
 import cn.campusmind.event.application.EventQueryService;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -80,6 +81,13 @@ public class EventController {
         );
         Long eventId = eventCommandService.upsertEvent(req);
         return ApiResponse.ok(eventId);
+    }
+
+    @DeleteMapping("/source/{sourceType}")
+    public ApiResponse<EventCommandService.DeleteOwnedEventsResult> deleteOwnedBySource(
+            @PathVariable String sourceType,
+            @RequestHeader(value = "X-User-Id", required = false) Long userId) {
+        return ApiResponse.ok(eventCommandService.deleteOwnedBySource(userId, sourceType));
     }
 
     public record CreateEventRequest(

@@ -73,12 +73,10 @@ public class EventQueryService {
                         .like(CampusEvent::getSummary, keyword))
                 .orderByDesc(CampusEvent::getPublishedAt)
                 .orderByDesc(CampusEvent::getCreatedAt);
-        if (!"ADMIN".equals(role)) {
-            query.and(wrapper -> wrapper.eq(CampusEvent::getVisibility, "PUBLIC")
-                    .or()
-                    .isNull(CampusEvent::getVisibility)
-                    .or(userId != null, nested -> nested.eq(CampusEvent::getOwnerUserId, userId)));
-        }
+        query.and(wrapper -> wrapper.eq(CampusEvent::getVisibility, "PUBLIC")
+                .or()
+                .isNull(CampusEvent::getVisibility)
+                .or(userId != null, nested -> nested.eq(CampusEvent::getOwnerUserId, userId)));
 
         Page<CampusEvent> result = campusEventMapper.selectPage(Page.of(safePage, safeSize), query);
         List<EventDetailResponse> items = result.getRecords().stream()
@@ -88,8 +86,7 @@ public class EventQueryService {
     }
 
     private boolean isVisibleTo(CampusEvent event, Long userId, String role) {
-        return "ADMIN".equals(role)
-                || event.getVisibility() == null || "PUBLIC".equals(event.getVisibility())
+        return event.getVisibility() == null || "PUBLIC".equals(event.getVisibility())
                 || (userId != null && userId.equals(event.getOwnerUserId()));
     }
 
