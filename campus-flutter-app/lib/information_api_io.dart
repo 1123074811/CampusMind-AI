@@ -28,7 +28,9 @@ export 'information_api_stub.dart'
         TrendingItem,
         UserProfileTags,
         DailyBriefing,
-        PrivacyStatus;
+        PrivacyStatus,
+        XjuEhallConfig,
+        XjuEhallImportResult;
 
 const _apiBase = String.fromEnvironment(
   'CAMPUSMIND_API_BASE',
@@ -371,15 +373,17 @@ class IoCampusApi implements CampusApi {
   }
 
   @override
-  Future<PrivacyStatus> updateConsent(String type, bool granted,
-      String policyVersion, LoginSession session) async {
+  Future<PrivacyStatus> updateConsent(
+      String type, bool granted, String policyVersion, LoginSession session,
+      {List<String> scopes = const []}) async {
     final root = await _request('POST', '/api/v1/users/me/privacy/consents',
         session: session,
         body: {
           'consentType': type,
           'granted': granted,
           'policyVersion': policyVersion,
-          'source': 'APP'
+          'source': 'APP',
+          'scopes': scopes,
         });
     final privacy = PrivacyStatus.fromJson(_data(root));
     _privacyCache[session.user.id] = privacy;
@@ -531,6 +535,40 @@ class IoCampusApi implements CampusApi {
       },
     );
     return ImportResult.fromJson(_data(root));
+  }
+
+  @override
+  Future<XjuEhallConfig> fetchXjuEhallConfig(LoginSession session) async {
+    final root = await _request(
+      'GET',
+      '/api/v1/import/xju/ehall/config',
+      session: session,
+    );
+    return XjuEhallConfig.fromJson(_data(root));
+  }
+
+  @override
+  Future<XjuEhallImportResult> importXjuEhall(
+      Map<String, Object?> payload, LoginSession session) async {
+    final root = await _request(
+      'POST',
+      '/api/v1/import/xju/ehall',
+      session: session,
+      body: payload,
+    );
+    return XjuEhallImportResult.fromJson(_data(root));
+  }
+
+  @override
+  Future<Map<String, int>> deleteXjuEhallData(LoginSession session) async {
+    final root = await _request(
+      'DELETE',
+      '/api/v1/import/xju/ehall/data',
+      session: session,
+    );
+    return _data(root).map(
+      (key, value) => MapEntry(key, (value as num?)?.toInt() ?? 0),
+    );
   }
 
   @override

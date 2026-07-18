@@ -61,46 +61,156 @@ class _PrototypeProfilePageState extends State<PrototypeProfilePage> {
       final privacy = await widget.api.fetchPrivacyStatus(widget.session);
       if (mounted) setState(() => _privacy = privacy);
     } catch (error) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('隐私设置加载失败：$error')));
+      if (mounted)
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('隐私设置加载失败：$error')));
     }
   }
 
   Future<void> _showPrivacySettings() async {
     var personalization = _privacy?.consents['PERSONALIZATION'] ?? false;
     var notifications = _privacy?.consents['NOTIFICATION'] ?? false;
-    await showDialog<void>(context: context, builder: (context) => StatefulBuilder(builder: (context, setDialogState) => AlertDialog(
-      title: const Text('隐私与授权'),
-      content: Column(mainAxisSize: MainAxisSize.min, children: [
-        Text('当前政策版本：${_privacy?.policyVersion ?? '加载中'}\n运营数据保留：${_privacy?.retentionDays ?? 365} 天'),
-        SwitchListTile(
-          contentPadding: EdgeInsets.zero,
-          title: const Text('个性化画像与推荐'),
-          value: personalization,
-          onChanged: (value) => setDialogState(() => personalization = value),
-        ),
-        SwitchListTile(
-          contentPadding: EdgeInsets.zero,
-          title: const Text('消息通知'),
-          value: notifications,
-          onChanged: (value) => setDialogState(() => notifications = value),
-        ),
-      ]),
-      actions: [
-        TextButton(onPressed: () => Navigator.pop(context), child: const Text('取消')),
-        FilledButton(onPressed: () async {
-          try {
-            final version = _privacy?.policyVersion ?? '2026-07-01';
-            await widget.api.updateConsent('PERSONALIZATION', personalization, version, widget.session);
-            final updated = await widget.api.updateConsent('NOTIFICATION', notifications, version, widget.session);
-            if (!context.mounted) return;
-            Navigator.pop(context);
-            if (mounted) setState(() => _privacy = updated);
-          } catch (error) {
-            if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('授权更新失败：$error')));
-          }
-        }, child: const Text('保存')),
-      ],
-    )));
+    var academic = _privacy?.consents['ACADEMIC_DATA_IMPORT'] ?? false;
+    final academicScopes = <String>{
+      ...?_privacy?.consentScopes['ACADEMIC_DATA_IMPORT'],
+    };
+    XjuEhallConfig? xjuConfig;
+    try {
+      xjuConfig = await widget.api.fetchXjuEhallConfig(widget.session);
+    } catch (_) {
+      // 撤回授权不依赖同步服务可用；新增授权则保持禁用。
+    }
+    if (!mounted) return;
+    await showDialog<void>(
+        context: context,
+        builder: (context) => StatefulBuilder(
+            builder: (context, setDialogState) => AlertDialog(
+                  title: const Text('隐私与授权'),
+                  content: SingleChildScrollView(
+                      child: Column(mainAxisSize: MainAxisSize.min, children: [
+                    Text(
+                        '当前政策版本：${_privacy?.policyVersion ?? '加载中'}\n运营数据保留：${_privacy?.retentionDays ?? 365} 天'),
+                    SwitchListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: const Text('个性化画像与推荐'),
+                      value: personalization,
+                      onChanged: (value) =>
+                          setDialogState(() => personalization = value),
+                    ),
+                    SwitchListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: const Text('消息通知'),
+                      value: notifications,
+                      onChanged: (value) =>
+                          setDialogState(() => notifications = value),
+                    ),
+                    SwitchListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: const Text('新疆大学教务数据同步'),
+                      subtitle: Text(xjuConfig?.enabled == true
+                          ? '只同步你选择的私有数据，不保存学校登录会话'
+                          : '同步功能尚未开放；已授权用户仍可撤回'),
+                      value: academic,
+                      onChanged: academic || xjuConfig?.enabled == true
+                          ? (value) => setDialogState(() => academic = value)
+                          : null,
+                    ),
+                    if (academic)
+                      ...[
+                        ('TIMETABLE', '课表'),
+                        ('EXAM', '考试'),
+                        ('HOMEWORK', '作业'),
+                      ]
+                          .where((entry) =>
+                              xjuConfig?.supportedScopes.contains(entry.$1) ??
+                              academicScopes.contains(entry.$1))
+                          .map(
+                            (entry) => CheckboxListTile(
+                              contentPadding: const EdgeInsets.only(left: 16),
+                              dense: true,
+                              title: Text(entry.$2),
+                              value: academicScopes.contains(entry.$1),
+                              onChanged: (value) => setDialogState(() {
+                                if (value == true) {
+                                  academicScopes.add(entry.$1);
+                                } else {
+                                  academicScopes.remove(entry.$1);
+                                }
+                              }),
+                            ),
+                          ),
+                  ])),
+                  actions: [
+                    TextButton(
+                        onPressed: () => Navigator.pop(context),
+                        child: const Text('取消')),
+                    FilledButton(
+                        onPressed: () async {
+                          if (academic && academicScopes.isEmpty) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                  content: Text('请至少选择课表、考试或作业中的一项')),
+                            );
+                            return;
+                          }
+                          try {
+                            final version =
+                                _privacy?.policyVersion ?? '2026-07-01';
+                            await widget.api.updateConsent('PERSONALIZATION',
+                                personalization, version, widget.session);
+                            await widget.api.updateConsent('NOTIFICATION',
+                                notifications, version, widget.session);
+                            final updated = await widget.api.updateConsent(
+                              'ACADEMIC_DATA_IMPORT',
+                              academic,
+                              xjuConfig?.policyVersion ?? version,
+                              widget.session,
+                              scopes:
+                                  academic ? academicScopes.toList() : const [],
+                            );
+                            if (!context.mounted) return;
+                            Navigator.pop(context);
+                            if (mounted) setState(() => _privacy = updated);
+                          } catch (error) {
+                            if (context.mounted)
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(content: Text('授权更新失败：$error')));
+                          }
+                        },
+                        child: const Text('保存')),
+                  ],
+                )));
+  }
+
+  Future<void> _deleteAcademicData() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('删除教务同步数据'),
+        content: const Text('将删除你通过新疆大学一站式大厅同步的课表、考试和作业；其他导入内容不受影响。此操作不可撤销。'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('取消')),
+          FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('确认删除')),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    try {
+      final result = await widget.api.deleteXjuEhallData(widget.session);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('已删除 ${result['deletedEvents'] ?? 0} 条教务事件')),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('教务数据删除失败：$error')),
+      );
+    }
   }
 
   Future<void> _loadTags() async {
@@ -168,8 +278,8 @@ class _PrototypeProfilePageState extends State<PrototypeProfilePage> {
     final major = TextEditingController(text: _profile?.major ?? '');
     final grade = TextEditingController(text: _profile?.grade ?? '');
     final className = TextEditingController(text: _profile?.className ?? '');
-    final interests = TextEditingController(
-        text: _profile?.interestTags.join('，') ?? '');
+    final interests =
+        TextEditingController(text: _profile?.interestTags.join('，') ?? '');
     final courses =
         TextEditingController(text: _profile?.courseCodes.join('，') ?? '');
     final saved = await showDialog<bool>(
@@ -354,8 +464,7 @@ class _PrototypeProfilePageState extends State<PrototypeProfilePage> {
                             fontWeight: FontWeight.w800,
                             color: Colors.white)),
                     const SizedBox(height: 3),
-                    Text(
-                        _profile == null ? '加载中…' : _profileSubtitle,
+                    Text(_profile == null ? '加载中…' : _profileSubtitle,
                         style: TextStyle(
                             fontSize: 12,
                             color: Colors.white.withValues(alpha: 0.9))),
@@ -599,6 +708,11 @@ class _PrototypeProfilePageState extends State<PrototypeProfilePage> {
                   icon: Icons.privacy_tip_outlined,
                   label: '隐私与授权',
                   onTap: _showPrivacySettings),
+              _MenuItem(
+                  icon: Icons.delete_sweep_outlined,
+                  label: '删除教务同步数据',
+                  isLogout: true,
+                  onTap: _deleteAcademicData),
               _MenuItem(
                   icon: Icons.download_outlined,
                   label: '导出个人数据',

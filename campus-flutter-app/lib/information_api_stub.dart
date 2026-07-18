@@ -134,8 +134,7 @@ class InformationItem {
   final List<String> recommendReasons;
   final int? submittedByUserId;
 
-  bool get isUserUpload =>
-      submittedByUserId != null || sourceName == '用户文件上传';
+  bool get isUserUpload => submittedByUserId != null || sourceName == '用户文件上传';
 
   bool get hasValidAiSummary =>
       aiSummary.trim().isNotEmpty &&
@@ -283,8 +282,7 @@ class InformationFeedPage {
           .toList(),
       nextCursor: json['nextCursor'] as String?,
       nextCursorId: (json['nextCursorId'] as num?)?.toInt(),
-      nextSubscriptionMatch:
-          (json['nextSubscriptionMatch'] as num?)?.toInt(),
+      nextSubscriptionMatch: (json['nextSubscriptionMatch'] as num?)?.toInt(),
       hasMore: json['hasMore'] as bool? ?? false,
       total: (json['total'] as num?)?.toInt() ?? items.length,
     );
@@ -295,16 +293,17 @@ DateTime? _firstAiDate(Map<String, Object?> card, List<String> keys) {
   for (final key in keys) {
     final raw = card[key];
     if (raw is! String || raw.trim().isEmpty) continue;
-    final normalized = raw.trim()
+    final normalized = raw
+        .trim()
         .replaceAll('年', '-')
         .replaceAll('月', '-')
         .replaceAll('日', '')
         .replaceAll('/', '-');
     final parsed = DateTime.tryParse(normalized);
     if (parsed != null) return parsed;
-    final parts = RegExp(
-            r'^(\d{4})-(\d{1,2})-(\d{1,2})(?:\s+(\d{1,2}):(\d{1,2}))?')
-        .firstMatch(normalized);
+    final parts =
+        RegExp(r'^(\d{4})-(\d{1,2})-(\d{1,2})(?:\s+(\d{1,2}):(\d{1,2}))?')
+            .firstMatch(normalized);
     if (parts != null) {
       return DateTime(
         int.parse(parts[1]!),
@@ -344,8 +343,7 @@ class ImportResult {
   final String? parsedEventType;
   final int? createdItemId;
 
-  bool get hasParsedData =>
-      parsedTitle != null && parsedTitle!.isNotEmpty;
+  bool get hasParsedData => parsedTitle != null && parsedTitle!.isNotEmpty;
 
   factory ImportResult.fromJson(Map<String, Object?> json) {
     final event = json['event'] as Map<String, Object?>? ??
@@ -358,13 +356,12 @@ class ImportResult {
       taskId: (json['taskId'] as num?)?.toInt() ?? 0,
       status: json['status'] as String? ?? 'UNKNOWN',
       message: json['message'] as String? ?? '',
-      parsedTitle: event['title'] as String? ??
-          json['parsedTitle'] as String?,
+      parsedTitle: event['title'] as String? ?? json['parsedTitle'] as String?,
       parsedTime: event['eventTime'] as String? ??
           event['time'] as String? ??
           json['parsedTime'] as String?,
-      parsedLocation: event['location'] as String? ??
-          json['parsedLocation'] as String?,
+      parsedLocation:
+          event['location'] as String? ?? json['parsedLocation'] as String?,
       parsedTags: tagsRaw.isEmpty
           ? (json['parsedTags'] as List<Object?>? ?? const [])
               .whereType<String>()
@@ -373,10 +370,87 @@ class ImportResult {
       parsedSummary: event['summary'] as String? ??
           event['aiSummary'] as String? ??
           json['parsedSummary'] as String?,
-      parsedEventType: event['eventType'] as String? ??
-          json['parsedEventType'] as String?,
+      parsedEventType:
+          event['eventType'] as String? ?? json['parsedEventType'] as String?,
       createdItemId: (json['createdItemId'] as num?)?.toInt() ??
           (event['id'] as num?)?.toInt(),
+    );
+  }
+}
+
+class XjuEhallConfig {
+  const XjuEhallConfig({
+    required this.enabled,
+    required this.loginUrl,
+    required this.allowedAuthHosts,
+    required this.allowedDataHosts,
+    required this.supportedScopes,
+    required this.schemaVersion,
+    required this.policyVersion,
+    required this.maxPayloadBytes,
+    required this.maxSourceItems,
+  });
+
+  final bool enabled;
+  final String loginUrl;
+  final List<String> allowedAuthHosts;
+  final List<String> allowedDataHosts;
+  final List<String> supportedScopes;
+  final int schemaVersion;
+  final String policyVersion;
+  final int maxPayloadBytes;
+  final int maxSourceItems;
+
+  factory XjuEhallConfig.fromJson(Map<String, Object?> json) => XjuEhallConfig(
+        enabled: json['enabled'] as bool? ?? false,
+        loginUrl: json['loginUrl'] as String? ?? '',
+        allowedAuthHosts:
+            (json['allowedAuthHosts'] as List<Object?>? ?? const [])
+                .whereType<String>()
+                .toList(),
+        allowedDataHosts:
+            (json['allowedDataHosts'] as List<Object?>? ?? const [])
+                .whereType<String>()
+                .toList(),
+        supportedScopes: (json['supportedScopes'] as List<Object?>? ?? const [])
+            .whereType<String>()
+            .toList(),
+        schemaVersion: (json['schemaVersion'] as num?)?.toInt() ?? 0,
+        policyVersion: json['policyVersion'] as String? ?? '',
+        maxPayloadBytes: (json['maxPayloadBytes'] as num?)?.toInt() ?? 0,
+        maxSourceItems: (json['maxSourceItems'] as num?)?.toInt() ?? 0,
+      );
+}
+
+class XjuEhallImportResult {
+  const XjuEhallImportResult({
+    required this.taskId,
+    required this.status,
+    required this.message,
+    required this.total,
+    required this.success,
+    required this.skipped,
+    required this.failed,
+  });
+
+  final int taskId;
+  final String status;
+  final String message;
+  final int total;
+  final int success;
+  final int skipped;
+  final int failed;
+
+  factory XjuEhallImportResult.fromJson(Map<String, Object?> json) {
+    final summary = json['summary'] as Map<String, Object?>? ?? const {};
+    return XjuEhallImportResult(
+      taskId: (json['taskId'] as num?)?.toInt() ?? 0,
+      status: json['status'] as String? ?? 'UNKNOWN',
+      message: json['message'] as String? ?? '',
+      total: (summary['total'] as num?)?.toInt() ?? 0,
+      success: (summary['success'] as num?)?.toInt() ?? 0,
+      skipped: (summary['skipped'] as num?)?.toInt() ?? 0,
+      failed: (summary['failed'] as num?)?.toInt() ?? 0,
     );
   }
 }
@@ -443,7 +517,8 @@ class ImportedEventItem {
 abstract class CampusApi {
   Future<LoginSession> login(String username, String password);
 
-  Future<LoginSession> register(String username, String email, String password) =>
+  Future<LoginSession> register(
+          String username, String email, String password) =>
       Future.error(UnsupportedError('当前实现不支持注册'));
 
   Future<String?> forgotPassword(String account) =>
@@ -472,14 +547,20 @@ abstract class CampusApi {
       Future.error(UnsupportedError('当前实现不支持账号注销'));
 
   Future<PrivacyStatus> fetchPrivacyStatus(LoginSession session) =>
-      Future.value(const PrivacyStatus(policyVersion: '', retentionDays: 365, consents: {}));
+      Future.value(const PrivacyStatus(
+          policyVersion: '', retentionDays: 365, consents: {}));
 
-  Future<PrivacyStatus> updateConsent(String type, bool granted, String policyVersion, LoginSession session) =>
+  Future<PrivacyStatus> updateConsent(
+          String type, bool granted, String policyVersion, LoginSession session,
+          {List<String> scopes = const []}) =>
       Future.error(UnsupportedError('当前实现不支持隐私授权'));
 
-  Future<void> registerDevice(String deviceId, String platform, String? pushToken, LoginSession session) => Future.value();
+  Future<void> registerDevice(String deviceId, String platform,
+          String? pushToken, LoginSession session) =>
+      Future.value();
 
-  Future<List<NotificationDelivery>> fetchNotificationDeliveries(LoginSession session) =>
+  Future<List<NotificationDelivery>> fetchNotificationDeliveries(
+          LoginSession session) =>
       Future.value(const []);
 
   Future<void> withdrawReminder(int reminderId, LoginSession session) =>
@@ -535,6 +616,16 @@ abstract class CampusApi {
   /// 雨课堂Cookie导入
   Future<ImportResult> importRainCookie(
       String cookie, List<String> scopes, LoginSession session);
+
+  Future<XjuEhallConfig> fetchXjuEhallConfig(LoginSession session) =>
+      Future.error(UnsupportedError('当前实现不支持教务同步'));
+
+  Future<XjuEhallImportResult> importXjuEhall(
+          Map<String, Object?> payload, LoginSession session) =>
+      Future.error(UnsupportedError('当前实现不支持教务同步'));
+
+  Future<Map<String, int>> deleteXjuEhallData(LoginSession session) =>
+      Future.error(UnsupportedError('当前实现不支持删除教务同步数据'));
 
   /// 查询导入任务列表
   Future<List<ImportTaskItem>> fetchImportTasks(LoginSession session);
@@ -638,21 +729,33 @@ abstract class CampusApi {
 }
 
 class PrivacyStatus {
-  const PrivacyStatus({required this.policyVersion, required this.retentionDays, required this.consents});
+  const PrivacyStatus({
+    required this.policyVersion,
+    required this.retentionDays,
+    required this.consents,
+    this.consentScopes = const {},
+  });
   final String policyVersion;
   final int retentionDays;
   final Map<String, bool> consents;
+  final Map<String, List<String>> consentScopes;
 
   factory PrivacyStatus.fromJson(Map<String, Object?> json) {
     final values = <String, bool>{};
+    final scopes = <String, List<String>>{};
     for (final raw in json['consents'] as List<Object?>? ?? const []) {
       final item = raw as Map<String, Object?>;
-      values[item['consentType'] as String? ?? ''] = item['granted'] as bool? ?? false;
+      final type = item['consentType'] as String? ?? '';
+      values[type] = item['granted'] as bool? ?? false;
+      scopes[type] = (item['scopes'] as List<Object?>? ?? const [])
+          .whereType<String>()
+          .toList();
     }
     return PrivacyStatus(
       policyVersion: json['currentPolicyVersion'] as String? ?? '',
       retentionDays: (json['retentionDays'] as num?)?.toInt() ?? 365,
       consents: values,
+      consentScopes: scopes,
     );
   }
 }
@@ -719,7 +822,12 @@ class AiChatSource {
 }
 
 class SearchResult {
-  const SearchResult({required this.items, required this.total, this.message, this.mode = 'FILTER', this.fallback = false});
+  const SearchResult(
+      {required this.items,
+      required this.total,
+      this.message,
+      this.mode = 'FILTER',
+      this.fallback = false});
   final List<SearchResultItem> items;
   final int total;
   final String? message;
@@ -810,8 +918,12 @@ class UserProfile {
         if (major?.trim().isNotEmpty == true) major!.trim(),
         if (grade?.trim().isNotEmpty == true) grade!.trim(),
         if (className?.trim().isNotEmpty == true) className!.trim(),
-        ...interestTags.map((value) => value.trim()).where((value) => value.isNotEmpty),
-        ...courseCodes.map((value) => value.trim()).where((value) => value.isNotEmpty),
+        ...interestTags
+            .map((value) => value.trim())
+            .where((value) => value.isNotEmpty),
+        ...courseCodes
+            .map((value) => value.trim())
+            .where((value) => value.isNotEmpty),
       }.toList();
 
   factory UserProfile.fromJson(Map<String, Object?> json) {
@@ -1148,7 +1260,8 @@ class DailyBriefing {
 }
 
 CampusApi createCampusApi({
-  void Function(LoginSession original, LoginSession updated)? onSessionRefreshed,
+  void Function(LoginSession original, LoginSession updated)?
+      onSessionRefreshed,
 }) {
   throw UnsupportedError('当前平台暂不支持网络请求');
 }

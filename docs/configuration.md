@@ -272,6 +272,10 @@ TAVILY_API_KEY=<secret>
 | 变量 | 默认值 | 说明 |
 | --- | --- | --- |
 | `IMPORT_RAIN_COOKIE_ENABLED` | `false` | 是否允许一次性雨课堂 Cookie 导入；没有书面授权不要开启 |
+| `XJU_EHALL_ENABLED` | `false` | 是否开放新疆大学一站式大厅同步；生产默认关闭 |
+| `XJU_EHALL_LOGIN_URL` | `https://ehall.xju.edu.cn/new/index.html` | 学校官方登录入口，只允许 HTTPS |
+| `XJU_EHALL_DATA_HOSTS` | 空 | 真实环境确认的数据域名，逗号分隔；为空时即使误开开关也不可用 |
+| `XJU_EHALL_POLICY_VERSION` | `2026-07-18-v1` | 教务数据同步专项授权版本 |
 | `TESSDATA_PATH` | `C:/Program Files/Tesseract-OCR/tessdata` | Tesseract 语言数据目录 |
 | `OCR_LANGUAGE` | `chi_sim+eng` | OCR 语言 |
 | `SENTINEL_DASHBOARD` | `localhost:8858` | 可选 Sentinel 控制台地址 |
