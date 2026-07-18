@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:campus_flutter_app/detail_page.dart';
 import 'package:campus_flutter_app/discover_page.dart';
 import 'package:campus_flutter_app/home_page.dart';
+import 'package:campus_flutter_app/assistant_page.dart';
 import 'package:campus_flutter_app/information_api.dart';
 
 void main() {
@@ -63,7 +64,8 @@ void main() {
         event('ACTIVITY', '2026-07-10 12:00').importanceLevelAt(now), isNull);
   });
 
-  testWidgets('home exposes all and subscribed-only feed modes', (tester) async {
+  testWidgets('home exposes all and subscribed-only feed modes',
+      (tester) async {
     var selectedMode = 'ALL';
     await tester.pumpWidget(MaterialApp(
       home: PrototypeHomePage(
@@ -83,6 +85,43 @@ void main() {
     await tester.pump();
 
     expect(selectedMode, 'SUBSCRIBED_ONLY');
+  });
+
+  testWidgets('assistant keeps chat messages while switching tabs',
+      (tester) async {
+    var index = 1;
+    late StateSetter updateTabs;
+    await tester.pumpWidget(MaterialApp(
+      home: StatefulBuilder(builder: (context, setState) {
+        updateTabs = setState;
+        return Scaffold(
+          body: Stack(
+            fit: StackFit.expand,
+            children: [
+              Offstage(
+                offstage: index != 1,
+                child: PrototypeAssistantPage(
+                    api: _FakeCampusApi(_item()), session: _session()),
+              ),
+              if (index != 1) const Text('其他页面'),
+            ],
+          ),
+        );
+      }),
+    ));
+
+    await tester.enterText(find.byType(TextField), '记住我喜欢讲座');
+    await tester.tap(find.byIcon(Icons.send));
+    await tester.pumpAndSettle();
+    expect(find.text('记住我喜欢讲座'), findsOneWidget);
+
+    updateTabs(() => index = 0);
+    await tester.pump();
+    updateTabs(() => index = 1);
+    await tester.pump();
+
+    expect(find.text('记住我喜欢讲座'), findsOneWidget);
+    expect(find.textContaining('已记录'), findsOneWidget);
   });
 
   testWidgets('detail page separates a persisted AI summary from the body',
@@ -326,8 +365,8 @@ class _FakeCampusApi extends CampusApi {
       throw UnimplementedError();
   @override
   Future<AiChatResult> aiChat(
-          String sessionId, String message, LoginSession session) =>
-      throw UnimplementedError();
+          String sessionId, String message, LoginSession session) async =>
+      const AiChatResult(sessionId: 'memory-session', answer: '已记录你的偏好。');
   @override
   Future<SearchResult> search(String query, LoginSession session) =>
       throw UnimplementedError();

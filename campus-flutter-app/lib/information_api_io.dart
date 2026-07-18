@@ -36,7 +36,8 @@ const _apiBase = String.fromEnvironment(
 );
 
 CampusApi createCampusApi({
-  void Function(LoginSession original, LoginSession updated)? onSessionRefreshed,
+  void Function(LoginSession original, LoginSession updated)?
+      onSessionRefreshed,
 }) =>
     IoCampusApi(_apiBase, onSessionRefreshed: onSessionRefreshed);
 
@@ -62,7 +63,8 @@ class IoCampusApi implements CampusApi {
   }
 
   @override
-  Future<LoginSession> register(String username, String email, String password) async {
+  Future<LoginSession> register(
+      String username, String email, String password) async {
     final root = await _request('POST', '/api/v1/auth/register',
         body: {'username': username, 'email': email, 'password': password});
     return LoginSession.fromJson(_data(root));
@@ -70,13 +72,15 @@ class IoCampusApi implements CampusApi {
 
   @override
   Future<String?> forgotPassword(String account) async {
-    final root = await _request('POST', '/api/v1/auth/password/forgot', body: {'account': account});
+    final root = await _request('POST', '/api/v1/auth/password/forgot',
+        body: {'account': account});
     return _data(root)['developmentResetToken'] as String?;
   }
 
   @override
   Future<void> resetPassword(String token, String newPassword) async {
-    await _request('POST', '/api/v1/auth/password/reset', body: {'token': token, 'newPassword': newPassword});
+    await _request('POST', '/api/v1/auth/password/reset',
+        body: {'token': token, 'newPassword': newPassword});
   }
 
   @override
@@ -222,8 +226,8 @@ class IoCampusApi implements CampusApi {
       request.headers.set(HttpHeaders.authorizationHeader,
           '${current.tokenType} ${current.accessToken}');
       final response = await request.close();
-      final bytes = await response.fold<List<int>>(
-          <int>[], (buffer, chunk) => buffer..addAll(chunk));
+      final bytes = await response
+          .fold<List<int>>(<int>[], (buffer, chunk) => buffer..addAll(chunk));
       if (response.statusCode == 401) {
         if (allowRefresh) {
           await _refresh(session);
@@ -239,12 +243,11 @@ class IoCampusApi implements CampusApi {
         } catch (_) {}
         throw HttpException(message);
       }
-      final disposition =
-          response.headers.value('content-disposition') ?? '';
-      final encodedName = RegExp("filename\\*=UTF-8''([^;]+)",
-              caseSensitive: false)
-          .firstMatch(disposition)
-          ?.group(1);
+      final disposition = response.headers.value('content-disposition') ?? '';
+      final encodedName =
+          RegExp("filename\\*=UTF-8''([^;]+)", caseSensitive: false)
+              .firstMatch(disposition)
+              ?.group(1);
       final plainName = RegExp('filename="([^"]+)"', caseSensitive: false)
           .firstMatch(disposition)
           ?.group(1);
@@ -360,29 +363,44 @@ class IoCampusApi implements CampusApi {
 
   @override
   Future<PrivacyStatus> fetchPrivacyStatus(LoginSession session) async {
-    final root = await _request('GET', '/api/v1/users/me/privacy', session: session);
+    final root =
+        await _request('GET', '/api/v1/users/me/privacy', session: session);
     final privacy = PrivacyStatus.fromJson(_data(root));
     _privacyCache[session.user.id] = privacy;
     return privacy;
   }
 
   @override
-  Future<PrivacyStatus> updateConsent(String type, bool granted, String policyVersion, LoginSession session) async {
-    final root = await _request('POST', '/api/v1/users/me/privacy/consents', session: session,
-        body: {'consentType': type, 'granted': granted, 'policyVersion': policyVersion, 'source': 'APP'});
+  Future<PrivacyStatus> updateConsent(String type, bool granted,
+      String policyVersion, LoginSession session) async {
+    final root = await _request('POST', '/api/v1/users/me/privacy/consents',
+        session: session,
+        body: {
+          'consentType': type,
+          'granted': granted,
+          'policyVersion': policyVersion,
+          'source': 'APP'
+        });
     final privacy = PrivacyStatus.fromJson(_data(root));
     _privacyCache[session.user.id] = privacy;
     return privacy;
   }
 
   @override
-  Future<void> registerDevice(String deviceId, String platform, String? pushToken, LoginSession session) async {
-    await _request('PUT', '/api/v1/information/notifications/devices', session: session,
-        body: {'deviceId': deviceId, 'platform': platform, 'pushToken': pushToken});
+  Future<void> registerDevice(String deviceId, String platform,
+      String? pushToken, LoginSession session) async {
+    await _request('PUT', '/api/v1/information/notifications/devices',
+        session: session,
+        body: {
+          'deviceId': deviceId,
+          'platform': platform,
+          'pushToken': pushToken
+        });
   }
 
   @override
-  Future<List<NotificationDelivery>> fetchNotificationDeliveries(LoginSession session) async {
+  Future<List<NotificationDelivery>> fetchNotificationDeliveries(
+      LoginSession session) async {
     final root = await _request(
       'GET',
       '/api/v1/information/notifications/deliveries',
@@ -866,6 +884,20 @@ class IoCampusApi implements CampusApi {
 
 /// 根据消息内容判断是否涉及个人日程/作业/课表等个性化查询。
 bool _isPersonalQuery(String message) {
-  const keywords = ['我的', '我本周', '我今天', '我明天', '我的课表', '我的作业', '我的考试', '我的日程'];
+  const keywords = [
+    '我的',
+    '我本周',
+    '我今天',
+    '我明天',
+    '我的课表',
+    '我的作业',
+    '我的考试',
+    '我的日程',
+    '记住',
+    '我喜欢',
+    '我关注',
+    '感兴趣',
+    '偏好',
+  ];
   return keywords.any(message.contains);
 }

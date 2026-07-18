@@ -375,7 +375,15 @@ class _CampusShellState extends State<CampusShell> {
 
     return Scaffold(
       backgroundColor: AppTheme.bg,
-      body: SafeArea(child: pages[_tabIndex]),
+      body: SafeArea(
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            Offstage(offstage: _tabIndex != 2, child: pages[2]),
+            if (_tabIndex != 2) pages[_tabIndex],
+          ],
+        ),
+      ),
       bottomNavigationBar: _PillTabBar(
         index: _tabIndex,
         onChanged: (i) => setState(() => _tabIndex = i),
