@@ -3,6 +3,8 @@ package cn.campusmind.importing.feign;
 import cn.campusmind.common.web.ApiResponse;
 import org.springframework.cloud.openfeign.FeignClient;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 
@@ -28,4 +30,9 @@ public interface EventFeignClient {
     @PostMapping("/api/v1/events")
     ApiResponse<Long> createEvent(@RequestBody Map<String, Object> body,
                                    @RequestHeader(value = "X-User-Id", required = false) Long userId);
+
+    @DeleteMapping("/api/v1/events/source/{sourceType}")
+    ApiResponse<Map<String, Object>> deleteOwnedSource(
+            @PathVariable("sourceType") String sourceType,
+            @RequestHeader("X-User-Id") Long userId);
 }

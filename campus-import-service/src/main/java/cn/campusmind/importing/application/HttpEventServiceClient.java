@@ -63,4 +63,21 @@ public class HttpEventServiceClient implements EventServiceClient {
         }
         return response.data();
     }
+
+    @Override
+    public Map<String, Object> deleteOwnedSource(String sourceType, Long ownerUserId) {
+        ApiResponse<Map<String, Object>> response;
+        try {
+            response = feignClient.deleteOwnedSource(sourceType, ownerUserId);
+        } catch (RuntimeException ex) {
+            throw new BusinessException("EVENT_SERVICE_UNAVAILABLE",
+                    "事件服务暂不可用：" + ex.getMessage(), HttpStatus.BAD_GATEWAY);
+        }
+        if (response == null || !response.success() || response.data() == null) {
+            String message = response == null ? "无响应" : response.message();
+            throw new BusinessException("EVENT_SERVICE_FAILED",
+                    "事件删除失败：" + message, HttpStatus.BAD_GATEWAY);
+        }
+        return response.data();
+    }
 }

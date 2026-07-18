@@ -96,7 +96,7 @@ public class ImportService {
         ImportTask task = createTask(user.userId(), "USER_TEXT", doc.getId());
         try {
             CognitionResult candidate = cognitionClient.extract("USER_TEXT", text);
-            Long eventId = persistEvent(user, candidate, "USER_TEXT", contentHash, doc.getId(), null, false, text);
+            Long eventId = persistEvent(user, candidate, "USER_TEXT", contentHash, doc.getId(), null, true, text);
             boolean infoCompensated = persistInformationItemWithCompensation(candidate, "用户文本提交", text, contentHash, eventId, user);
             succeedTask(task, eventId, candidate, infoCompensated);
             return response(task, "文本导入完成，已生成AI预测事件");
@@ -200,7 +200,7 @@ public class ImportService {
             importTaskMapper.updateById(task);
 
             CognitionResult candidate = cognitionClient.extract("USER_FILE", text);
-            Long eventId = persistEvent(user, candidate, "USER_FILE", contentHash, doc.getId(), null, false, text);
+            Long eventId = persistEvent(user, candidate, "USER_FILE", contentHash, doc.getId(), null, true, text);
             boolean infoCompensated = persistInformationItemWithCompensation(candidate, "用户文件上传", text, contentHash, eventId, user);
             succeedTask(task, eventId, candidate, infoCompensated);
             return response(task, "文件导入完成，已生成AI预测事件");
@@ -532,7 +532,7 @@ public class ImportService {
     /**
      * 基于 Redis 的滑动窗口速率限制：单用户每分钟最多 rateLimitPerMinute 次导入。
      */
-    private void checkRateLimit(Long userId) {
+    void checkRateLimit(Long userId) {
         String key = "import:rate:" + userId;
         int limit = properties.rateLimitPerMinute();
         Long count = redisTemplate.opsForValue().increment(key);

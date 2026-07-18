@@ -29,7 +29,7 @@ public class RawDocumentService {
 
     private static final Logger log = LoggerFactory.getLogger(RawDocumentService.class);
 
-    /** 脱敏字段白名单：这些字段在存储前会被删除 */
+    /** 敏感字段阻止清单：这些字段在存储前会被删除。 */
     private static final Set<String> SENSITIVE_FIELDS = Set.of(
             "name", "phone", "mobile", "avatar", "studentid", "student_id",
             "deviceid", "device_id", "token", "accesstoken", "access_token",
@@ -110,7 +110,7 @@ public class RawDocumentService {
     }
 
     /**
-     * 字段白名单脱敏：解析 JSON，删除敏感字段后返回脱敏后的 JSON。
+     * 解析 JSON，删除敏感字段后返回脱敏后的 JSON。
      * 非 JSON 文本原样返回（不修改）。
      */
     public String sanitizeRawJson(String rawJson, String sourceType) {
@@ -127,7 +127,10 @@ public class RawDocumentService {
             sanitizeValue(parsed);
             return objectMapper.writeValueAsString(parsed);
         } catch (Exception ex) {
-            log.debug("脱敏解析失败，原样保留: sourceType={}, error={}", sourceType, ex.getMessage());
+            if (Set.of("RAIN_CLASSROOM", "XIQUEER", "XJU_EHALL").contains(sourceType)) {
+                throw new IllegalArgumentException("敏感结构化数据解析失败，拒绝原样保存", ex);
+            }
+            log.debug("普通文本 JSON 解析失败，按文本保留: sourceType={}, error={}", sourceType, ex.getMessage());
             return rawJson;
         }
     }

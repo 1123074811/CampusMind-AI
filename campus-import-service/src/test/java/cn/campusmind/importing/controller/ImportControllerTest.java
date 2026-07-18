@@ -175,7 +175,7 @@ class ImportControllerTest {
         verify(eventServiceClient, times(1)).createEvent(
                 any(), any(), any(), any(),
                 any(), any(), any(), any(),
-                any(), any(), eq("PUBLIC"), isNull(),
+                any(), any(), eq("PRIVATE"), eq(1L),
                 any(), any(), any(), any()
         );
         verify(informationServiceClient, times(1)).createItem(

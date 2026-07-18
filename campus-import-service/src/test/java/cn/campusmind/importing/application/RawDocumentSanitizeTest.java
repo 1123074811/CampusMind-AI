@@ -6,6 +6,7 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 /**
  * RawDocument 字段白名单脱敏测试。
@@ -110,5 +111,11 @@ class RawDocumentSanitizeTest {
         assertFalse(sanitized.contains("test"), "数组中的姓名应被脱敏");
         assertFalse(sanitized.contains("Bearer secret"), "大小写不同的授权字段应被脱敏");
         assertTrue(sanitized.contains("\"value\":1"), "非敏感数组字段应保留");
+    }
+
+    @Test
+    void shouldRejectMalformedSensitiveJson() {
+        assertThrows(IllegalArgumentException.class,
+                () -> service.sanitizeRawJson("{\"token\":", "RAIN_CLASSROOM"));
     }
 }

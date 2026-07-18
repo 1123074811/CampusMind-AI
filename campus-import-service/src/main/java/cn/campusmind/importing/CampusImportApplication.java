@@ -2,6 +2,7 @@ package cn.campusmind.importing;
 
 import cn.campusmind.common.config.JwtAuthProperties;
 import cn.campusmind.importing.config.ImportProperties;
+import cn.campusmind.importing.config.XjuEhallProperties;
 import org.mybatis.spring.annotation.MapperScan;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
@@ -11,7 +12,7 @@ import org.springframework.cloud.openfeign.EnableFeignClients;
 import org.springframework.scheduling.annotation.EnableScheduling;
 
 @SpringBootApplication(scanBasePackages = "cn.campusmind")
-@EnableConfigurationProperties({ImportProperties.class, JwtAuthProperties.class})
+@EnableConfigurationProperties({ImportProperties.class, XjuEhallProperties.class, JwtAuthProperties.class})
 @EnableScheduling
 @EnableDiscoveryClient
 @EnableFeignClients(basePackages = "cn.campusmind.importing.feign")

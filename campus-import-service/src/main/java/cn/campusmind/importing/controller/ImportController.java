@@ -4,6 +4,7 @@ import cn.campusmind.common.web.ApiResponse;
 import cn.campusmind.importing.application.AuthTokenService;
 import cn.campusmind.importing.application.CurrentUser;
 import cn.campusmind.importing.application.ImportService;
+import cn.campusmind.importing.application.XjuEhallImportService;
 import cn.campusmind.importing.domain.ImportTask;
 import cn.campusmind.importing.domain.RawDocument;
 import jakarta.validation.Valid;
@@ -34,10 +35,14 @@ public class ImportController {
 
     private final AuthTokenService authTokenService;
     private final ImportService importService;
+    private final XjuEhallImportService xjuEhallImportService;
 
-    public ImportController(AuthTokenService authTokenService, ImportService importService) {
+    public ImportController(AuthTokenService authTokenService,
+                            ImportService importService,
+                            XjuEhallImportService xjuEhallImportService) {
         this.authTokenService = authTokenService;
         this.importService = importService;
+        this.xjuEhallImportService = xjuEhallImportService;
     }
 
     @PostMapping("/text")
@@ -78,6 +83,28 @@ public class ImportController {
             @Valid @RequestBody RainCookieImportRequest request) {
         CurrentUser user = authTokenService.parseBearerToken(authorization);
         return ApiResponse.ok(importService.submitRainCookieImport(user, request));
+    }
+
+    @GetMapping("/xju/ehall/config")
+    public ApiResponse<XjuEhallConfigResponse> xjuEhallConfig(
+            @RequestHeader(value = "Authorization", required = false) String authorization) {
+        authTokenService.parseBearerToken(authorization);
+        return ApiResponse.ok(xjuEhallImportService.config());
+    }
+
+    @PostMapping("/xju/ehall")
+    public ApiResponse<XjuEhallImportResponse> importXjuEhall(
+            @RequestHeader(value = "Authorization", required = false) String authorization,
+            @Valid @RequestBody XjuEhallImportRequest request) {
+        CurrentUser user = authTokenService.parseBearerToken(authorization);
+        return ApiResponse.ok(xjuEhallImportService.importData(user, request));
+    }
+
+    @DeleteMapping("/xju/ehall/data")
+    public ApiResponse<Map<String, Object>> deleteXjuEhallData(
+            @RequestHeader(value = "Authorization", required = false) String authorization) {
+        CurrentUser user = authTokenService.parseBearerToken(authorization);
+        return ApiResponse.ok(xjuEhallImportService.deleteData(user));
     }
 
     @GetMapping("/tasks")

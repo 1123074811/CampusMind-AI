@@ -56,6 +56,19 @@ campus:
     rate-limit-per-minute: 10
     tessdata-path: ${TESSDATA_PATH:C:/Program Files/Tesseract-OCR/tessdata}
     ocr-language: ${OCR_LANGUAGE:chi_sim+eng}
+    xju-ehall:
+      enabled: ${XJU_EHALL_ENABLED:false}
+      login-url: ${XJU_EHALL_LOGIN_URL:https://ehall.xju.edu.cn/new/index.html}
+      auth-hosts:
+        - authserver.xju.edu.cn
+        - ehall.xju.edu.cn
+      data-hosts: ${XJU_EHALL_DATA_HOSTS:}
+      schema-version: 1
+      policy-version: ${XJU_EHALL_POLICY_VERSION:2026-07-18-v1}
+      max-payload-bytes: 2097152
+      max-source-items: 500
+      max-expanded-events: 800
+      collected-at-skew-minutes: 15
 
 management:
   endpoints:

@@ -1,5 +1,7 @@
 package cn.campusmind.importing.application;
 
+import java.util.Map;
+
 /**
  * 事件服务客户端：通过 HTTP 调用 campus-event-service 创建事件。
  */
@@ -14,4 +16,6 @@ public interface EventServiceClient {
                      String targetScopeJson, String tagsJson,
                      String visibility, Long ownerUserId,
                      String dedupKey, String rawDocId, String sourceUrl, String contentHash);
+
+    Map<String, Object> deleteOwnedSource(String sourceType, Long ownerUserId);
 }
