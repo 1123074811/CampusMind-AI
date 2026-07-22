@@ -38,6 +38,8 @@ public class InformationService {
             "不得", "禁止", "严禁", "不准", "不可", "迟到", "入场", "离场", "安检", "查询成绩", "公布成绩");
     private static final int PREVIEW_LENGTH = 160;
     private static final TypeReference<Map<String, Object>> AI_CARD = new TypeReference<>() { };
+    private static final java.util.regex.Pattern DEADLINE_LINE =
+            java.util.regex.Pattern.compile("(?m)^截止时间：\\s*([^\\r\\n]+)");
 
     private final InformationItemMapper informationItemMapper;
     private final UserInformationStateMapper userInformationStateMapper;
@@ -55,7 +57,7 @@ public class InformationService {
                               UserProfileMapper userProfileMapper,
                               ObjectMapper objectMapper,
                               JdbcTemplate jdbcTemplate,
-                              @Value("${campus.feed.source-subscription-weight:100}") int sourceSubscriptionWeight) {
+                              @Value("${campus.feed.source-subscription-weight:12}") int sourceSubscriptionWeight) {
         this.informationItemMapper = informationItemMapper;
         this.userInformationStateMapper = userInformationStateMapper;
         this.userSourceSubscriptionMapper = userSourceSubscriptionMapper;
@@ -81,44 +83,70 @@ public class InformationService {
         }
         boolean onlySubscribed = "SUBSCRIBED_ONLY".equals(normalizedMode);
         Set<Long> subscribedSourceIds = subscribedSourceIds(userId);
-        List<InformationItem> records = informationItemMapper.selectRankedFeed(
-                userId, onlySubscribed, cursor, cursorId, cursorSubscriptionMatch, safeSize + 1);
-        boolean hasMore = records.size() > safeSize;
-        List<InformationItem> visibleRecords = records.stream().limit(safeSize).toList();
-        Map<Long, String> readStatuses = readStatuses(userId, visibleRecords);
-        UserProfile userProfile = hasPersonalizationConsent(userId) ? loadUserProfile(userId) : null;
-        List<InformationFeedItemResponse> items = visibleRecords.stream()
-                .map(item -> toFeedItem(item,
+        // ponytail: 当前每用户仅数百条；可见池超过 1 万条时再改为物化推荐分与数据库游标。
+        List<InformationItem> records = informationItemMapper.selectFeedCandidates(userId, onlySubscribed);
+        List<UserInformationState> states = userStates(userId, records);
+        Map<Long, String> readStatuses = states.stream().collect(Collectors.toMap(
+                UserInformationState::getItemId, InformationService::readStatus, (first, second) -> first));
+        boolean personalized = hasPersonalizationConsent(userId);
+        UserProfile userProfile = personalized ? loadUserProfile(userId) : null;
+        RankingSignals signals = personalized ? rankingSignals(userId, records, states) : RankingSignals.empty();
+        LocalDateTime now = LocalDateTime.now();
+
+        List<InformationFeedItemResponse> ranked = records.stream()
+                .map(item -> toRankedFeedItem(item,
                         normalizeReadStatus(readStatuses.getOrDefault(item.getId(), "NEW")),
-                        subscribedSourceIds.contains(item.getSourceId()),
-                        userProfile))
+                        subscribedSourceIds.contains(item.getSourceId()), userProfile, signals, now, personalized))
+                .sorted(InformationService::compareRankedItems)
+                .filter(item -> isAfterCursor(item, cursor, cursorId, cursorSubscriptionMatch))
                 .toList();
-        LocalDateTime nextCursor = items.isEmpty()
-                ? null
-                : visibleRecords.get(visibleRecords.size() - 1).getFetchedAt();
-        Long nextCursorId = items.isEmpty() ? null : visibleRecords.get(visibleRecords.size() - 1).getId();
-        InformationItem lastVisible = items.isEmpty() ? null : visibleRecords.get(visibleRecords.size() - 1);
-        Integer nextSubscriptionMatch = lastVisible == null ? null
-                : (userId != null && userId.equals(lastVisible.getSubmittedByUserId()) ? 2
-                : (subscribedSourceIds.contains(lastVisible.getSourceId()) ? 1 : 0));
-        LambdaQueryWrapper<InformationItem> totalQuery = new LambdaQueryWrapper<InformationItem>()
-                .in(InformationItem::getItemStatus, VISIBLE_ITEM_STATUS)
-                .eq(InformationItem::getParseStatus, "DETAIL_SUCCESS")
-                .and(query -> {
-                    query.isNull(InformationItem::getSubmittedByUserId);
-                    if (userId != null) {
-                        query.or().eq(InformationItem::getSubmittedByUserId, userId);
-                    }
-                });
-        if (onlySubscribed) {
-            if (subscribedSourceIds.isEmpty()) {
-                return new InformationFeedResponse(items, nextCursor, nextCursorId,
-                        nextSubscriptionMatch, hasMore, 0);
-            }
-            totalQuery.in(InformationItem::getSourceId, subscribedSourceIds);
+        boolean hasMore = ranked.size() > safeSize;
+        List<InformationFeedItemResponse> items = ranked.stream().limit(safeSize).toList();
+        InformationFeedItemResponse last = items.isEmpty() ? null : items.get(items.size() - 1);
+        LocalDateTime nextCursor = last == null ? null : rankingTimestamp(last);
+        Long nextCursorId = last == null ? null : last.id();
+        Integer nextRecommendationScore = last == null ? null : last.recommendationScore();
+        return new InformationFeedResponse(items, nextCursor, nextCursorId,
+                nextRecommendationScore, hasMore, records.size());
+    }
+
+    @Transactional
+    public int deleteOwnedRainItems(Long userId) {
+        if (userId == null) {
+            throw new BusinessException("USER_REQUIRED", "删除雨课堂信息需要用户身份", HttpStatus.UNAUTHORIZED);
         }
-        long total = informationItemMapper.selectCount(totalQuery);
-        return new InformationFeedResponse(items, nextCursor, nextCursorId, nextSubscriptionMatch, hasMore, total);
+        List<Long> ids = jdbcTemplate.queryForList("""
+                SELECT id FROM information_item
+                WHERE submitted_by_user_id = ? AND source_name = '雨课堂导入'
+                """, Long.class, userId);
+        return deleteInformationItems(ids);
+    }
+
+    @Transactional
+    public int deleteOwnedRainItem(Long userId, Long eventId) {
+        if (userId == null) {
+            throw new BusinessException("USER_REQUIRED", "删除雨课堂信息需要用户身份", HttpStatus.UNAUTHORIZED);
+        }
+        List<Long> ids = jdbcTemplate.queryForList("""
+                SELECT DISTINCT i.id
+                FROM information_item i
+                JOIN event_source_ref r ON r.content_hash = i.content_hash
+                JOIN campus_event e ON e.id = r.event_id
+                WHERE e.id = ? AND e.owner_user_id = ?
+                  AND e.source_type = 'RAIN_CLASSROOM'
+                  AND i.submitted_by_user_id = ? AND i.source_name = '雨课堂导入'
+                """, Long.class, eventId, userId, userId);
+        return deleteInformationItems(ids);
+    }
+
+    private int deleteInformationItems(List<Long> ids) {
+        for (Long id : ids) {
+            jdbcTemplate.update("DELETE FROM user_reminder WHERE action_item_id IN (SELECT id FROM user_action_item WHERE information_item_id = ?)", id);
+            jdbcTemplate.update("DELETE FROM user_action_item WHERE information_item_id = ?", id);
+            jdbcTemplate.update("DELETE FROM user_information_state WHERE item_id = ?", id);
+            informationItemMapper.deleteById(id);
+        }
+        return ids.size();
     }
 
     private Set<Long> subscribedSourceIds(Long userId) {
@@ -188,6 +216,19 @@ public class InformationService {
         }
         InformationItem existing = informationItemMapper.selectOne(duplicateQuery.last("LIMIT 1"));
         if (existing != null) {
+            String rainType = rainEventType(request.sourceName(), request.detailContent());
+            boolean changed = false;
+            if (request.publishTime() != null && !request.publishTime().equals(existing.getPublishTime())) {
+                existing.setPublishTime(request.publishTime());
+                changed = true;
+            }
+            if (rainType != null && !rainType.equals(existing.getAiEventType())) {
+                existing.setAiEventType(rainType);
+                changed = true;
+            }
+            if (changed) {
+                informationItemMapper.updateById(existing);
+            }
             return existing.getId();
         }
         LocalDateTime now = LocalDateTime.now();
@@ -215,12 +256,22 @@ public class InformationService {
         item.setItemStatus("ACTIVE");
         item.setParseStatus("DETAIL_SUCCESS");
         item.setAiStatus("PENDING");
-        // 上传时间：优先使用请求中指定的 publishTime，否则使用当前时间
-        item.setPublishTime(request.publishTime() != null ? request.publishTime() : now);
+        item.setAiEventType(rainEventType(request.sourceName(), request.detailContent()));
+        // 雨课堂只使用来源发布时间；来源未提供时保持为空，禁止伪装成导入时间。
+        item.setPublishTime("雨课堂导入".equals(request.sourceName())
+                ? request.publishTime()
+                : request.publishTime() != null ? request.publishTime() : now);
         item.setSubmittedBy(request.submittedBy());
         item.setSubmittedByUserId(request.submittedByUserId());
         informationItemMapper.insert(item);
         return item.getId();
+    }
+
+    private static String rainEventType(String sourceName, String detailContent) {
+        if (!"雨课堂导入".equals(sourceName) || detailContent == null) return null;
+        return List.of("COURSE", "NOTICE", "HOMEWORK", "EXAM").stream()
+                .filter(type -> detailContent.contains("类型：" + type))
+                .findFirst().orElse(null);
     }
 
     @Transactional
@@ -268,16 +319,16 @@ public class InformationService {
     }
 
     private Map<Long, String> readStatuses(Long userId, List<InformationItem> items) {
-        if (userId == null || items.isEmpty()) {
-            return Map.of();
-        }
-        List<Long> itemIds = items.stream().map(InformationItem::getId).toList();
-        return userInformationStateMapper.selectList(new LambdaQueryWrapper<UserInformationState>()
-                        .eq(UserInformationState::getUserId, userId)
-                        .in(UserInformationState::getItemId, itemIds))
-                .stream()
+        return userStates(userId, items).stream()
                 .collect(Collectors.toMap(UserInformationState::getItemId, InformationService::readStatus,
                         (first, second) -> first));
+    }
+
+    private List<UserInformationState> userStates(Long userId, List<InformationItem> items) {
+        if (userId == null || items.isEmpty()) return List.of();
+        return userInformationStateMapper.selectList(new LambdaQueryWrapper<UserInformationState>()
+                .eq(UserInformationState::getUserId, userId)
+                .in(UserInformationState::getItemId, items.stream().map(InformationItem::getId).toList()));
     }
 
     private String readStatus(Long userId, Long itemId) {
@@ -309,59 +360,53 @@ public class InformationService {
     }
 
     private InformationFeedItemResponse toFeedItem(InformationItem item, String readStatus) {
-        return toFeedItem(item, readStatus, false, null);
+        return feedItem(item, readStatus, 0, List.of());
     }
 
-    private InformationFeedItemResponse toFeedItem(InformationItem item, String readStatus, boolean subscribed, UserProfile profile) {
+    private InformationFeedItemResponse toRankedFeedItem(
+            InformationItem item, String readStatus, boolean subscribed, UserProfile profile,
+            RankingSignals signals, LocalDateTime now, boolean personalized) {
         List<String> reasons = new ArrayList<>();
+        int score = freshnessScore(rankingTimestamp(item), now) + importanceScore(item.getAiEventType());
+        if ("NEW".equals(readStatus)) score += 3;
         if (subscribed) {
+            score += sourceSubscriptionWeight;
             reasons.add("来自你订阅的" + item.getSourceName());
         }
-        // 基于用户画像增强推荐理由
-        if (profile != null) {
-            Map<String, Object> card = aiCard(item);
-            // ai_event_type 与用户兴趣标签匹配
-            String eventType = item.getAiEventType();
-            String interestTags = profile.getInterestTags();
-            if (StringUtils.hasText(eventType) && StringUtils.hasText(interestTags)) {
-                String[] tags = interestTags.split("[,，、]");
-                for (String tag : tags) {
-                    String t = tag.trim().toLowerCase();
-                    if (!t.isEmpty() && matchesEventType(eventType, t)) {
-                        reasons.add("与你的兴趣标签「" + tag.trim() + "」匹配");
-                        break;
-                    }
-                }
+        Map<String, Object> card = aiCard(item);
+        LocalDateTime deadline = signals.actionDueAt().get(item.getId());
+        if (deadline == null) deadline = itemDeadline(item, card);
+        score += deadlineScore(deadline, now, reasons);
+
+        if (personalized) {
+            if (signals.favoriteItemIds().contains(item.getId())) {
+                score += 8;
+                reasons.add("你已收藏");
             }
-            // targetScopes 包含用户年级/专业
-            Object targetScopesObj = card.get("targetScopes");
-            if (targetScopesObj instanceof List<?> scopes) {
-                String grade = profile.getGrade();
-                String major = profile.getMajor();
-                for (Object scope : scopes) {
-                    if (!(scope instanceof String s)) continue;
-                    if (StringUtils.hasText(grade) && s.contains(grade)) {
-                        reasons.add("面向你所在的" + grade + "年级");
-                        break;
-                    }
-                    if (StringUtils.hasText(major) && s.contains(major)) {
-                        reasons.add("面向" + major + "专业");
-                        break;
-                    }
-                }
+            if (signals.pendingActionItemIds().contains(item.getId())) {
+                score += 30;
+                reasons.add("已加入你的待办");
             }
-            // 截止时间在 3 天内
-            Object deadlineObj = card.get("registrationDeadline");
-            if (deadlineObj instanceof String deadlineStr && StringUtils.hasText(deadlineStr)) {
-                LocalDateTime deadline = parseDateTime(deadlineStr);
-                if (deadline != null) {
-                    long hoursUntil = java.time.Duration.between(LocalDateTime.now(), deadline).toHours();
-                    if (hoursUntil > 0 && hoursUntil <= 72) {
-                        reasons.add("即将截止（剩余" + (hoursUntil / 24 + 1) + "天）");
-                    }
-                }
+            int sourceAffinity = signals.favoriteSourceCounts().getOrDefault(item.getSourceId(), 0)
+                    - (signals.favoriteItemIds().contains(item.getId()) ? 1 : 0);
+            if (sourceAffinity > 0) {
+                score += Math.min(sourceAffinity, 3) * 4;
+                reasons.add("与你此前收藏的来源相似");
             }
+            String eventType = normalizedEventType(item.getAiEventType());
+            int typeAffinity = signals.favoriteTypeCounts().getOrDefault(eventType, 0)
+                    - (signals.favoriteItemIds().contains(item.getId()) ? 1 : 0);
+            if (typeAffinity > 0) {
+                score += Math.min(typeAffinity, 3) * 3;
+                reasons.add("与你此前收藏的内容类型相似");
+            }
+            score += profileScore(item, card, profile, reasons);
         }
+        return feedItem(item, readStatus, score, reasons.stream().distinct().limit(5).toList());
+    }
+
+    private InformationFeedItemResponse feedItem(
+            InformationItem item, String readStatus, int score, List<String> reasons) {
         return new InformationFeedItemResponse(
                 item.getId(),
                 item.getTitle(),
@@ -377,10 +422,185 @@ public class InformationService {
                 item.getAiSummary(),
                 item.getAiNeedReview(),
                 aiCard(item),
-                subscribed ? sourceSubscriptionWeight : 0,
+                score,
                 reasons,
                 item.getSubmittedByUserId()
         );
+    }
+
+    private RankingSignals rankingSignals(Long userId, List<InformationItem> items,
+                                           List<UserInformationState> states) {
+        Map<Long, InformationItem> itemsById = items.stream()
+                .collect(Collectors.toMap(InformationItem::getId, item -> item));
+        Set<Long> favoriteItemIds = states.stream()
+                .filter(state -> state.getFavoritedAt() != null)
+                .map(UserInformationState::getItemId)
+                .collect(Collectors.toSet());
+        Map<Long, Integer> favoriteSourceCounts = new HashMap<>();
+        Map<String, Integer> favoriteTypeCounts = new HashMap<>();
+        for (Long itemId : favoriteItemIds) {
+            InformationItem favorite = itemsById.get(itemId);
+            if (favorite == null) continue;
+            favoriteSourceCounts.merge(favorite.getSourceId(), 1, Integer::sum);
+            favoriteTypeCounts.merge(normalizedEventType(favorite.getAiEventType()), 1, Integer::sum);
+        }
+
+        Set<Long> pendingActionItemIds = new HashSet<>();
+        Map<Long, LocalDateTime> actionDueAt = new HashMap<>();
+        if (userId != null) {
+            for (Map<String, Object> row : jdbcTemplate.queryForList("""
+                    SELECT information_item_id AS informationItemId, due_at AS dueAt
+                    FROM user_action_item WHERE user_id = ? AND status = 'CONFIRMED'
+                    """, userId)) {
+                Long itemId = ((Number) row.get("informationItemId")).longValue();
+                pendingActionItemIds.add(itemId);
+                LocalDateTime dueAt = toLocalDateTime(row.get("dueAt"));
+                if (dueAt != null) {
+                    actionDueAt.merge(itemId, dueAt,
+                            (first, second) -> first.isBefore(second) ? first : second);
+                }
+            }
+        }
+        return new RankingSignals(favoriteItemIds, pendingActionItemIds, actionDueAt,
+                favoriteSourceCounts, favoriteTypeCounts);
+    }
+
+    private int profileScore(InformationItem item, Map<String, Object> card,
+                             UserProfile profile, List<String> reasons) {
+        if (profile == null) return 0;
+        int score = 0;
+        if (StringUtils.hasText(item.getAiEventType()) && StringUtils.hasText(profile.getInterestTags())) {
+            for (String tag : profile.getInterestTags().split("[,，、]")) {
+                if (!tag.isBlank() && matchesEventType(item.getAiEventType(), tag.trim().toLowerCase())) {
+                    score += 8;
+                    reasons.add("与你的兴趣标签「" + tag.trim() + "」匹配");
+                    break;
+                }
+            }
+        }
+        Object scopesObject = card.get("targetScopes");
+        if (scopesObject instanceof List<?> scopes) {
+            for (Object scope : scopes) {
+                if (!(scope instanceof String text)) continue;
+                if (StringUtils.hasText(profile.getGrade()) && text.contains(profile.getGrade())) {
+                    score += 12;
+                    reasons.add("面向你所在的" + profile.getGrade() + "年级");
+                    break;
+                }
+                if (StringUtils.hasText(profile.getMajor()) && text.contains(profile.getMajor())) {
+                    score += 12;
+                    reasons.add("面向" + profile.getMajor() + "专业");
+                    break;
+                }
+            }
+        }
+        if (StringUtils.hasText(profile.getCourseCodes())) {
+            String searchable = item.getTitle() + "\n" + item.getDetailContent();
+            for (String code : profile.getCourseCodes().split("[,，、]")) {
+                if (code.trim().length() >= 3 && searchable.contains(code.trim())) {
+                    score += 15;
+                    reasons.add("与你的课程「" + code.trim() + "」相关");
+                    break;
+                }
+            }
+        }
+        return score;
+    }
+
+    private static int freshnessScore(LocalDateTime publishedAt, LocalDateTime now) {
+        long ageHours = java.time.Duration.between(publishedAt, now).toHours();
+        if (ageHours <= 24) return 40;
+        if (ageHours <= 72) return 34;
+        if (ageHours <= 168) return 28;
+        if (ageHours <= 720) return 20;
+        if (ageHours <= 2160) return 10;
+        if (ageHours <= 8760) return 0;
+        return -50;
+    }
+
+    private static int importanceScore(String eventType) {
+        return switch (normalizedEventType(eventType)) {
+            case "EXAM" -> 24;
+            case "HOMEWORK" -> 20;
+            case "COMPETITION" -> 16;
+            case "NOTICE" -> 12;
+            case "ACTIVITY", "LECTURE" -> 8;
+            case "SERVICE" -> 5;
+            default -> 0;
+        };
+    }
+
+    private static int deadlineScore(LocalDateTime deadline, LocalDateTime now, List<String> reasons) {
+        if (deadline == null) return 0;
+        long hours = java.time.Duration.between(now, deadline).toHours();
+        if (hours < -24) return -60;
+        if (hours < 0) return -25;
+        if (hours <= 24) {
+            reasons.add("24小时内截止");
+            return 35;
+        }
+        if (hours <= 72) {
+            reasons.add("即将截止（剩余" + (hours / 24 + 1) + "天）");
+            return 28;
+        }
+        if (hours <= 168) {
+            reasons.add("一周内截止");
+            return 16;
+        }
+        return 0;
+    }
+
+    private static LocalDateTime itemDeadline(InformationItem item, Map<String, Object> card) {
+        for (String key : List.of("registrationDeadline", "dueAt", "deadline", "endTime", "startTime")) {
+            LocalDateTime value = parseDateTime(card.get(key));
+            if (value != null) return value;
+        }
+        if (StringUtils.hasText(item.getDetailContent())) {
+            var match = DEADLINE_LINE.matcher(item.getDetailContent());
+            if (match.find()) return parseDateTime(match.group(1));
+        }
+        return null;
+    }
+
+    private static String normalizedEventType(String eventType) {
+        return StringUtils.hasText(eventType) ? eventType.trim().toUpperCase(Locale.ROOT) : "OTHER";
+    }
+
+    private static LocalDateTime rankingTimestamp(InformationItem item) {
+        return item.getPublishTime() != null ? item.getPublishTime() : item.getFetchedAt();
+    }
+
+    private static LocalDateTime rankingTimestamp(InformationFeedItemResponse item) {
+        return item.publishTime() != null ? item.publishTime() : item.fetchedAt();
+    }
+
+    private static int compareRankedItems(InformationFeedItemResponse first,
+                                          InformationFeedItemResponse second) {
+        int byScore = Integer.compare(second.recommendationScore(), first.recommendationScore());
+        if (byScore != 0) return byScore;
+        int byPublishedAt = rankingTimestamp(second).compareTo(rankingTimestamp(first));
+        return byPublishedAt != 0 ? byPublishedAt : Long.compare(second.id(), first.id());
+    }
+
+    private static boolean isAfterCursor(InformationFeedItemResponse item, LocalDateTime cursor,
+                                         Long cursorId, Integer cursorScore) {
+        if (cursor == null) return true;
+        if (cursorScore != null && item.recommendationScore() != cursorScore) {
+            return item.recommendationScore() < cursorScore;
+        }
+        int byTime = rankingTimestamp(item).compareTo(cursor);
+        return byTime < 0 || (byTime == 0 && cursorId != null && item.id() < cursorId);
+    }
+
+    private record RankingSignals(
+            Set<Long> favoriteItemIds,
+            Set<Long> pendingActionItemIds,
+            Map<Long, LocalDateTime> actionDueAt,
+            Map<Long, Integer> favoriteSourceCounts,
+            Map<String, Integer> favoriteTypeCounts) {
+        private static RankingSignals empty() {
+            return new RankingSignals(Set.of(), Set.of(), Map.of(), Map.of(), Map.of());
+        }
     }
 
     private static boolean matchesEventType(String eventType, String tag) {
@@ -795,11 +1015,20 @@ public class InformationService {
         if (!(value instanceof String text) || !StringUtils.hasText(text)) {
             return null;
         }
+        String normalized = text.trim();
+        if (normalized.matches("\\d{10,13}")) {
+            long epoch = Long.parseLong(normalized);
+            if (normalized.length() == 10) epoch *= 1000;
+            return java.time.Instant.ofEpochMilli(epoch)
+                    .atZone(java.time.ZoneId.systemDefault()).toLocalDateTime();
+        }
+        normalized = normalized.replaceFirst(
+                "^(\\d{4}-\\d{2}-\\d{2})/(\\d{2}:\\d{2})(?:/.*)?$", "$1T$2");
         try {
-            return LocalDateTime.parse(text.trim());
+            return LocalDateTime.parse(normalized);
         } catch (Exception ignored) {
             try {
-                return java.time.OffsetDateTime.parse(text.trim()).toLocalDateTime();
+                return java.time.OffsetDateTime.parse(normalized).toLocalDateTime();
             } catch (Exception ignoredOffset) {
                 return null;
             }

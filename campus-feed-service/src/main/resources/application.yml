@@ -26,6 +26,6 @@ management:
 
 campus:
   feed:
-    source-subscription-weight: ${FEED_SOURCE_SUBSCRIPTION_WEIGHT:100}
+    source-subscription-weight: ${FEED_SOURCE_SUBSCRIPTION_WEIGHT:12}
     reminder-check-interval-ms: ${FEED_REMINDER_CHECK_INTERVAL_MS:60000}
     push-webhook-url: ${FEED_PUSH_WEBHOOK_URL:}

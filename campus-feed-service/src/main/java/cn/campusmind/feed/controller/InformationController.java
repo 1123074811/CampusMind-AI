@@ -54,6 +54,21 @@ public class InformationController {
         return ApiResponse.ok(informationService.createItem(request));
     }
 
+    @DeleteMapping("/rain")
+    public ApiResponse<java.util.Map<String, Integer>> deleteRainItems(
+            @RequestHeader(value = "X-User-Id", required = false) Long userId) {
+        return ApiResponse.ok(java.util.Map.of(
+                "deletedInformationItems", informationService.deleteOwnedRainItems(userId)));
+    }
+
+    @DeleteMapping("/rain/{eventId}")
+    public ApiResponse<java.util.Map<String, Integer>> deleteRainItem(
+            @RequestHeader(value = "X-User-Id", required = false) Long userId,
+            @PathVariable Long eventId) {
+        return ApiResponse.ok(java.util.Map.of(
+                "deletedInformationItems", informationService.deleteOwnedRainItem(userId, eventId)));
+    }
+
     @GetMapping("/stats")
     public ApiResponse<UserStatsResponse> stats(
             @RequestHeader(value = "X-User-Id", required = false) Long userId
