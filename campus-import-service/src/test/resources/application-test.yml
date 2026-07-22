@@ -41,6 +41,6 @@ campus:
     max-file-bytes: 10485760
     ai-connect-timeout-seconds: 5
     ai-read-timeout-seconds: 30
-    rate-limit-per-minute: 10
+    rate-limit-per-minute: 60
     tessdata-path: test-tessdata
     ocr-language: chi_sim+eng

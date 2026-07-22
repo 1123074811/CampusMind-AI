@@ -31,6 +31,11 @@ public interface EventFeignClient {
     ApiResponse<Long> createEvent(@RequestBody Map<String, Object> body,
                                    @RequestHeader(value = "X-User-Id", required = false) Long userId);
 
+    @PostMapping("/api/v1/events/incremental")
+    ApiResponse<Map<String, Object>> createEventIncremental(
+            @RequestBody Map<String, Object> body,
+            @RequestHeader(value = "X-User-Id", required = false) Long userId);
+
     @DeleteMapping("/api/v1/events/source/{sourceType}")
     ApiResponse<Map<String, Object>> deleteOwnedSource(
             @PathVariable("sourceType") String sourceType,

@@ -48,12 +48,14 @@ campus:
     ai-read-timeout-seconds: 30
     rain-cookie-ttl-minutes: 10
     rain-cookie-enabled: ${IMPORT_RAIN_COOKIE_ENABLED:false}
-    max-rain-json-bytes: 2097152
+    max-rain-json-bytes: 8388608
     raw-document-retention-days: 7
     max-text-length: 20000
     max-image-bytes: 5242880
     max-file-bytes: 10485760
-    rate-limit-per-minute: 10
+    # 雨课堂同步会分批发送多条导入请求，10 次/分钟过低会导致后续批次全部
+    # 被拒。提高到 60 次/分钟，同时 Flutter 端分批间加延时 + 429 重试。
+    rate-limit-per-minute: 60
     tessdata-path: ${TESSDATA_PATH:C:/Program Files/Tesseract-OCR/tessdata}
     ocr-language: ${OCR_LANGUAGE:chi_sim+eng}
     xju-ehall:

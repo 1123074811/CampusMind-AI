@@ -23,6 +23,12 @@ public class EventFeignClientFallback implements EventFeignClient {
     }
 
     @Override
+    public ApiResponse<Map<String, Object>> createEventIncremental(Map<String, Object> body, Long userId) {
+        log.warn("[SENTINEL-FALLBACK] 增量事件服务熔断降级, title={}", body.get("title"));
+        return ApiResponse.fail("EVENT_SERVICE_DEGRADED", "事件服务暂不可用，请稍后重试");
+    }
+
+    @Override
     public ApiResponse<Map<String, Object>> deleteOwnedSource(String sourceType, Long userId) {
         log.warn("[SENTINEL-FALLBACK] 事件删除服务熔断降级, sourceType={}", sourceType);
         return ApiResponse.fail("EVENT_SERVICE_DEGRADED", "事件服务暂不可用，请稍后重试");

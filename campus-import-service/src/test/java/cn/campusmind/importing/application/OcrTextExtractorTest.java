@@ -26,7 +26,7 @@ class OcrTextExtractorTest {
                 10485760,                  // maxFileBytes
                 5,                         // aiConnectTimeoutSeconds
                 30,                        // aiReadTimeoutSeconds
-                10,                        // rateLimitPerMinute
+                60,                        // rateLimitPerMinute
                 "test-tessdata",           // tessdataPath
                 "chi_sim+eng"              // ocrLanguage
         );

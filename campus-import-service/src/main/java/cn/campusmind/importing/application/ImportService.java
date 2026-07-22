@@ -14,6 +14,7 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.core.type.TypeReference;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -24,7 +25,10 @@ import org.springframework.util.StringUtils;
 
 import org.springframework.web.multipart.MultipartFile;
 
+import java.net.URI;
 import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
+import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Base64;
@@ -41,6 +45,7 @@ public class ImportService {
     private static final Logger log = LoggerFactory.getLogger(ImportService.class);
 
     private static final String[] DATE_PATTERNS = {"yyyy-MM-dd HH:mm:ss", "yyyy-MM-dd HH:mm", "yyyy-MM-dd HH"};
+    private static final Set<String> RAIN_FEED_TYPES = Set.of("NOTICE", "HOMEWORK", "EXAM");
 
     private final ImportTaskMapper importTaskMapper;
     private final RawDocumentService rawDocumentService;
@@ -259,7 +264,7 @@ public class ImportService {
         }
         List<RawRainItem> items;
         try {
-            items = rainClassroomParser.parseJson(rawJson);
+            items = rainClassroomParser.parseJson(rawJson, request.dataType());
         } catch (Exception ex) {
             throw new BusinessException("RAIN_JSON_INVALID", "雨课堂JSON解析失败：" + ex.getMessage(), HttpStatus.BAD_REQUEST);
         }
@@ -278,15 +283,38 @@ public class ImportService {
         for (int index = 0; index < items.size(); index++) {
             RawRainItem item = items.get(index);
             String plainText = item.toPlainText();
+            String itemHash = sha256(new RawRainItem(
+                    item.providerItemId(), item.dataType(), item.courseName(), item.semester(),
+                    item.title(), item.content(), item.deadline(), null,
+                    item.teacherName(), item.sourceUrl()).toPlainText());
             if (!seen.add(sha256(plainText))) {
                 skipped++;
                 continue;
             }
             try {
-                CognitionResult candidate = cognitionClient.extract("RAIN_CLASSROOM", plainText);
-                Long eid = persistEvent(user, candidate, "RAIN_CLASSROOM", sha256(plainText), doc.getId(), null, true, plainText);
-                eventIds.add(eid);
-                success++;
+                CognitionResult candidate = rainCandidate(item);
+                String providerDedupId = StringUtils.hasText(item.providerItemId())
+                        ? item.dataType() + "|"
+                            + (StringUtils.hasText(item.semester()) ? item.semester().trim() : "") + "|"
+                            + (StringUtils.hasText(item.courseName()) ? item.courseName().trim() : "") + "|"
+                            + item.providerItemId().trim()
+                        : null;
+                EventServiceClient.EventWriteResult result = persistRainEvent(
+                        user, candidate, itemHash, doc.getId(),
+                        rainSourceUrl(item.sourceUrl()), plainText, providerDedupId,
+                        item.publishedAt());
+                if (RAIN_FEED_TYPES.contains(item.dataType())) {
+                    Long informationId = informationServiceClient.createItem(
+                            candidate.title(), plainText, "雨课堂导入",
+                            rainSourceUrl(item.sourceUrl()), rainSourceUrl(item.sourceUrl()),
+                            itemHash, parseDateTime(item.publishedAt()),
+                            user.username(), user.userId());
+                    if (informationId == null) {
+                        throw new IllegalStateException("雨课堂信息未进入校园事件队列");
+                    }
+                }
+                eventIds.add(result.eventId());
+                if (result.skipped()) skipped++; else success++;
             } catch (Exception ex) {
                 fail++;
                 if (failureReasons.size() < 20) {
@@ -294,7 +322,7 @@ public class ImportService {
                 }
             }
         }
-        task.setTaskStatus(success > 0 ? "SUCCESS" : "FAILED");
+        task.setTaskStatus(success + skipped > 0 ? "SUCCESS" : "FAILED");
         Map<String, Object> summary = new LinkedHashMap<>();
         summary.put("total", items.size());
         summary.put("success", success);
@@ -303,12 +331,12 @@ public class ImportService {
         summary.put("failureReasons", failureReasons);
         summary.put("eventIds", eventIds);
         task.setResultSummary(toJson(summary));
-        if (success == 0) {
+        if (success + skipped == 0) {
             task.setErrorMessage("全部条目解析失败");
         }
         task.setFinishedAt(LocalDateTime.now());
         importTaskMapper.updateById(task);
-        return response(task, success > 0
+        return response(task, success + skipped > 0
                 ? "雨课堂JSON导入完成，成功" + success + "条，跳过" + skipped + "条，失败" + fail + "条"
                 : "雨课堂JSON导入失败，未生成任何事件");
     }
@@ -346,8 +374,35 @@ public class ImportService {
     private Long persistEvent(CurrentUser user, CognitionResult candidate, String sourceType,
                               String contentHash, String rawDocId, String sourceUrl,
                               boolean privateEvent, String originalText) {
-        String dedupKey = computeDedupKey(candidate.title(), candidate.startTime(), sourceType,
-                privateEvent ? user.userId() : null);
+        return persistEvent(user, candidate, sourceType, contentHash, rawDocId, sourceUrl,
+                privateEvent, originalText, null);
+    }
+
+    private EventServiceClient.EventWriteResult persistRainEvent(
+            CurrentUser user, CognitionResult candidate, String contentHash, String rawDocId,
+            String sourceUrl, String originalText, String providerItemId, String publishedAt) {
+        // 对于没有 providerItemId 的雨课堂消息（如学习日志中抓取的作业/通知），
+        // 不能仅靠 title 做去重——同一课程下多条同名消息（如多条"作业"）会被
+        // 误并为一条，导致"10 条只写入 3 条"。改用 contentHash（包含类型/课程/
+        // 学期/标题/内容/截止时间/教师的全文摘要）作为 dedupKey，确保内容不同
+        // 的条目各自独立建事件，内容相同的条目才被正确去重。
+        String dedupKey = StringUtils.hasText(providerItemId)
+                ? sha256(user.userId() + "|RAIN_CLASSROOM|" + providerItemId.trim())
+                : sha256(user.userId() + "|RAIN_CLASSROOM|" + contentHash);
+        return eventServiceClient.createEventIncremental(
+                candidate.title(), originalText, candidate.eventType(), "RAIN_CLASSROOM",
+                candidate.startTime(), candidate.endTime(), candidate.location(), candidate.organizer(),
+                toJson(candidate.targetScopes()), toJson(candidate.tags()), "PRIVATE", user.userId(),
+                dedupKey, rawDocId, sourceUrl, contentHash, publishedAt);
+    }
+
+    private Long persistEvent(CurrentUser user, CognitionResult candidate, String sourceType,
+                              String contentHash, String rawDocId, String sourceUrl,
+                              boolean privateEvent, String originalText, String providerItemId) {
+        String dedupKey = StringUtils.hasText(providerItemId)
+                ? sha256(user.userId() + "|" + sourceType + "|" + providerItemId.trim())
+                : computeDedupKey(candidate.title(), candidate.startTime(), sourceType,
+                        privateEvent ? user.userId() : null);
         return eventServiceClient.createEvent(
                 candidate.title(),
                 originalText,
@@ -366,6 +421,46 @@ public class ImportService {
                 sourceUrl,
                 contentHash
         );
+    }
+
+    private CognitionResult rainCandidate(RawRainItem item) {
+        String title = StringUtils.hasText(item.title()) ? item.title().trim()
+                : StringUtils.hasText(item.courseName()) ? item.courseName().trim() : "雨课堂消息";
+        String summary = StringUtils.hasText(item.content()) ? item.content().trim() : "";
+        String organizer = StringUtils.hasText(item.teacherName()) ? item.teacherName().trim() : null;
+        List<String> tags = new ArrayList<>();
+        tags.add("雨课堂");
+        if (StringUtils.hasText(item.courseName())) tags.add("课程:" + item.courseName().trim());
+        if (StringUtils.hasText(item.semester())) tags.add("学期:" + item.semester().trim());
+        return new CognitionResult(
+                title,
+                item.dataType(),
+                summary,
+                null,
+                item.deadline(),
+                null,
+                organizer,
+                List.of(),
+                tags,
+                false,
+                null
+        );
+    }
+
+    private String rainSourceUrl(String value) {
+        if (!StringUtils.hasText(value)) return null;
+        URI uri;
+        try {
+            uri = URI.create(value.trim());
+        } catch (IllegalArgumentException ex) {
+            throw new IllegalArgumentException("雨课堂来源链接格式无效");
+        }
+        String host = uri.getHost() == null ? "" : uri.getHost().toLowerCase(java.util.Locale.ROOT);
+        if (!"https".equalsIgnoreCase(uri.getScheme())
+                || !("yuketang.cn".equals(host) || host.endsWith(".yuketang.cn"))) {
+            throw new IllegalArgumentException("雨课堂来源链接不在允许域名内");
+        }
+        return URI.create(uri.getScheme() + "://" + host + (uri.getRawPath() == null ? "" : uri.getRawPath())).toString();
     }
 
     /**
@@ -457,7 +552,15 @@ public class ImportService {
     }
 
     private ImportTaskResponse response(ImportTask task, String message) {
-        return new ImportTaskResponse(task.getId(), task.getTaskStatus(), message);
+        Map<String, Object> summary = new LinkedHashMap<>();
+        if (StringUtils.hasText(task.getResultSummary())) {
+            try {
+                summary = objectMapper.readValue(task.getResultSummary(), new TypeReference<>() {});
+            } catch (Exception ignored) {
+                // 旧任务摘要损坏不应影响导入结果返回。
+            }
+        }
+        return new ImportTaskResponse(task.getId(), task.getTaskStatus(), message, summary);
     }
 
     private String computeDedupKey(String title, String startTime, String sourceType, Long ownerUserId) {
@@ -476,6 +579,12 @@ public class ImportService {
     private LocalDateTime parseDateTime(String value) {
         if (!StringUtils.hasText(value)) {
             return null;
+        }
+        try {
+            return OffsetDateTime.parse(value.trim())
+                    .atZoneSameInstant(ZoneId.of("Asia/Shanghai"))
+                    .toLocalDateTime();
+        } catch (Exception ignored) {
         }
         String trimmed = value.trim().replace('T', ' ');
         for (String pattern : DATE_PATTERNS) {

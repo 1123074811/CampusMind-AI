@@ -27,6 +27,7 @@ import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.Statement;
 import java.time.Instant;
+import java.time.LocalDateTime;
 import java.util.Date;
 import java.util.List;
 
@@ -92,6 +93,12 @@ class ImportControllerTest {
                 any(), any(), any(), any(),
                 any(), any(), any(), any()
         )).thenReturn(100L);
+        when(eventServiceClient.createEventIncremental(
+                any(), any(), any(), any(),
+                any(), any(), any(), any(),
+                any(), any(), any(), any(),
+                any(), any(), any(), any(), any()
+        )).thenReturn(new EventServiceClient.EventWriteResult(100L, false));
 
         // mock InformationServiceClient
         when(informationServiceClient.createItem(
@@ -219,7 +226,7 @@ class ImportControllerTest {
     void rainJsonImportParsesItemsAndPersistsEvents() throws Exception {
         when(cognitionClient.extract(eq("RAIN_CLASSROOM"), anyString())).thenReturn(candidate());
 
-        String rawJson = "{\"data\":{\"list\":[{\"courseName\":\"人工智能\",\"title\":\"作业一\",\"content\":\"提交实验报告\",\"deadline\":\"2026-07-10 23:59\",\"teacherName\":\"张老师\"}]}}";
+        String rawJson = "{\"data\":{\"list\":[{\"courseName\":\"人工智能\",\"title\":\"作业一\",\"content\":\"提交实验报告\",\"deadline\":\"2026-07-10 23:59\",\"start_time\":\"2026-07-08 09:30\",\"teacherName\":\"张老师\"}]}}";
         String body = "{\"dataType\":\"HOMEWORK\",\"rawJson\":" + jsonEscape(rawJson) + "}";
 
         mockMvc.perform(post("/api/v1/import/rain/json")
@@ -230,15 +237,16 @@ class ImportControllerTest {
                 .andExpect(jsonPath("$.data.status").value("SUCCESS"));
 
         assertEquals(1, countRows("import_task", "task_status='SUCCESS'"), "任务应为SUCCESS");
-        verify(eventServiceClient, times(1)).createEvent(
+        verify(eventServiceClient, times(1)).createEventIncremental(
                 any(), any(), any(), any(),
                 any(), any(), any(), any(),
                 any(), any(), eq("PRIVATE"), eq(1L),
-                any(), any(), any(), any()
+                any(), any(), any(), any(), eq("2026-07-08 09:30")
         );
-        verify(informationServiceClient, times(0)).createItem(
-                any(), any(), any(), any(), any(), any(), any(), any(), any()
-        );
+        verify(informationServiceClient, times(1)).createItem(
+                eq("作业一"), anyString(), eq("雨课堂导入"), any(), any(),
+                anyString(), eq(LocalDateTime.of(2026, 7, 8, 9, 30)),
+                eq("alice"), eq(1L));
     }
 
     @Test
@@ -297,7 +305,33 @@ class ImportControllerTest {
                 .andExpect(jsonPath("$.data.message").value("雨课堂JSON导入完成，成功1条，跳过1条，失败0条"));
 
         assertEquals(1, countRows("import_task", "result_summary LIKE '%\"skipped\":1%'"));
-        verify(cognitionClient, times(1)).extract(eq("RAIN_CLASSROOM"), anyString());
+        // 同批完全重复条目只创建一次事件和一次待 Agent 分析的信息条目。
+        verify(eventServiceClient, times(1)).createEventIncremental(
+                any(), any(), any(), any(),
+                any(), any(), any(), any(),
+                any(), any(), any(), any(),
+                any(), any(), any(), any(), any());
+        verify(informationServiceClient, times(1)).createItem(
+                any(), any(), eq("雨课堂导入"), any(), any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void rainNoticeCreatesStandaloneFeedItem() throws Exception {
+        String rawJson = "{\"schemaVersion\":1,\"provider\":\"RAIN_CLASSROOM\",\"items\":[{\"dataType\":\"NOTICE\",\"courseName\":\"软件工程\",\"title\":\"停课通知\",\"content\":\"本周停课\",\"publishedAt\":\"2026-07-08T10:00:00+08:00\"}]}";
+
+        mockMvc.perform(post("/api/v1/import/rain/json")
+                        .header(AUTHORIZATION, bearerToken(1L, "alice", "STUDENT"))
+                        .contentType(APPLICATION_JSON)
+                        .content("{\"dataType\":\"NOTICE\",\"rawJson\":" + jsonEscape(rawJson) + "}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("SUCCESS"));
+
+        verify(eventServiceClient, times(1)).createEventIncremental(
+                any(), any(), any(), any(), any(), any(), any(), any(), any(),
+                any(), any(), any(), any(), any(), any(), any(), any());
+        verify(informationServiceClient, times(1)).createItem(
+                eq("停课通知"), any(), eq("雨课堂导入"), any(), any(), any(),
+                eq(LocalDateTime.of(2026, 7, 8, 10, 0)), eq("alice"), eq(1L));
     }
 
     @Test
