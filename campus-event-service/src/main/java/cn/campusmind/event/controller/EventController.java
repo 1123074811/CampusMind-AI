@@ -42,6 +42,7 @@ public class EventController {
     @GetMapping("/search")
     public ApiResponse<EventSearchResponse> search(
             @RequestParam(required = false) String eventType,
+            @RequestParam(required = false) String sourceType,
             @RequestParam(required = false) String status,
             @RequestParam(required = false) String keyword,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime startFrom,
@@ -51,7 +52,7 @@ public class EventController {
             @RequestParam(defaultValue = "1") long page,
             @RequestParam(defaultValue = "20") long size
     ) {
-        return ApiResponse.ok(eventQueryService.search(eventType, status, keyword, startFrom, startTo, userId, role, page, size));
+        return ApiResponse.ok(eventQueryService.search(eventType, sourceType, status, keyword, startFrom, startTo, userId, role, page, size));
     }
 
     /**
@@ -77,10 +78,24 @@ public class EventController {
                 request.dedupKey(),
                 request.rawDocId(),
                 request.sourceUrl(),
-                request.contentHash()
+                request.contentHash(),
+                request.publishedAt()
         );
         Long eventId = eventCommandService.upsertEvent(req);
         return ApiResponse.ok(eventId);
+    }
+
+    @PostMapping("/incremental")
+    public ApiResponse<EventCommandService.UpsertEventResult> createEventIncremental(
+            @RequestHeader(value = "X-User-Id", required = false) Long userId,
+            @RequestBody CreateEventRequest request) {
+        UpsertEventRequest req = new UpsertEventRequest(
+                request.title(), request.summary(), request.eventType(), request.sourceType(),
+                request.startTime(), request.endTime(), request.location(), request.organizer(),
+                request.targetScopeJson(), request.tagsJson(), request.visibility(), userId,
+                request.dedupKey(), request.rawDocId(), request.sourceUrl(), request.contentHash(),
+                request.publishedAt());
+        return ApiResponse.ok(eventCommandService.upsertEventIncremental(req));
     }
 
     @DeleteMapping("/source/{sourceType}")
@@ -88,6 +103,14 @@ public class EventController {
             @PathVariable String sourceType,
             @RequestHeader(value = "X-User-Id", required = false) Long userId) {
         return ApiResponse.ok(eventCommandService.deleteOwnedBySource(userId, sourceType));
+    }
+
+    @DeleteMapping("/rain/{id}")
+    public ApiResponse<Void> deleteOwnedRainEvent(
+            @PathVariable Long id,
+            @RequestHeader(value = "X-User-Id", required = false) Long userId) {
+        eventCommandService.deleteOwnedRainEvent(userId, id);
+        return ApiResponse.ok(null);
     }
 
     public record CreateEventRequest(
@@ -105,6 +128,7 @@ public class EventController {
             String dedupKey,
             String rawDocId,
             String sourceUrl,
-            String contentHash
+            String contentHash,
+            String publishedAt
     ) {}
 }

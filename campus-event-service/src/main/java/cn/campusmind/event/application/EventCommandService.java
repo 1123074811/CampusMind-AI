@@ -12,9 +12,12 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
+import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.Locale;
+import java.util.Objects;
 import java.util.Set;
 
 @Service
@@ -44,6 +47,15 @@ public class EventCommandService {
      */
     @Transactional(rollbackFor = Exception.class)
     public Long upsertEvent(UpsertEventRequest req) {
+        return upsertEventResult(req, false).eventId();
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public UpsertEventResult upsertEventIncremental(UpsertEventRequest req) {
+        return upsertEventResult(req, true);
+    }
+
+    private UpsertEventResult upsertEventResult(UpsertEventRequest req, boolean skipUnchanged) {
         if (!StringUtils.hasText(req.contentHash())) {
             throw new BusinessException("EVENT_CONTENT_HASH_REQUIRED", "事件内容哈希不能为空", HttpStatus.BAD_REQUEST);
         }
@@ -79,6 +91,14 @@ public class EventCommandService {
                     "PRIVATE".equals(visibility) ? req.ownerUserId() : null);
         }
 
+        boolean sourceTimeChanged = existing != null && "RAIN_CLASSROOM".equals(sourceType)
+                && StringUtils.hasText(req.publishedAt())
+                && !Objects.equals(existing.getPublishedAt(), parseDateTime(req.publishedAt()));
+        if (skipUnchanged && existing != null && !sourceTimeChanged
+                && sourceRefExists(existing.getId(), req.contentHash(), req.sourceUrl())) {
+            return new UpsertEventResult(existing.getId(), true);
+        }
+
         Long eventId;
         if (existing != null) {
             applyMutableFields(existing, req, sourceType, visibility);
@@ -89,7 +109,9 @@ public class EventCommandService {
             applyMutableFields(event, req, sourceType, visibility);
             event.setStatus("AI_PUBLISHED");
             event.setDedupKey(dedupKey);
-            event.setPublishedAt(LocalDateTime.now());
+            if (event.getPublishedAt() == null && !"RAIN_CLASSROOM".equals(sourceType)) {
+                event.setPublishedAt(LocalDateTime.now());
+            }
             campusEventMapper.insert(event);
             eventId = event.getId();
         }
@@ -104,7 +126,7 @@ public class EventCommandService {
             eventSourceRefMapper.insert(ref);
         }
 
-        return eventId;
+        return new UpsertEventResult(eventId, false);
     }
 
     @Transactional(rollbackFor = Exception.class)
@@ -136,6 +158,28 @@ public class EventCommandService {
         return new DeleteOwnedEventsResult(eventIds.size(), vectorDocIds.size());
     }
 
+    @Transactional(rollbackFor = Exception.class)
+    public void deleteOwnedRainEvent(Long ownerUserId, Long eventId) {
+        if (ownerUserId == null) {
+            throw new BusinessException("EVENT_OWNER_REQUIRED", "必须登录后删除私有事件", HttpStatus.UNAUTHORIZED);
+        }
+        CampusEvent event = campusEventMapper.selectOne(new LambdaQueryWrapper<CampusEvent>()
+                .eq(CampusEvent::getId, eventId)
+                .eq(CampusEvent::getOwnerUserId, ownerUserId)
+                .eq(CampusEvent::getVisibility, "PRIVATE")
+                .eq(CampusEvent::getSourceType, "RAIN_CLASSROOM")
+                .last("LIMIT 1"));
+        if (event == null) {
+            throw new BusinessException("EVENT_NOT_FOUND", "雨课堂记录不存在", HttpStatus.NOT_FOUND);
+        }
+        if (StringUtils.hasText(event.getVectorDocId())) {
+            eventVectorLifecycleClient.deleteVectors(List.of(event.getVectorDocId()));
+        }
+        eventSourceRefMapper.delete(new LambdaQueryWrapper<EventSourceRef>()
+                .eq(EventSourceRef::getEventId, eventId));
+        campusEventMapper.deleteById(eventId);
+    }
+
     private void applyMutableFields(CampusEvent event, UpsertEventRequest req,
                                     String sourceType, String visibility) {
         event.setTitle(StringUtils.hasText(req.title()) ? req.title().trim() : "未命名事件");
@@ -150,6 +194,10 @@ public class EventCommandService {
         event.setOrganizer(req.organizer());
         event.setTargetScope(req.targetScopeJson());
         event.setTags(req.tagsJson());
+        LocalDateTime publishedAt = parseDateTime(req.publishedAt());
+        if (publishedAt != null) {
+            event.setPublishedAt(publishedAt);
+        }
         if (!StringUtils.hasText(event.getDedupKey()) && StringUtils.hasText(req.dedupKey())) {
             event.setDedupKey(req.dedupKey());
         }
@@ -172,6 +220,11 @@ public class EventCommandService {
 
     private LocalDateTime parseDateTime(String value) {
         if (!StringUtils.hasText(value)) return null;
+        try {
+            return OffsetDateTime.parse(value.trim())
+                    .atZoneSameInstant(ZoneId.of("Asia/Shanghai"))
+                    .toLocalDateTime();
+        } catch (Exception ignored) {}
         String trimmed = value.trim().replace('T', ' ');
         for (String pattern : DATE_PATTERNS) {
             try {
@@ -203,8 +256,21 @@ public class EventCommandService {
             String dedupKey,
             String rawDocId,
             String sourceUrl,
-            String contentHash
-    ) {}
+            String contentHash,
+            String publishedAt
+    ) {
+        public UpsertEventRequest(
+                String title, String summary, String eventType, String sourceType,
+                String startTime, String endTime, String location, String organizer,
+                String targetScopeJson, String tagsJson, String visibility, Long ownerUserId,
+                String dedupKey, String rawDocId, String sourceUrl, String contentHash) {
+            this(title, summary, eventType, sourceType, startTime, endTime, location,
+                    organizer, targetScopeJson, tagsJson, visibility, ownerUserId,
+                    dedupKey, rawDocId, sourceUrl, contentHash, null);
+        }
+    }
 
     public record DeleteOwnedEventsResult(int deletedEvents, int deletedVectors) {}
+
+    public record UpsertEventResult(Long eventId, boolean skipped) {}
 }

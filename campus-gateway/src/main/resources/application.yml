@@ -99,7 +99,9 @@ campus:
       - /actuator/health
       - /actuator/info
     # 网关层限流配置（基于 Redis 令牌桶，按 IP 维度）
+    # 容量 200、填充 20/s：兼顾防刷与批量导入场景（雨课堂同步可能短时间内
+    # 发送多批导入请求，50 容量易被耗尽导致"请求过于频繁"大量失败）。
     rate-limit:
       enabled: ${GATEWAY_RATE_LIMIT_ENABLED:true}
-      capacity: 50
-      refill-tokens-per-second: 10
+      capacity: 200
+      refill-tokens-per-second: 20

@@ -51,6 +51,7 @@ public class EventQueryService {
     @Transactional(readOnly = true)
     public EventSearchResponse search(
             String eventType,
+            String sourceType,
             String status,
             String keyword,
             LocalDateTime startFrom,
@@ -64,6 +65,7 @@ public class EventQueryService {
         long safeSize = Math.min(Math.max(size, 1), 100);
         LambdaQueryWrapper<CampusEvent> query = new LambdaQueryWrapper<CampusEvent>()
                 .eq(StringUtils.hasText(eventType), CampusEvent::getEventType, eventType)
+                .eq(StringUtils.hasText(sourceType), CampusEvent::getSourceType, sourceType)
                 .eq(StringUtils.hasText(status), CampusEvent::getStatus, status)
                 .ge(startFrom != null, CampusEvent::getStartTime, startFrom)
                 .le(startTo != null, CampusEvent::getStartTime, startTo)

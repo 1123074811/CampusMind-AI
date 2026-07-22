@@ -7,6 +7,8 @@ import cn.campusmind.ai.domain.SearchPlan;
 import cn.campusmind.ai.domain.VectorText;
 import cn.campusmind.common.web.ApiResponse;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
@@ -78,13 +80,23 @@ public class AiController {
         return ApiResponse.ok(mode.name().toLowerCase());
     }
 
-    @GetMapping("/daily-briefing")
+    @PostMapping("/daily-briefing")
     public ApiResponse<DailyBriefingResponse> dailyBriefing(
-            @RequestHeader(value = "X-User-Id", required = false) Long userId) {
-        return ApiResponse.ok(aiApplicationService.dailyBriefing(userId));
+            @RequestHeader(value = "X-User-Id", required = false) Long userId,
+            @Valid @RequestBody DailyBriefingRequest request) {
+        return ApiResponse.ok(aiApplicationService.dailyBriefing(request.items()));
     }
 
     public record RuntimeConfigRequest(String mode, String baseUrl, String model, String apiKey) {}
+
+    public record DailyBriefingRequest(@Size(max = 30) java.util.List<@Valid DailyBriefingItem> items) {}
+
+    public record DailyBriefingItem(
+            @NotBlank @Size(max = 255) String title,
+            @Size(max = 1000) String summary,
+            @Size(max = 32) String eventType,
+            @Size(max = 128) String sourceName,
+            @Size(max = 64) String publishTime) {}
 
     public record DailyBriefingResponse(String summary, java.util.List<String> highlights) {}
 }

@@ -15,6 +15,7 @@ import org.springframework.transaction.annotation.Transactional;
 import javax.sql.DataSource;
 import java.sql.Connection;
 import java.sql.Statement;
+import java.time.LocalDateTime;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -148,6 +149,48 @@ class EventFusionTest {
                 new LambdaQueryWrapper<EventSourceRef>()
                         .eq(EventSourceRef::getEventId, eventId1));
         assertEquals(2, refs.size(), "应有两条来源引用");
+    }
+
+    @Test
+    void incrementalUpsertShouldSkipExactExistingEvent() {
+        var request = new EventCommandService.UpsertEventRequest(
+                "高等数学", "同一内容", "COURSE", "RAIN_CLASSROOM",
+                null, null, null, null, null, "[\"雨课堂\",\"学期:2026春\"]",
+                "PRIVATE", 1L, "rain-course-1",
+                "raw-1", "https://www.yuketang.cn/v2/web/studentLog/1", "same-hash");
+
+        var first = eventCommandService.upsertEventIncremental(request);
+        var second = eventCommandService.upsertEventIncremental(request);
+
+        assertEquals(first.eventId(), second.eventId());
+        assertEquals(false, first.skipped());
+        assertEquals(true, second.skipped());
+        assertEquals(1, eventSourceRefMapper.selectCount(null));
+    }
+
+    @Test
+    void rainEventUsesAndUpdatesSourcePublishedTime() {
+        var first = new EventCommandService.UpsertEventRequest(
+                "停课通知", "通知内容", "NOTICE", "RAIN_CLASSROOM",
+                null, null, null, null, null, "[\"雨课堂\",\"课程:软件工程\"]",
+                "PRIVATE", 1L, "rain-notice-1", "raw-1",
+                "https://www.yuketang.cn/v2/web/studentLog/1", "same-hash",
+                "2026-07-08 09:30");
+        var updated = new EventCommandService.UpsertEventRequest(
+                "停课通知", "通知内容", "NOTICE", "RAIN_CLASSROOM",
+                null, null, null, null, null, "[\"雨课堂\",\"课程:软件工程\"]",
+                "PRIVATE", 1L, "rain-notice-1", "raw-2",
+                "https://www.yuketang.cn/v2/web/studentLog/1", "same-hash",
+                "2026-07-08 10:00");
+
+        var firstResult = eventCommandService.upsertEventIncremental(first);
+        var updatedResult = eventCommandService.upsertEventIncremental(updated);
+
+        assertEquals(false, firstResult.skipped());
+        assertEquals(false, updatedResult.skipped());
+        assertEquals(firstResult.eventId(), updatedResult.eventId());
+        assertEquals(LocalDateTime.of(2026, 7, 8, 10, 0),
+                campusEventMapper.selectById(firstResult.eventId()).getPublishedAt());
     }
 
     @Test

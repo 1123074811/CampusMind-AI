@@ -25,7 +25,7 @@ public record GatewaySecurityProperties(
             int refillTokensPerSecond
     ) {
         public static RateLimit defaults() {
-            return new RateLimit(true, 50, 10);
+            return new RateLimit(true, 200, 20);
         }
     }
 

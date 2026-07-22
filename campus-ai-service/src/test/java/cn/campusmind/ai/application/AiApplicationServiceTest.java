@@ -75,6 +75,25 @@ class AiApplicationServiceTest {
     }
 
     @Test
+    void dailyBriefingFallsBackWhenLlmReturnsFailureText() {
+        RuntimeAiConfig config = mock(RuntimeAiConfig.class);
+        EventVectorStore store = mock(EventVectorStore.class);
+        ChatModel model = mock(ChatModel.class, org.mockito.Mockito.RETURNS_DEEP_STUBS);
+        when(config.resolveChatModel()).thenReturn(model);
+        when(model.call(org.mockito.ArgumentMatchers.any(org.springframework.ai.chat.prompt.Prompt.class))
+                .getResult().getOutput().getText()).thenReturn("抱歉，根据现有检索内容，我无法生成今日 AI 日报摘要。");
+
+        var response = service(config, store, mock(UserProfileMemoryClient.class)).dailyBriefing(List.of(
+                new cn.campusmind.ai.controller.AiController.DailyBriefingItem(
+                        "软件工程", "课程", "COURSE", "雨课堂导入", null),
+                new cn.campusmind.ai.controller.AiController.DailyBriefingItem(
+                        "有效讲座", "今晚举行", "NOTICE", "校园通知", LocalDate.now().toString())));
+
+        assertThat(response.summary()).isEqualTo("今日有 1 条信息值得关注：有效讲座。");
+        verifyNoInteractions(store);
+    }
+
+    @Test
     void chatUsesWebSearchWhenInternalEvidenceIsMissing() {
         RuntimeAiConfig config = mock(RuntimeAiConfig.class);
         EventVectorStore store = mock(EventVectorStore.class);

@@ -49,6 +49,7 @@ public class CrawlerService {
     private static final Pattern DATE_TIME = Pattern.compile("(\\d{4})[年/.-](\\d{1,2})[月/.-](\\d{1,2})日?\\s+(\\d{1,2}):(\\d{1,2})(?::(\\d{1,2}))?");
     private static final Pattern FULL_DATE = Pattern.compile("(\\d{4})[年/.-](\\d{1,2})[月/.-](\\d{1,2})");
     private static final Pattern MONTH_DAY = Pattern.compile("(?<!\\d)(\\d{1,2})[月/.-](\\d{1,2})");
+    private static final Pattern RAIN_EVENT_TYPE = Pattern.compile("(?:^|\\R)类型[：:]\\s*(COURSE|HOMEWORK|NOTICE|EXAM)(?:\\R|$)");
     private static final DateTimeFormatter EVENT_DATE = DateTimeFormatter.ofPattern("yyyy-M-d");
     private static final int MAX_FAIL_REASON_LENGTH = 1000;
 
@@ -501,7 +502,13 @@ public class CrawlerService {
             return;
         }
         try {
-            AiCardExtractor.Result result = aiCardExtractor.extract(item.getId(), item.getItemUrl(), item.getDetailContent());
+            String sourceType = "雨课堂导入".equals(item.getSourceName()) ? "RAIN_CLASSROOM" : PUBLIC_WEB;
+            AiCardExtractor.Result result = aiCardExtractor.extract(
+                    item.getId(), item.getItemUrl(), item.getDetailContent(), sourceType);
+            if ("RAIN_CLASSROOM".equals(sourceType)) {
+                Matcher type = RAIN_EVENT_TYPE.matcher(item.getDetailContent());
+                if (type.find()) result = result.withEventType(type.group(1));
+            }
             LocalDateTime finishedAt = LocalDateTime.now();
             if (!saveAiResult(item, result, finishedAt)) {
                 aiProcessingRecordStore.fail(item.getId(), contentHash, promptVersion,

@@ -38,9 +38,9 @@ class AiCardExtractor {
         this.promptVersion = promptVersion;
     }
 
-    Result extract(Long itemId, String itemUrl, String content) throws Exception {
+    Result extract(Long itemId, String itemUrl, String content, String sourceType) throws Exception {
         String body = objectMapper.writeValueAsString(Map.of(
-                "sourceType", "PUBLIC_WEB",
+                "sourceType", sourceType,
                 "plainText", content.length() <= 200000 ? content : content.substring(0, 200000),
                 "originalItemId", itemId,
                 "originalUrl", itemUrl,
@@ -109,6 +109,10 @@ class AiCardExtractor {
 
     record Result(String eventType, String summary, boolean needHumanReview, String cardJson,
                   String mode, String modelVersion, String promptVersion) {
+        Result withEventType(String value) {
+            return new Result(value, summary, needHumanReview, cardJson, mode, modelVersion, promptVersion);
+        }
+
         Result withMetadata(String mode, String modelVersion, String promptVersion) {
             return new Result(eventType, summary, needHumanReview, cardJson, mode, modelVersion, promptVersion);
         }

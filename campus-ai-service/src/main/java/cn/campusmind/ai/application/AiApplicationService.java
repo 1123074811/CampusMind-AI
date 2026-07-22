@@ -272,11 +272,28 @@ public class AiApplicationService {
     /**
      * AI 日报摘要：优先用 LLM 生成，回退到规则拼接。
      */
-    public cn.campusmind.ai.controller.AiController.DailyBriefingResponse dailyBriefing(Long userId) {
+    public cn.campusmind.ai.controller.AiController.DailyBriefingResponse dailyBriefing(
+            List<cn.campusmind.ai.controller.AiController.DailyBriefingItem> currentItems) {
         String today = todayStr();
-        // 尝试从向量库检索今日相关事件
-        SearchPlan plan = new SearchPlan("FEED_QUERY", List.of(), "TODAY", List.of(), true, false, RAG_TOP_K);
-        List<VectorSearchHit> hits = retrieveEvidence("今日校园重要通知", plan, userId);
+        List<cn.campusmind.ai.controller.AiController.DailyBriefingItem> items =
+                (currentItems == null ? List.<cn.campusmind.ai.controller.AiController.DailyBriefingItem>of() : currentItems)
+                .stream()
+                .filter(item -> item != null && item.title() != null && !item.title().isBlank())
+                .filter(item -> !"COURSE".equals(item.eventType()))
+                .limit(30)
+                .toList();
+        List<VectorSearchHit> hits = java.util.stream.IntStream.range(0, items.size())
+                .mapToObj(index -> {
+                    var item = items.get(index);
+                    String text = "标题：" + item.title()
+                            + "\n类型：" + firstNonBlank(item.eventType(), "OTHER")
+                            + "\n来源：" + firstNonBlank(item.sourceName(), "未知来源")
+                            + "\n发布时间：" + firstNonBlank(item.publishTime(), "未知")
+                            + "\n摘要：" + firstNonBlank(item.summary(), "无");
+                    return new VectorSearchHit("feed-" + index, text, 1.0,
+                            Map.of("title", item.title(), "eventType", firstNonBlank(item.eventType(), "OTHER")));
+                })
+                .toList();
 
         String summary;
         List<String> highlights = new ArrayList<>();
@@ -284,8 +301,11 @@ public class AiApplicationService {
         ChatModel model = runtimeAiConfig.resolveChatModel();
         if (model != null && !hits.isEmpty()) {
             try {
-                summary = ragWithLlm(model, "请用一两句话生成今日 AI 日报摘要，简洁概括重要事项。", hits,
+                summary = ragWithLlm(model, "请仅根据当前信息流，用一两句话生成校园信息日报，优先概括截止时间临近或重要的事项。", hits,
                         List.of(), ProfileMemory.empty());
+                if (summary == null || summary.isBlank() || summary.contains("无法生成")) {
+                    throw new IllegalStateException("日报模型输出不可用");
+                }
                 highlights = hits.stream().limit(3)
                         .map(h -> h.metadata().get("title") != null ? h.metadata().get("title").toString() : h.docId())
                         .toList();
