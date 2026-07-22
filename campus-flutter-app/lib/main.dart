@@ -14,6 +14,7 @@ import 'assistant_page.dart';
 import 'detail_page.dart';
 import 'profile_page.dart';
 import 'import_page.dart';
+import 'rain_course_detail_page.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -323,18 +324,25 @@ class _CampusShellState extends State<CampusShell> {
   void _openDetail(InformationItem item) {
     Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) => PrototypeDetailPage(
-          item: item,
-          api: widget.api,
-          session: widget.session,
-          onItemChanged: _replaceItem,
-        ),
+        builder: (_) => item.sourceName == '雨课堂导入' &&
+                item.eventType.toUpperCase() == 'COURSE'
+            ? RainCourseDetailPage(
+                course: item,
+                api: widget.api,
+                session: widget.session,
+              )
+            : PrototypeDetailPage(
+                item: item,
+                api: widget.api,
+                session: widget.session,
+                onItemChanged: _replaceItem,
+              ),
       ),
     );
   }
 
-  void _openImport() {
-    Navigator.of(context).push(
+  Future<void> _openImport() async {
+    await Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => ImportPage(
           api: widget.api,
@@ -342,6 +350,12 @@ class _CampusShellState extends State<CampusShell> {
         ),
       ),
     );
+    if (mounted) await _refresh();
+  }
+
+  void _selectTab(int index) {
+    setState(() => _tabIndex = index);
+    if (index == 0) unawaited(_refresh());
   }
 
   @override
@@ -386,7 +400,7 @@ class _CampusShellState extends State<CampusShell> {
       ),
       bottomNavigationBar: _PillTabBar(
         index: _tabIndex,
-        onChanged: (i) => setState(() => _tabIndex = i),
+        onChanged: _selectTab,
       ),
     );
   }

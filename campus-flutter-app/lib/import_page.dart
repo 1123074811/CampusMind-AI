@@ -7,6 +7,8 @@ import 'app_theme.dart';
 import 'information_api.dart';
 import 'import_preview_page.dart';
 import 'my_imported_events_page.dart';
+import 'rain_sync_progress_page.dart';
+import 'rain_webview_page.dart';
 
 class ImportPage extends StatefulWidget {
   const ImportPage({super.key, required this.api, required this.session});
@@ -103,6 +105,21 @@ class _ImportPageState extends State<ImportPage>
     final json = _rainJsonCtrl.text.trim();
     if (json.isEmpty) throw Exception('请粘贴雨课堂JSON数据');
     return widget.api.importRainJson(_rainDataType, json, widget.session);
+  }
+
+  Future<void> _openRainWebView() async {
+    final started = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (_) => RainWebViewPage(
+          api: widget.api,
+          session: widget.session,
+        ),
+      ),
+    );
+    if (!mounted || started != true) return;
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute(builder: (_) => const RainSyncProgressPage()),
+    );
   }
 
   void _openPreview(ImportResult result) {
@@ -397,9 +414,42 @@ class _ImportPageState extends State<ImportPage>
       padding: const EdgeInsets.fromLTRB(20, 12, 20, 16),
       children: [
         const _SectionHint(
+          icon: Icons.language,
+          title: '登录雨课堂并同步',
+          desc: '在 App 内完成登录后自动同步全部课程、作业、考试与通知，可关闭进度页后台运行',
+        ),
+        const SizedBox(height: 14),
+        SizedBox(
+          height: 50,
+          child: ElevatedButton.icon(
+            onPressed: _openRainWebView,
+            icon: const Icon(Icons.login, size: 19),
+            label: const Text(
+              '打开内置雨课堂',
+              style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+            ),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppTheme.brand,
+              foregroundColor: Colors.white,
+              elevation: 0,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(14),
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(height: 10),
+        const Text(
+          '为保护账号，默认同步后清除登录态；可在雨课堂页面开启「记住登录」免重复登录。',
+          style: TextStyle(fontSize: 12, color: AppTheme.muted, height: 1.5),
+        ),
+        const SizedBox(height: 24),
+        const Divider(color: AppTheme.line),
+        const SizedBox(height: 16),
+        const _SectionHint(
           icon: Icons.data_object,
-          title: '粘贴雨课堂 JSON',
-          desc: '从浏览器开发者工具复制课程/作业/通知的响应 JSON 数据',
+          title: '手动 JSON 导入（备用）',
+          desc: '内置页面无法使用时，可粘贴课程、作业、考试或通知的响应 JSON',
         ),
         const SizedBox(height: 14),
         // 数据类型选择

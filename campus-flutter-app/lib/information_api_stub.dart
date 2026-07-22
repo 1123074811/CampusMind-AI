@@ -134,7 +134,7 @@ class InformationItem {
   final List<String> recommendReasons;
   final int? submittedByUserId;
 
-  bool get isUserUpload => submittedByUserId != null || sourceName == '用户文件上传';
+  bool get isUserUpload => sourceName.startsWith('用户');
 
   bool get hasValidAiSummary =>
       aiSummary.trim().isNotEmpty &&
@@ -173,6 +173,9 @@ class InformationItem {
   }
 
   String get displayTime {
+    if (sourceName == '雨课堂导入' && publishTime == null) {
+      return '发布时间未知';
+    }
     final value = isUserUpload ? fetchedAt : (publishTime ?? fetchedAt);
     if (!isUserUpload &&
         publishTime != null &&
@@ -330,6 +333,10 @@ class ImportResult {
     this.parsedSummary,
     this.parsedEventType,
     this.createdItemId,
+    this.total = 0,
+    this.success = 0,
+    this.skipped = 0,
+    this.failed = 0,
   });
 
   final int taskId;
@@ -342,10 +349,15 @@ class ImportResult {
   final String? parsedSummary;
   final String? parsedEventType;
   final int? createdItemId;
+  final int total;
+  final int success;
+  final int skipped;
+  final int failed;
 
   bool get hasParsedData => parsedTitle != null && parsedTitle!.isNotEmpty;
 
   factory ImportResult.fromJson(Map<String, Object?> json) {
+    final summary = json['summary'] as Map<String, Object?>? ?? const {};
     final event = json['event'] as Map<String, Object?>? ??
         json['parsedEvent'] as Map<String, Object?>? ??
         const {};
@@ -374,6 +386,12 @@ class ImportResult {
           event['eventType'] as String? ?? json['parsedEventType'] as String?,
       createdItemId: (json['createdItemId'] as num?)?.toInt() ??
           (event['id'] as num?)?.toInt(),
+      total: (summary['total'] as num?)?.toInt() ?? 0,
+      success: (summary['success'] as num?)?.toInt() ?? 0,
+      skipped: (summary['skipped'] as num?)?.toInt() ?? 0,
+      failed: (summary['fail'] as num?)?.toInt() ??
+          (summary['failed'] as num?)?.toInt() ??
+          0,
     );
   }
 }
@@ -496,6 +514,12 @@ class ImportedEventItem {
     required this.summary,
     required this.eventType,
     required this.sourceType,
+    required this.courseName,
+    required this.semester,
+    required this.time,
+    required this.sourceUrl,
+    this.deadline,
+    this.organizer,
   });
 
   final int id;
@@ -503,15 +527,92 @@ class ImportedEventItem {
   final String summary;
   final String eventType;
   final String sourceType;
+  final String courseName;
+  final String semester;
+  final DateTime? time;
+  final String? sourceUrl;
+  final DateTime? deadline;
+  final String? organizer;
 
-  factory ImportedEventItem.fromJson(Map<String, Object?> json) =>
-      ImportedEventItem(
-        id: (json['id'] as num?)?.toInt() ?? 0,
-        title: json['title'] as String? ?? '未命名课程信息',
-        summary: json['summary'] as String? ?? '',
-        eventType: json['eventType'] as String? ?? 'OTHER',
-        sourceType: json['sourceType'] as String? ?? '',
-      );
+  factory ImportedEventItem.fromJson(Map<String, Object?> json) {
+    final title = json['title'] as String? ?? '未命名课程信息';
+    final summary = json['summary'] as String? ?? '';
+    final rawEventType = json['eventType'] as String? ?? 'OTHER';
+    final sourceType = json['sourceType'] as String? ?? '';
+    final tags = (json['tags'] as List<Object?>? ?? const [])
+        .whereType<String>()
+        .toList();
+    final taggedCourse = tags
+        .where((tag) => tag.startsWith('课程:'))
+        .map((tag) => tag.substring(3).trim())
+        .firstOrNull;
+    final summaryCourse =
+        RegExp(r'课程[：:]\s*([^\n]+)').firstMatch(summary)?.group(1)?.trim();
+    final eventType = _normalizeRainEventType(
+      sourceType: sourceType,
+      eventType: rawEventType,
+      courseName: taggedCourse ?? summaryCourse,
+      text: '$title\n$summary',
+    );
+    final rawSemester = tags
+            .where((tag) => tag.startsWith('学期:'))
+            .map((tag) => tag.substring(3).trim())
+            .firstOrNull ??
+        RegExp(r'20\d{2}(?:[-/]20\d{2}[-/][12]|[春秋])')
+            .firstMatch('$title\n$summary')
+            ?.group(0);
+    final semester = _canonicalRainSemester(rawSemester);
+    final sources = (json['sources'] as List<Object?>? ?? const [])
+        .whereType<Map<String, Object?>>();
+    return ImportedEventItem(
+      id: (json['id'] as num?)?.toInt() ?? 0,
+      title: title,
+      summary: summary,
+      eventType: eventType,
+      sourceType: sourceType,
+      courseName: taggedCourse ??
+          summaryCourse ??
+          (eventType == 'COURSE' ? title : '未归类消息'),
+      semester: semester,
+      time: DateTime.tryParse(json['publishedAt'] as String? ?? ''),
+      sourceUrl: sources
+          .map((source) => source['sourceUrl'] as String?)
+          .whereType<String>()
+          .firstOrNull,
+      deadline: DateTime.tryParse(json['endTime'] as String? ?? ''),
+      organizer: json['organizer'] as String?,
+    );
+  }
+}
+
+String _normalizeRainEventType({
+  required String sourceType,
+  required String eventType,
+  required String? courseName,
+  required String text,
+}) {
+  if (sourceType != 'RAIN_CLASSROOM' ||
+      eventType != 'COURSE' ||
+      courseName != null) {
+    return eventType;
+  }
+  if (RegExp(r'考试|测验|试卷').hasMatch(text)) return 'EXAM';
+  if (RegExp(r'作业|习题|练习|实验|报告|论文|预习|复习|任务').hasMatch(text)) {
+    return 'HOMEWORK';
+  }
+  return 'NOTICE';
+}
+
+String _canonicalRainSemester(String? value) {
+  if (value == null) return '未标注学期';
+  final explicit = RegExp(r'(20\d{2})[春秋]').firstMatch(value);
+  if (explicit != null) return explicit.group(0)!;
+  final academic =
+      RegExp(r'(20\d{2})[-/](20\d{2})[-/]([12])').firstMatch(value);
+  if (academic == null) return '未标注学期';
+  return academic.group(3) == '1'
+      ? '${academic.group(1)}秋'
+      : '${academic.group(2)}春';
 }
 
 abstract class CampusApi {
@@ -645,6 +746,12 @@ abstract class CampusApi {
   /// 当前用户可见的雨课堂私有事件
   Future<List<ImportedEventItem>> fetchRainEvents(LoginSession session);
 
+  Future<void> deleteRainEvent(int id, LoginSession session) =>
+      Future.error(UnsupportedError('当前实现不支持删除雨课堂记录'));
+
+  Future<Map<String, int>> deleteRainEvents(LoginSession session) =>
+      Future.error(UnsupportedError('当前实现不支持清空雨课堂记录'));
+
   /// AI 对话
   Future<AiChatResult> aiChat(
       String sessionId, String message, LoginSession session);
@@ -719,7 +826,8 @@ abstract class CampusApi {
       Future.value(const UserProfileTags(tags: [], sensitivity: 0.5));
 
   /// 获取 AI 日报摘要
-  Future<DailyBriefing> fetchDailyBriefing(LoginSession session) =>
+  Future<DailyBriefing> fetchDailyBriefing(
+          LoginSession session, List<InformationItem> items) =>
       Future.value(const DailyBriefing(summary: '', highlights: []));
 
   /// 带排序的 Feed

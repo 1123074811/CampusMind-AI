@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:share_plus/share_plus.dart';
 import 'app_theme.dart';
 import 'information_api.dart';
@@ -176,20 +177,22 @@ class _PrototypeHomePageState extends State<PrototypeHomePage> {
     _loadBriefing();
   }
 
+  @override
+  void didUpdateWidget(covariant PrototypeHomePage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.items.isEmpty && widget.items.isNotEmpty) {
+      _loadBriefing();
+    }
+  }
+
   Future<void> _loadBriefing() async {
+    if (widget.items.isEmpty) return;
     try {
-      final briefing = await widget.api.fetchDailyBriefing(widget.session);
-      if (!mounted) return;
-      setState(() {
-        _briefingSummary = briefing.summary;
-      });
+      final briefing =
+          await widget.api.fetchDailyBriefing(widget.session, widget.items);
+      if (mounted) setState(() => _briefingSummary = briefing.summary);
     } catch (_) {
-      // 回退：从本地 items 生成
-      if (!mounted) return;
-      setState(() {});
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('AI 日报暂不可用，已根据当前真实信息生成概览')),
-      );
+      if (mounted) setState(() => _briefingSummary = '');
     }
   }
 
@@ -375,7 +378,7 @@ class _PrototypeHomePageState extends State<PrototypeHomePage> {
     // 动态生成日报摘要
     final briefingText = _briefingSummary.isNotEmpty
         ? _briefingSummary
-        : _generateBriefing(items);
+        : _generateBriefing(widget.items);
     return NotificationListener<ScrollNotification>(
       onNotification: (notification) {
         if (notification.metrics.extentAfter < 300 &&
@@ -702,12 +705,19 @@ class _AiHeroPanel extends StatelessWidget {
                 height: 1.35),
           ),
           const SizedBox(height: 6),
-          Text(
-            briefingSummary.isNotEmpty ? briefingSummary : '暂无新的校园信息。',
-            style: TextStyle(
-                fontSize: 13,
-                color: Colors.white.withValues(alpha: 0.9),
-                height: 1.55),
+          MarkdownBody(
+            data: briefingSummary.isNotEmpty
+                ? briefingSummary
+                : '暂无新的校园信息。',
+            softLineBreak: true,
+            styleSheet: MarkdownStyleSheet(
+              p: TextStyle(
+                  fontSize: 13,
+                  color: Colors.white.withValues(alpha: 0.9),
+                  height: 1.55),
+              strong: const TextStyle(
+                  fontWeight: FontWeight.w700, color: Colors.white),
+            ),
           ),
           const SizedBox(height: 14),
           Row(

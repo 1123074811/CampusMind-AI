@@ -617,15 +617,46 @@ class IoCampusApi implements CampusApi {
 
   @override
   Future<List<ImportedEventItem>> fetchRainEvents(LoginSession session) async {
-    final root = await _request('GET', '/api/v1/events/search?page=1&size=100',
-        session: session);
+    final items = <ImportedEventItem>[];
+    for (var page = 1; page <= 100; page++) {
+      final root = await _request(
+        'GET',
+        '/api/v1/events/search?sourceType=RAIN_CLASSROOM&page=$page&size=100',
+        session: session,
+      );
+      final data = _data(root);
+      items.addAll((data['items'] as List<Object?>? ?? const [])
+          .cast<Map<String, Object?>>()
+          .map(ImportedEventItem.fromJson));
+      if (data['hasMore'] != true) break;
+    }
+    return items;
+  }
+
+  @override
+  Future<void> deleteRainEvent(int id, LoginSession session) async {
+    await _request('DELETE', '/api/v1/information/rain/$id', session: session);
+    await _request('DELETE', '/api/v1/events/rain/$id', session: session);
+  }
+
+  @override
+  Future<Map<String, int>> deleteRainEvents(LoginSession session) async {
+    final informationRoot = await _request(
+      'DELETE',
+      '/api/v1/information/rain',
+      session: session,
+    );
+    final root = await _request(
+      'DELETE',
+      '/api/v1/events/source/RAIN_CLASSROOM',
+      session: session,
+    );
     final data = _data(root);
-    final list = data['items'] as List<Object?>? ?? const [];
-    return list
-        .cast<Map<String, Object?>>()
-        .map(ImportedEventItem.fromJson)
-        .where((item) => item.sourceType == 'RAIN_CLASSROOM')
-        .toList();
+    return {
+      ...data.map((key, value) => MapEntry(key, (value as num).toInt())),
+      ..._data(informationRoot)
+          .map((key, value) => MapEntry(key, (value as num).toInt())),
+    };
   }
 
   @override
@@ -894,11 +925,27 @@ class IoCampusApi implements CampusApi {
   }
 
   @override
-  Future<DailyBriefing> fetchDailyBriefing(LoginSession session) async {
+  Future<DailyBriefing> fetchDailyBriefing(
+      LoginSession session, List<InformationItem> items) async {
     final root = await _request(
-      'GET',
+      'POST',
       '/api/v1/ai/daily-briefing',
       session: session,
+      body: {
+        'items': items.take(30).map((item) {
+          final rawSummary =
+              item.hasValidAiSummary ? item.aiSummary : item.preview;
+          return {
+            'title': item.title,
+            'summary': rawSummary.length > 1000
+                ? rawSummary.substring(0, 1000)
+                : rawSummary,
+            'eventType': item.eventType,
+            'sourceName': item.sourceName,
+            'publishTime': item.publishTime?.toIso8601String(),
+          };
+        }).toList(),
+      },
     );
     return DailyBriefing.fromJson(_data(root));
   }

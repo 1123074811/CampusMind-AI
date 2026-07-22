@@ -329,6 +329,8 @@ FLUSH PRIVILEGES;
         "$ProjectRoot\infra\mysql\migrations\006_user_profile_sensitivity.sql",
         "$ProjectRoot\infra\mysql\migrations\008_fix_user_import_publish_time.sql",
         "$ProjectRoot\infra\mysql\migrations\009_xju_ehall_sync.sql",
+        "$ProjectRoot\infra\mysql\migrations\010_fix_rain_publish_time.sql",
+        "$ProjectRoot\infra\mysql\migrations\011_backfill_rain_item_types.sql",
         "$ProjectRoot\infra\mysql\init\012_enterprise_closure.sql"
     )
     foreach ($script in $schemaScripts) {
